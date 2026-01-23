@@ -21,7 +21,7 @@ export default function Analytics({ isOpen, onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/analytics`);
+      const response = await fetch(`${API_BASE}/analytics`);
       if (!response.ok) throw new Error('Failed to fetch analytics');
       const data = await response.json();
       setAnalytics(data);
@@ -34,7 +34,7 @@ export default function Analytics({ isOpen, onClose }) {
 
   const fetchRatings = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/ratings/models`);
+      const response = await fetch(`${API_BASE}/ratings/models`);
       if (!response.ok) throw new Error('Failed to fetch ratings');
       const data = await response.json();
       setRatings(data);
@@ -47,7 +47,7 @@ export default function Analytics({ isOpen, onClose }) {
     if (!confirm('Are you sure you want to clear all analytics data?')) return;
 
     try {
-      const response = await fetch(`${API_BASE}/api/analytics/clear`, {
+      const response = await fetch(`${API_BASE}/analytics/clear`, {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to clear analytics');

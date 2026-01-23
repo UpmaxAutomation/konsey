@@ -38,7 +38,7 @@ export default function Stage1({ responses, conversationId, messageIndex }) {
 
       try {
         const res = await fetch(
-          `${API_BASE}/api/ratings/${conversationId}/${messageIndex}/${encodeURIComponent(response.model)}`
+          `${API_BASE}/ratings/${conversationId}/${messageIndex}/${encodeURIComponent(response.model)}`
         );
         if (!res.ok) continue;
 
@@ -68,7 +68,7 @@ export default function Stage1({ responses, conversationId, messageIndex }) {
     setSubmittingRating(prev => ({ ...prev, [modelId]: true }));
 
     try {
-      const response = await fetch(`${API_BASE}/api/ratings`, {
+      const response = await fetch(`${API_BASE}/ratings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

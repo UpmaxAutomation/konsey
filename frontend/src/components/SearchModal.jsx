@@ -49,7 +49,7 @@ export default function SearchModal({ isOpen, onClose, onSelectConversation }) {
     setLoading(true);
     try {
       const response = await fetch(
-        `${API_BASE}/api/search?q=${encodeURIComponent(searchQuery)}&limit=20`
+        `${API_BASE}/search?q=${encodeURIComponent(searchQuery)}&limit=20`
       );
       const data = await response.json();
       setResults(data.results || []);
