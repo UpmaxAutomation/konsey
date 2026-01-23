@@ -43,27 +43,34 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
         start_time = time.perf_counter()
         # #region agent log
-        if request.url.path == "/api/conversations" and request.method in {"POST", "OPTIONS"}:
+        # Log CORS-related requests for debugging
+        if request.url.path.startswith("/api/") and request.method in {"POST", "OPTIONS", "GET"}:
             try:
-                Path("/Users/sezars/llm-council/.cursor/debug.log").open("a").write(
-                    json.dumps(
-                        {
-                            "sessionId": "debug-session",
-                            "runId": "pre-fix",
-                            "hypothesisId": "H7",
-                            "location": "middleware.py:52",
-                            "message": "api_conversations:request",
-                            "data": {
-                                "method": request.method,
-                                "origin": request.headers.get("origin"),
-                                "has_auth": bool(request.headers.get("authorization")),
-                                "content_type": request.headers.get("content-type"),
-                            },
-                            "timestamp": int(time.time() * 1000),
-                        }
+                import os
+                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    origin = request.headers.get("origin")
+                    cors_origins_env = os.getenv("CORS_ORIGINS", "")
+                    Path(debug_log_path).open("a").write(
+                        json.dumps(
+                            {
+                                "sessionId": "debug-session",
+                                "runId": "cors-investigation",
+                                "hypothesisId": "H1",
+                                "location": "middleware.py:18",
+                                "message": "cors_request:entry",
+                                "data": {
+                                    "method": request.method,
+                                    "path": request.url.path,
+                                    "origin": origin,
+                                    "cors_origins_env": cors_origins_env,
+                                    "user_agent": request.headers.get("user-agent", "")[:50],
+                                },
+                                "timestamp": int(time.time() * 1000),
+                            }
+                        )
+                        + "\n"
                     )
-                    + "\n"
-                )
             except Exception:
                 pass
         # #endregion
@@ -86,25 +93,35 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response.headers["X-Request-ID"] = request_id
             response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
             # #region agent log
-            if request.url.path == "/api/conversations" and request.method in {"POST", "OPTIONS"}:
+            # Log CORS response headers for debugging
+            if request.url.path.startswith("/api/") and request.method in {"POST", "OPTIONS", "GET"}:
                 try:
-                    Path("/Users/sezars/llm-council/.cursor/debug.log").open("a").write(
-                        json.dumps(
-                            {
-                                "sessionId": "debug-session",
-                                "runId": "pre-fix",
-                                "hypothesisId": "H8",
-                                "location": "middleware.py:84",
-                                "message": "api_conversations:response",
-                                "data": {
-                                    "method": request.method,
-                                    "status": response.status_code,
-                                },
-                                "timestamp": int(time.time() * 1000),
-                            }
+                    import os
+                    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+                    if os.path.exists(os.path.dirname(debug_log_path)):
+                        cors_origin = response.headers.get("access-control-allow-origin", "NOT_SET")
+                        cors_headers = {k: v for k, v in response.headers.items() if "access-control" in k.lower()}
+                        Path(debug_log_path).open("a").write(
+                            json.dumps(
+                                {
+                                    "sessionId": "debug-session",
+                                    "runId": "cors-investigation",
+                                    "hypothesisId": "H2",
+                                    "location": "middleware.py:112",
+                                    "message": "cors_request:response",
+                                    "data": {
+                                        "method": request.method,
+                                        "path": request.url.path,
+                                        "status": response.status_code,
+                                        "cors_allow_origin": cors_origin,
+                                        "all_cors_headers": cors_headers,
+                                        "request_origin": request.headers.get("origin"),
+                                    },
+                                    "timestamp": int(time.time() * 1000),
+                                }
+                            )
+                            + "\n"
                         )
-                        + "\n"
-                    )
                 except Exception:
                     pass
             # #endregion

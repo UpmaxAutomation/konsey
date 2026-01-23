@@ -1,0 +1,55 @@
+═══════════════════════════════════════════════════════════
+  VERCEL EXACT SETTINGS - COPY THESE EXACTLY
+═══════════════════════════════════════════════════════════
+
+When importing project in Vercel, use these EXACT settings:
+
+───────────────────────────────────────────────────────────
+1. FRAMEWORK PRESET
+───────────────────────────────────────────────────────────
+   Vite (auto-detected is fine)
+
+───────────────────────────────────────────────────────────
+2. ROOT DIRECTORY ⚠️ CRITICAL
+───────────────────────────────────────────────────────────
+   frontend
+   
+   (Must be exactly this word, lowercase, no quotes)
+
+───────────────────────────────────────────────────────────
+3. BUILD COMMAND
+───────────────────────────────────────────────────────────
+   npm run build
+   
+   (Should auto-fill, but verify)
+
+───────────────────────────────────────────────────────────
+4. OUTPUT DIRECTORY
+───────────────────────────────────────────────────────────
+   dist
+   
+   (Should auto-fill, but verify)
+
+───────────────────────────────────────────────────────────
+5. INSTALL COMMAND
+───────────────────────────────────────────────────────────
+   npm install
+   
+   (Should auto-fill, but verify)
+
+───────────────────────────────────────────────────────────
+6. ENVIRONMENT VARIABLE ⚠️ REQUIRED
+───────────────────────────────────────────────────────────
+   Name:  VITE_API_URL
+   Value: https://your-railway-url.up.railway.app
+   
+   (Replace your-railway-url with your actual Railway URL!)
+
+───────────────────────────────────────────────────────────
+
+✅ After setting these, click "Deploy"
+
+If it fails, the most common issue is:
+   → Root Directory not set to "frontend"
+
+═══════════════════════════════════════════════════════════

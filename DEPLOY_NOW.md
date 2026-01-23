@@ -58,7 +58,8 @@ git push -u origin main
    USE_DATABASE=true
    
    # Required - Your Supabase connection (use the pooler URL!)
-   DATABASE_URL=postgresql://postgres.rdjxqrrnhfbekpbsjgjk:3yJ5$$J1vbZmqX$c@aws-0-us-west-2.pooler.supabase.com:6543/postgres
+   # Note: Railway doesn't need +asyncpg in the URL, it auto-detects
+   DATABASE_URL=postgresql://postgres.rdjxqrrnhfbekpbsjgjk:[YOUR_PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
    
    # Recommended - Set to production
    ENVIRONMENT=production
@@ -190,7 +191,7 @@ Make sure you have ALL of these in Railway/Render:
 - ✅ Using **pooler URL** (not direct connection)
 - ✅ Password is correct
 - ✅ Supabase project is active
-- ✅ URL format: `postgresql://postgres.[ref]:[PASSWORD]@aws-0-us-west-2.pooler.supabase.com:6543/postgres`
+- ✅ URL format: `postgresql://postgres.[ref]:[PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres`
 
 ### 401 Unauthorized?
 

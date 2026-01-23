@@ -273,6 +273,18 @@ if os.path.exists(os.path.dirname(debug_log_path)):
         pass  # Ignore file errors in production
 # #endregion
 
+# #region agent log
+# Log CORS configuration at startup
+import os
+debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+if os.path.exists(os.path.dirname(debug_log_path)):
+    try:
+        with open(debug_log_path, 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"cors-investigation","hypothesisId":"H3","location":"main.py:276","message":"cors_middleware:config","data":{"cors_origins":CORS_ORIGINS,"env_origins":env_origins,"allow_credentials":True},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+# #endregion
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
