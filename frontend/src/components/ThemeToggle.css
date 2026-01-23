@@ -1,0 +1,108 @@
+/* Theme Toggle Component */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+.theme-toggle:focus-visible .toggle-track {
+  box-shadow: 0 0 0 2px var(--accent-primary);
+}
+
+.toggle-track {
+  position: relative;
+  width: 56px;
+  height: 28px;
+  border-radius: 14px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-primary);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+}
+
+.toggle-track.dark {
+  background: var(--bg-input);
+  border-color: var(--accent-primary);
+}
+
+.toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+.toggle-icon.sun {
+  color: var(--text-muted);
+}
+
+.toggle-icon.moon {
+  color: var(--text-muted);
+}
+
+.toggle-track.light .toggle-icon.sun {
+  color: #f59e0b;
+}
+
+.toggle-track.dark .toggle-icon.moon {
+  color: #8b5cf6;
+}
+
+.toggle-thumb {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  left: 4px;
+}
+
+.toggle-track.dark .toggle-thumb {
+  transform: translateX(26px);
+  background: var(--accent-primary);
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 36px;
+}
+
+/* Hover state */
+.theme-toggle:hover .toggle-track {
+  border-color: var(--accent-primary);
+}
+
+.theme-toggle:hover .toggle-thumb {
+  box-shadow: var(--shadow-md);
+}
+
+/* Large variant for settings page */
+.theme-toggle-large .toggle-track {
+  width: 64px;
+  height: 32px;
+  border-radius: 16px;
+}
+
+.theme-toggle-large .toggle-thumb {
+  width: 24px;
+  height: 24px;
+}
+
+.theme-toggle-large .toggle-track.dark .toggle-thumb {
+  transform: translateX(30px);
+}

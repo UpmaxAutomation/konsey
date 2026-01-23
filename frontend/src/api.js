@@ -1,115 +1,42 @@
 /**
  * API client for the LLM Council backend.
+ *
+ * This file re-exports from the modular api/ directory structure
+ * for backward compatibility with existing imports.
+ *
+ * The API has been split into feature-based modules:
+ * - api/client.js - Base fetch client, auth helpers, error handling
+ * - api/conversations.js - Conversation CRUD, messaging, files
+ * - api/config.js - Config, presets, API keys, personas, features, budget
+ * - api/tools.js - Code execution, memory, search
+ * - api/images.js - Image generation
+ * - api/voice.js - TTS, STT
+ * - api/agents.js - AI agents
+ * - api/integrations.js - Google Drive, Slack, GitHub
+ * - api/analytics.js - Analytics endpoints
+ * - api/templates.js - Templates CRUD
+ * - api/projects.js - Projects, folders, tags, teams
+ * - api/ratings.js - Ratings system
+ * - api/batch.js - Batch processing
+ * - api/export.js - Export and sharing
  */
 
-const API_BASE = 'http://localhost:8001';
+// Re-export everything from the modular API
+export * from './api/index.js';
 
-export const api = {
-  /**
-   * List all conversations.
-   */
-  async listConversations() {
-    const response = await fetch(`${API_BASE}/api/conversations`);
-    if (!response.ok) {
-      throw new Error('Failed to list conversations');
-    }
-    return response.json();
-  },
+// Re-export the api object for backward compatibility with api.methodName() usage
+export { api } from './api/index.js';
 
-  /**
-   * Create a new conversation.
-   */
-  async createConversation() {
-    const response = await fetch(`${API_BASE}/api/conversations`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to create conversation');
-    }
-    return response.json();
-  },
+// Re-export error utilities for consumers that import them from api.js
+export {
+  parseAPIError,
+  parseError,
+  getUserFriendlyMessage,
+  isRetryableError,
+  NetworkError,
+  AbortError,
+  logError,
+} from './utils/errors.js';
 
-  /**
-   * Get a specific conversation.
-   */
-  async getConversation(conversationId) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}`
-    );
-    if (!response.ok) {
-      throw new Error('Failed to get conversation');
-    }
-    return response.json();
-  },
-
-  /**
-   * Send a message in a conversation.
-   */
-  async sendMessage(conversationId, content) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
-    return response.json();
-  },
-
-  /**
-   * Send a message and receive streaming updates.
-   * @param {string} conversationId - The conversation ID
-   * @param {string} content - The message content
-   * @param {function} onEvent - Callback function for each event: (eventType, data) => void
-   * @returns {Promise<void>}
-   */
-  async sendMessageStream(conversationId, content, onEvent) {
-    const response = await fetch(
-      `${API_BASE}/api/conversations/${conversationId}/message/stream`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ content }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          try {
-            const event = JSON.parse(data);
-            onEvent(event.type, event);
-          } catch (e) {
-            console.error('Failed to parse SSE event:', e);
-          }
-        }
-      }
-    }
-  },
-};
+// Re-export retry utilities for consumers that import them from api.js
+export { withRetry, withAPIRetry, withStreamRetry } from './utils/retry.js';

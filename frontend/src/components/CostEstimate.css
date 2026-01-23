@@ -1,0 +1,365 @@
+/* Cost Estimate Modal Styles */
+
+.cost-estimate-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.cost-estimate-modal {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 450px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.cost-estimate-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.cost-estimate-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.cost-estimate-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.cost-estimate-close:hover {
+  color: #111827;
+}
+
+.cost-estimate-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Loading State */
+.cost-estimate-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  gap: 12px;
+  color: #6b7280;
+}
+
+.cost-estimate-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #4a90e2;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Error State */
+.cost-estimate-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  color: #dc2626;
+  text-align: center;
+}
+
+.cost-estimate-retry {
+  padding: 8px 16px;
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.cost-estimate-retry:hover {
+  background: #fecaca;
+}
+
+/* Main Cost Display */
+.cost-estimate-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cost-estimate-range {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 10px;
+  border: 1px solid #bae6fd;
+}
+
+.cost-estimate-label {
+  font-size: 14px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.cost-estimate-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0369a1;
+}
+
+.cost-estimate-models {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+}
+
+.cost-estimate-model-count {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+/* Breakdown Toggle */
+.cost-estimate-breakdown-toggle {
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: 1px dashed #d1d5db;
+  border-radius: 6px;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  margin-bottom: 16px;
+}
+
+.cost-estimate-breakdown-toggle:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+/* Breakdown Details */
+.cost-estimate-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cost-estimate-stage {
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.cost-estimate-stage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.stage-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.stage-cost {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4a90e2;
+}
+
+.cost-estimate-stage-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cost-estimate-stage-details span {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* Models List */
+.cost-estimate-models-list {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.models-section {
+  margin-bottom: 8px;
+}
+
+.models-section:last-child {
+  margin-bottom: 0;
+}
+
+.models-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.models-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.models-list li {
+  font-size: 12px;
+  color: #374151;
+  background: #e5e7eb;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.models-value {
+  font-size: 12px;
+  color: #374151;
+}
+
+/* Action Buttons */
+.cost-estimate-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.cost-estimate-cancel,
+.cost-estimate-confirm {
+  flex: 1;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cost-estimate-cancel {
+  background: white;
+  border: 1px solid #d1d5db;
+  color: #374151;
+}
+
+.cost-estimate-cancel:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.cost-estimate-confirm {
+  background: #4a90e2;
+  border: 1px solid #4a90e2;
+  color: white;
+}
+
+.cost-estimate-confirm:hover:not(:disabled) {
+  background: #3b7dd0;
+  border-color: #3b7dd0;
+}
+
+.cost-estimate-confirm:disabled {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .cost-estimate-modal {
+    width: 95%;
+    max-height: 90vh;
+  }
+
+  .cost-estimate-header {
+    padding: 12px 16px;
+  }
+
+  .cost-estimate-content {
+    padding: 16px;
+  }
+
+  .cost-estimate-value {
+    font-size: 18px;
+  }
+
+  .cost-estimate-actions {
+    padding: 12px 16px;
+  }
+}

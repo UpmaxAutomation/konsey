@@ -1,0 +1,58 @@
+.copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.copy-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+.copy-button.copied {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #15803d;
+}
+
+[data-theme="dark"] .copy-button.copied {
+  background: #14532d;
+  border-color: #22c55e;
+  color: #86efac;
+}
+
+.copy-button svg {
+  flex-shrink: 0;
+}
+
+.copy-label {
+  white-space: nowrap;
+}
+
+/* Compact variant */
+.copy-button.compact {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.copy-button.compact .copy-label {
+  display: none;
+}
+
+/* Icon only variant */
+.copy-button.icon-only {
+  padding: 6px;
+}
+
+.copy-button.icon-only .copy-label {
+  display: none;
+}

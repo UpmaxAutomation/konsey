@@ -1,0 +1,32 @@
+# LLM Council Backend Dependencies
+# Generated from pyproject.toml for deployment
+
+# Core FastAPI
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+pydantic>=2.9.0
+pydantic-settings>=2.0.0
+python-multipart>=0.0.21
+
+# Database (optional - can use JSON storage)
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+alembic>=1.13.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+passlib[argon2]>=1.7.4
+authlib>=1.3.0
+cryptography>=42.0.0
+
+# Logging & Observability
+structlog>=24.1.0
+python-json-logger>=2.0.0
+
+# Rate Limiting
+slowapi>=0.1.9
+
+# Metrics (optional)
+prometheus-client>=0.19.0

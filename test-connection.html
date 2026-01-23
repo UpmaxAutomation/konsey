@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend Connection Test</title>
+</head>
+<body>
+    <h1>Backend Connection Test</h1>
+    <div id="status">Testing...</div>
+    <pre id="details"></pre>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        const detailsPre = document.getElementById('details');
+        
+        async function testConnection() {
+            const apiBase = 'http://localhost:8001';
+            const tests = [];
+            
+            // Test 1: Root endpoint
+            try {
+                const response = await fetch(`${apiBase}/`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                tests.push({
+                    name: 'Root endpoint (/)',
+                    status: response.status,
+                    ok: response.ok,
+                    text: await response.text()
+                });
+            } catch (error) {
+                tests.push({
+                    name: 'Root endpoint (/)',
+                    error: error.message,
+                    type: error.constructor.name
+                });
+            }
+            
+            // Test 2: API conversations endpoint
+            try {
+                const response = await fetch(`${apiBase}/api/conversations`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                tests.push({
+                    name: 'API conversations',
+                    status: response.status,
+                    ok: response.ok,
+                    text: await response.text()
+                });
+            } catch (error) {
+                tests.push({
+                    name: 'API conversations',
+                    error: error.message,
+                    type: error.constructor.name
+                });
+            }
+            
+            // Test 3: CORS preflight
+            try {
+                const response = await fetch(`${apiBase}/api/conversations`, {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': 'http://localhost:5173',
+                        'Access-Control-Request-Method': 'GET',
+                        'Access-Control-Request-Headers': 'authorization,content-type'
+                    }
+                });
+                tests.push({
+                    name: 'CORS preflight',
+                    status: response.status,
+                    ok: response.ok,
+                    headers: Object.fromEntries(response.headers.entries())
+                });
+            } catch (error) {
+                tests.push({
+                    name: 'CORS preflight',
+                    error: error.message,
+                    type: error.constructor.name
+                });
+            }
+            
+            // Display results
+            const allPassed = tests.every(t => t.ok !== false && !t.error);
+            statusDiv.textContent = allPassed ? '✅ All tests passed!' : '❌ Some tests failed';
+            statusDiv.style.color = allPassed ? 'green' : 'red';
+            
+            detailsPre.textContent = JSON.stringify(tests, null, 2);
+        }
+        
+        testConnection();
+    </script>
+</body>
+</html>

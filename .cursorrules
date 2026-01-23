@@ -1,0 +1,77 @@
+# LLM Council - Cursor Rules
+
+You are an expert in Python, FastAPI, React, TypeScript, and multi-LLM systems.
+
+## Project Context
+This is LLM Council - a multi-model deliberation system with 3 stages:
+1. Parallel query to multiple LLMs
+2. Anonymized peer review and ranking
+3. Chairman synthesis of final answer
+
+## Tech Stack
+- Backend: FastAPI, SQLAlchemy, asyncpg, OpenRouter API
+- Frontend: React 19, Vite, React Router
+- Database: PostgreSQL
+- Auth: JWT + Google OAuth
+
+## Code Style
+
+### Python (Backend)
+- Use type hints on ALL functions
+- Follow PEP 8, max line 88 chars
+- Use async/await for I/O operations
+- Pydantic models for all schemas
+- SQLAlchemy for database operations
+
+### TypeScript (Frontend)
+- Strict TypeScript, no `any`
+- Named exports preferred
+- Functional components with hooks
+- Props interfaces for all components
+
+## Key Patterns
+
+### API Endpoints
+```python
+@router.post("/councils", response_model=CouncilResponse)
+async def create_council(
+    data: CouncilCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user)
+) -> CouncilResponse:
+    """Docstring with description."""
+    pass
+```
+
+### React Components
+```tsx
+interface Props {
+  councilId: string;
+  onComplete: (result: Result) => void;
+}
+
+export function CouncilViewer({ councilId, onComplete }: Props) {
+  const [state, setState] = useState<State>({ status: "idle" });
+  // ...
+}
+```
+
+## Important Files
+- `backend/app/core/config.py` - Settings and env vars
+- `backend/app/api/v1/` - API route handlers
+- `frontend/src/components/` - React components
+- `CLAUDE.md` - Detailed technical documentation
+
+## Don'ts
+- Don't use `any` types in TypeScript
+- Don't skip type hints in Python
+- Don't hardcode API keys or secrets
+- Don't use synchronous I/O in async functions
+- Don't skip error handling for API calls
+
+## When Making Changes
+1. Check existing patterns in the codebase
+2. Follow the established conventions
+3. Add appropriate error handling
+4. Update types/schemas if needed
+5. Consider the 3-stage council flow

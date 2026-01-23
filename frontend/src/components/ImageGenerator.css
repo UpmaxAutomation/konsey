@@ -1,0 +1,329 @@
+/* ImageGenerator.css */
+
+.image-generator {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #ffffff);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+}
+
+.ig-header {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+  color: white;
+  position: relative;
+}
+
+.ig-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.ig-icon {
+  font-size: 1.75rem;
+}
+
+.ig-description {
+  margin: 8px 0 0 0;
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.ig-header .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ig-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Form */
+.ig-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ig-prompt-row textarea {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid var(--border-primary, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  font-size: 1rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s;
+}
+
+.ig-prompt-row textarea:focus {
+  outline: none;
+  border-color: #ec4899;
+}
+
+.ig-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.ig-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ig-option label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+
+.ig-option select {
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-secondary, #f8fafc);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.ig-generate-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ig-generate-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);
+}
+
+.ig-generate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error */
+.ig-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md, 8px);
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.ig-error button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+
+/* Current Image */
+.ig-current {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ig-image-container {
+  position: relative;
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.ig-image-container img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ig-image-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ig-image-container:hover .ig-image-overlay {
+  opacity: 1;
+}
+
+.ig-image-overlay button {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  font-size: 1rem;
+  transition: transform 0.2s;
+}
+
+.ig-image-overlay button:hover {
+  transform: scale(1.1);
+}
+
+.ig-revised-prompt {
+  padding: 12px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.85rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.ig-revised-prompt strong {
+  color: var(--text-primary, #1e293b);
+}
+
+/* History Gallery */
+.ig-history {
+  border-top: 1px solid var(--border-primary, #e2e8f0);
+  padding-top: 20px;
+}
+
+.ig-history h3 {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ig-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.ig-thumbnail {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.ig-thumbnail:hover {
+  transform: scale(1.05);
+}
+
+.ig-thumbnail.active {
+  border-color: #ec4899;
+  box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.2);
+}
+
+.ig-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ig-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary, #f8fafc);
+  font-size: 2rem;
+}
+
+.ig-delete-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ig-thumbnail:hover .ig-delete-btn {
+  opacity: 1;
+}
+
+.ig-delete-btn:hover {
+  background: #ef4444;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ig-options {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ig-gallery {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
