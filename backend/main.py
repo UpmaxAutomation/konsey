@@ -223,6 +223,7 @@ For production, configure JWT authentication via the `/api/auth` endpoints.
 )
 
 # Global exception handler for better error messages
+# Note: This runs AFTER CORS middleware, so CORS headers should be preserved
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle all unhandled exceptions with detailed error messages."""
@@ -232,15 +233,18 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Log the error
     logger.exception("unhandled_exception", path=request.url.path, method=request.method, error=str(exc))
     
+    # Get origin from request for CORS
+    origin = request.headers.get("origin")
+    
     # In production, return generic error; in dev, return details
     environment = os.getenv("ENVIRONMENT", "development").lower()
     if environment == "production":
-        return JSONResponse(
+        response = JSONResponse(
             status_code=500,
             content={"detail": "Internal server error. Check logs for details."}
         )
     else:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=500,
             content={
                 "detail": str(exc),
@@ -248,6 +252,31 @@ async def global_exception_handler(request: Request, exc: Exception):
                 "traceback": traceback.format_exc()
             }
         )
+    
+    # Add CORS headers manually (CORS middleware might not run on exceptions)
+    # Get CORS_ORIGINS from environment (same logic as above)
+    if origin:
+        env_origins = os.getenv("CORS_ORIGINS") or os.getenv("ALLOWED_ORIGINS", "")
+        if env_origins:
+            allowed_origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+        else:
+            # Default origins
+            allowed_origins = [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:5176",
+                "http://127.0.0.1:5176",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:4000",
+                "http://127.0.0.1:4000",
+            ]
+        
+        if origin in allowed_origins:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 # Setup rate limiting
 setup_rate_limiting(app)
