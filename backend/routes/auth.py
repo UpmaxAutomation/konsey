@@ -108,6 +108,7 @@ async def _store_refresh_token(
         device_info=device_info,
     )
     db.add(refresh_token)
+    await db.flush()  # Flush to ensure token is saved
 
 
 async def _revoke_refresh_token(db: AsyncSession, token: str) -> bool:
@@ -233,7 +234,7 @@ async def login(
     if os.path.exists(os.path.dirname(debug_log_path)):
         try:
             with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H1","location":"auth.py:221","message":"login:entry","data":{"email":request.email,"has_password":bool(request.password)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H1","location":"auth.py:227","message":"login:entry","data":{"email":request.email,"has_password":bool(request.password)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
         except Exception:
             pass
     # #endregion
@@ -248,7 +249,10 @@ async def login(
             except Exception:
                 pass
         # #endregion
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
+        )
 
     if not user or not user.password_hash:
         raise HTTPException(
