@@ -15,7 +15,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} Audio data in base64
  */
 export async function textToSpeech({ text, provider = 'openai', voice = 'alloy', model = 'tts-1', speed = 1.0 }) {
-  const response = await authFetch(`${API_BASE}/api/voice/tts`, {
+  const response = await authFetch(`${API_BASE}/voice/tts`, {
     method: 'POST',
     body: JSON.stringify({ text, provider, voice, model, speed }),
   });
@@ -40,7 +40,7 @@ export async function transcribeAudio(file, provider = 'whisper', language = nul
   const token = localStorage.getItem('access_token');
   const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
 
-  let url = `${API_BASE}/api/voice/transcribe?provider=${provider}`;
+  let url = `${API_BASE}/voice/transcribe?provider=${provider}`;
   if (language) {
     url += `&language=${language}`;
   }
@@ -63,7 +63,7 @@ export async function transcribeAudio(file, provider = 'whisper', language = nul
  * @returns {Promise<Object>} List of providers
  */
 export async function getTTSProviders() {
-  const response = await fetch(`${API_BASE}/api/voice/tts/providers`);
+  const response = await fetch(`${API_BASE}/voice/tts/providers`);
   if (!response.ok) {
     throw new Error('Failed to get TTS providers');
   }
@@ -75,7 +75,7 @@ export async function getTTSProviders() {
  * @returns {Promise<Object>} List of providers
  */
 export async function getSTTProviders() {
-  const response = await fetch(`${API_BASE}/api/voice/stt/providers`);
+  const response = await fetch(`${API_BASE}/voice/stt/providers`);
   if (!response.ok) {
     throw new Error('Failed to get STT providers');
   }
@@ -88,7 +88,7 @@ export async function getSTTProviders() {
  * @returns {Promise<Object>} List of TTS results
  */
 export async function listTTSHistory(limit = 50) {
-  const response = await authFetch(`${API_BASE}/api/voice/tts?limit=${limit}`);
+  const response = await authFetch(`${API_BASE}/voice/tts?limit=${limit}`);
   if (!response.ok) {
     throw new Error('Failed to list TTS history');
   }
@@ -101,7 +101,7 @@ export async function listTTSHistory(limit = 50) {
  * @returns {Promise<Object>} List of transcriptions
  */
 export async function listTranscriptions(limit = 50) {
-  const response = await authFetch(`${API_BASE}/api/voice/transcriptions?limit=${limit}`);
+  const response = await authFetch(`${API_BASE}/voice/transcriptions?limit=${limit}`);
   if (!response.ok) {
     throw new Error('Failed to list transcriptions');
   }

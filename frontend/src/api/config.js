@@ -11,7 +11,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} API keys status and providers list
  */
 export async function getApiKeys() {
-  const response = await authFetch(`${API_BASE}/api/keys`);
+  const response = await authFetch(`${API_BASE}/keys`);
   if (!response.ok) {
     throw new Error('Failed to get API keys');
   }
@@ -26,7 +26,7 @@ export async function getApiKeys() {
  * @returns {Promise<Object>} Status of the operation
  */
 export async function setApiKey(provider, apiKey) {
-  const response = await authFetch(`${API_BASE}/api/keys`, {
+  const response = await authFetch(`${API_BASE}/keys`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -45,7 +45,7 @@ export async function setApiKey(provider, apiKey) {
  * @returns {Promise<Object>} Status of the operation
  */
 export async function deleteApiKey(provider) {
-  const response = await authFetch(`${API_BASE}/api/keys/${provider}`, {
+  const response = await authFetch(`${API_BASE}/keys/${provider}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -60,7 +60,7 @@ export async function deleteApiKey(provider) {
  * Get current council configuration.
  */
 export async function getConfig() {
-  const response = await authFetch(`${API_BASE}/api/config`);
+  const response = await authFetch(`${API_BASE}/config`);
   if (!response.ok) {
     throw new Error('Failed to get config');
   }
@@ -71,7 +71,7 @@ export async function getConfig() {
  * Update council configuration.
  */
 export async function updateConfig(config) {
-  const response = await authFetch(`${API_BASE}/api/config`, {
+  const response = await authFetch(`${API_BASE}/config`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -88,7 +88,7 @@ export async function updateConfig(config) {
  * Reset configuration to defaults.
  */
 export async function resetConfig() {
-  const response = await authFetch(`${API_BASE}/api/config/reset`, {
+  const response = await authFetch(`${API_BASE}/config/reset`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -104,7 +104,7 @@ export async function resetConfig() {
  * @returns {Promise<Object>} Presets list with id, name, description, models, chairman
  */
 export async function getPresets() {
-  const response = await authFetch(`${API_BASE}/api/presets`);
+  const response = await authFetch(`${API_BASE}/presets`);
   if (!response.ok) {
     throw new Error('Failed to get presets');
   }
@@ -117,7 +117,7 @@ export async function getPresets() {
  * @returns {Promise<Object>} Applied preset with council_models and chairman_model
  */
 export async function applyPreset(presetId) {
-  const response = await authFetch(`${API_BASE}/api/presets/${presetId}/apply`, {
+  const response = await authFetch(`${API_BASE}/presets/${presetId}/apply`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -145,7 +145,7 @@ export async function estimateCost({ message_length, council_models = null, chai
     body.chairman_model = chairman_model;
   }
 
-  const response = await authFetch(`${API_BASE}/api/estimate-cost`, {
+  const response = await authFetch(`${API_BASE}/estimate-cost`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -164,7 +164,7 @@ export async function estimateCost({ message_length, council_models = null, chai
  * Get session usage statistics.
  */
 export async function getUsage() {
-  const response = await authFetch(`${API_BASE}/api/usage`);
+  const response = await authFetch(`${API_BASE}/usage`);
   if (!response.ok) {
     throw new Error('Failed to get usage');
   }
@@ -175,7 +175,7 @@ export async function getUsage() {
  * Reset session usage statistics.
  */
 export async function resetUsage() {
-  const response = await authFetch(`${API_BASE}/api/usage/reset`, {
+  const response = await authFetch(`${API_BASE}/usage/reset`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -190,7 +190,7 @@ export async function resetUsage() {
  * Refresh available models from OpenRouter.
  */
 export async function refreshModels() {
-  const response = await authFetch(`${API_BASE}/api/models/refresh`, {
+  const response = await authFetch(`${API_BASE}/models/refresh`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -205,7 +205,7 @@ export async function refreshModels() {
  * Get all available personas (default + custom).
  */
 export async function getPersonas() {
-  const response = await authFetch(`${API_BASE}/api/personas`);
+  const response = await authFetch(`${API_BASE}/personas`);
   if (!response.ok) {
     throw new Error('Failed to get personas');
   }
@@ -216,7 +216,7 @@ export async function getPersonas() {
  * Set persona for a specific model.
  */
 export async function setPersona(modelId, personaKey) {
-  const response = await authFetch(`${API_BASE}/api/personas`, {
+  const response = await authFetch(`${API_BASE}/personas`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -233,7 +233,7 @@ export async function setPersona(modelId, personaKey) {
  * Create a custom persona.
  */
 export async function createCustomPersona(personaId, personaText) {
-  const response = await authFetch(`${API_BASE}/api/personas/custom`, {
+  const response = await authFetch(`${API_BASE}/personas/custom`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -252,7 +252,7 @@ export async function createCustomPersona(personaId, personaText) {
  * Get enhanced features configuration.
  */
 export async function getFeatures() {
-  const response = await authFetch(`${API_BASE}/api/features`);
+  const response = await authFetch(`${API_BASE}/features`);
   if (!response.ok) {
     throw new Error('Failed to get features');
   }
@@ -264,7 +264,7 @@ export async function getFeatures() {
  * @param {Object} features - Feature toggles (web_search, code_execution, memory)
  */
 export async function setFeatures(features) {
-  const response = await authFetch(`${API_BASE}/api/features`, {
+  const response = await authFetch(`${API_BASE}/features`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(features),
@@ -282,7 +282,7 @@ export async function setFeatures(features) {
  * @returns {Promise<Object>} Budget config with limits, spending, status, and alerts
  */
 export async function getBudget() {
-  const response = await authFetch(`${API_BASE}/api/budget`);
+  const response = await authFetch(`${API_BASE}/budget`);
   if (!response.ok) {
     throw new Error('Failed to get budget');
   }
@@ -299,7 +299,7 @@ export async function getBudget() {
  * @returns {Promise<Object>} Updated budget configuration
  */
 export async function setBudget(budgetConfig) {
-  const response = await authFetch(`${API_BASE}/api/budget`, {
+  const response = await authFetch(`${API_BASE}/budget`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -317,7 +317,7 @@ export async function setBudget(budgetConfig) {
  * @returns {Promise<Object>} Active alerts and exceeded status
  */
 export async function getBudgetAlerts() {
-  const response = await authFetch(`${API_BASE}/api/budget/alerts`);
+  const response = await authFetch(`${API_BASE}/budget/alerts`);
   if (!response.ok) {
     throw new Error('Failed to get budget alerts');
   }
@@ -331,8 +331,8 @@ export async function getBudgetAlerts() {
  */
 export async function resetBudget(period = null) {
   const url = period
-    ? `${API_BASE}/api/budget/reset?period=${period}`
-    : `${API_BASE}/api/budget/reset`;
+    ? `${API_BASE}/budget/reset?period=${period}`
+    : `${API_BASE}/budget/reset`;
   const response = await authFetch(url, {
     method: 'POST',
   });
@@ -347,7 +347,7 @@ export async function resetBudget(period = null) {
  * @returns {Promise<Object>} Clear status
  */
 export async function clearBudgetAlerts() {
-  const response = await authFetch(`${API_BASE}/api/budget/alerts/clear`, {
+  const response = await authFetch(`${API_BASE}/budget/alerts/clear`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -362,7 +362,7 @@ export async function clearBudgetAlerts() {
  * Get cache statistics.
  */
 export async function getCacheStats() {
-  const response = await authFetch(`${API_BASE}/api/cache`);
+  const response = await authFetch(`${API_BASE}/cache`);
   if (!response.ok) {
     throw new Error('Failed to get cache stats');
   }
@@ -373,7 +373,7 @@ export async function getCacheStats() {
  * Clear the response cache.
  */
 export async function clearCache() {
-  const response = await authFetch(`${API_BASE}/api/cache/clear`, {
+  const response = await authFetch(`${API_BASE}/cache/clear`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -395,7 +395,7 @@ export async function clearCache() {
  * @returns {Promise<Object>} Routing result with query type, scores, and recommendations
  */
 export async function routeQuery({ query, prefer_speed = false, prefer_cost = false, prefer_quality = true, num_recommendations = 3 }) {
-  const response = await authFetch(`${API_BASE}/api/route`, {
+  const response = await authFetch(`${API_BASE}/route`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, prefer_speed, prefer_cost, prefer_quality, num_recommendations }),
@@ -412,7 +412,7 @@ export async function routeQuery({ query, prefer_speed = false, prefer_cost = fa
  * @returns {Promise<Object>} { model_id: string }
  */
 export async function getQuickRoute(query) {
-  const response = await authFetch(`${API_BASE}/api/route/quick?query=${encodeURIComponent(query)}`);
+  const response = await authFetch(`${API_BASE}/route/quick?query=${encodeURIComponent(query)}`);
   if (!response.ok) {
     throw new Error('Failed to get quick route');
   }
@@ -426,7 +426,7 @@ export async function getQuickRoute(query) {
  * @returns {Promise<Object>} { council_models: string[] }
  */
 export async function getCouncilRoute(query, maxModels = 5) {
-  const response = await authFetch(`${API_BASE}/api/route/council?query=${encodeURIComponent(query)}&max_models=${maxModels}`);
+  const response = await authFetch(`${API_BASE}/route/council?query=${encodeURIComponent(query)}&max_models=${maxModels}`);
   if (!response.ok) {
     throw new Error('Failed to get council route');
   }
@@ -439,7 +439,7 @@ export async function getCouncilRoute(query, maxModels = 5) {
  * List all API keys for the current user.
  */
 export async function listAPIKeys() {
-  const response = await authFetch(`${API_BASE}/api/keys`);
+  const response = await authFetch(`${API_BASE}/keys`);
   if (!response.ok) {
     throw new Error('Failed to list API keys');
   }
@@ -454,7 +454,7 @@ export async function listAPIKeys() {
  * @param {number} keyData.rate_limit - Rate limit per minute
  */
 export async function createAPIKey({ name, scopes = ['chat', 'read'], rate_limit = 100 }) {
-  const response = await authFetch(`${API_BASE}/api/keys`, {
+  const response = await authFetch(`${API_BASE}/keys`, {
     method: 'POST',
     body: JSON.stringify({ name, scopes, rate_limit }),
   });
@@ -470,7 +470,7 @@ export async function createAPIKey({ name, scopes = ['chat', 'read'], rate_limit
  * @param {Object} updates - Updates to apply
  */
 export async function updateAPIKey(keyId, updates) {
-  const response = await authFetch(`${API_BASE}/api/keys/${keyId}`, {
+  const response = await authFetch(`${API_BASE}/keys/${keyId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
   });
@@ -485,7 +485,7 @@ export async function updateAPIKey(keyId, updates) {
  * @param {string} keyId - API key ID
  */
 export async function revokeAPIKey(keyId) {
-  const response = await authFetch(`${API_BASE}/api/keys/${keyId}`, {
+  const response = await authFetch(`${API_BASE}/keys/${keyId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {

@@ -9,7 +9,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} Integration status
  */
 export async function getIntegrationStatus() {
-  const response = await fetch(`${API_BASE}/api/integrations/status`);
+  const response = await fetch(`${API_BASE}/integrations/status`);
   if (!response.ok) {
     throw new Error('Failed to get integration status');
   }
@@ -27,7 +27,7 @@ export async function getIntegrationStatus() {
  * @returns {Promise<Object>} List of files
  */
 export async function gdriveListFiles({ access_token, folder_id, page_size = 20, page_token }) {
-  const response = await authFetch(`${API_BASE}/api/integrations/gdrive/list`, {
+  const response = await authFetch(`${API_BASE}/integrations/gdrive/list`, {
     method: 'POST',
     body: JSON.stringify({ access_token, folder_id, page_size, page_token }),
   });
@@ -45,7 +45,7 @@ export async function gdriveListFiles({ access_token, folder_id, page_size = 20,
  * @returns {Promise<Object>} File content
  */
 export async function gdriveGetFile(access_token, file_id) {
-  const response = await authFetch(`${API_BASE}/api/integrations/gdrive/file`, {
+  const response = await authFetch(`${API_BASE}/integrations/gdrive/file`, {
     method: 'POST',
     body: JSON.stringify({ access_token, file_id }),
   });
@@ -67,7 +67,7 @@ export async function gdriveGetFile(access_token, file_id) {
  * @returns {Promise<Object>} Uploaded file info
  */
 export async function gdriveUploadFile({ access_token, name, content, mime_type = 'text/plain', folder_id }) {
-  const response = await authFetch(`${API_BASE}/api/integrations/gdrive/upload`, {
+  const response = await authFetch(`${API_BASE}/integrations/gdrive/upload`, {
     method: 'POST',
     body: JSON.stringify({ access_token, name, content, mime_type, folder_id }),
   });
@@ -88,7 +88,7 @@ export async function gdriveUploadFile({ access_token, name, content, mime_type 
  * @returns {Promise<Object>} Message result
  */
 export async function slackSendMessage(channel, text, thread_ts = null) {
-  const response = await authFetch(`${API_BASE}/api/integrations/slack/message`, {
+  const response = await authFetch(`${API_BASE}/integrations/slack/message`, {
     method: 'POST',
     body: JSON.stringify({ channel, text, thread_ts }),
   });
@@ -106,7 +106,7 @@ export async function slackSendMessage(channel, text, thread_ts = null) {
  * @returns {Promise<Object>} Webhook result
  */
 export async function slackSendWebhook(text, username = 'LLM Council') {
-  const response = await authFetch(`${API_BASE}/api/integrations/slack/webhook`, {
+  const response = await authFetch(`${API_BASE}/integrations/slack/webhook`, {
     method: 'POST',
     body: JSON.stringify({ text, username }),
   });
@@ -122,7 +122,7 @@ export async function slackSendWebhook(text, username = 'LLM Council') {
  * @returns {Promise<Object>} List of channels
  */
 export async function slackListChannels() {
-  const response = await authFetch(`${API_BASE}/api/integrations/slack/channels`);
+  const response = await authFetch(`${API_BASE}/integrations/slack/channels`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to list Slack channels');
@@ -139,7 +139,7 @@ export async function slackListChannels() {
  * @returns {Promise<Object>} List of repos
  */
 export async function githubListRepos(username = null, org = null) {
-  let url = `${API_BASE}/api/integrations/github/repos`;
+  let url = `${API_BASE}/integrations/github/repos`;
   const params = new URLSearchParams();
   if (username) params.append('username', username);
   if (org) params.append('org', org);
@@ -162,7 +162,7 @@ export async function githubListRepos(username = null, org = null) {
  * @returns {Promise<Object>} File content
  */
 export async function githubGetFile(owner, repo, path, ref = 'main') {
-  const response = await authFetch(`${API_BASE}/api/integrations/github/file`, {
+  const response = await authFetch(`${API_BASE}/integrations/github/file`, {
     method: 'POST',
     body: JSON.stringify({ owner, repo, path, ref }),
   });
@@ -181,7 +181,7 @@ export async function githubGetFile(owner, repo, path, ref = 'main') {
  * @returns {Promise<Object>} List of issues
  */
 export async function githubListIssues(owner, repo, state = 'open') {
-  const response = await authFetch(`${API_BASE}/api/integrations/github/issues/${owner}/${repo}?state=${state}`);
+  const response = await authFetch(`${API_BASE}/integrations/github/issues/${owner}/${repo}?state=${state}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to list GitHub issues');
@@ -201,7 +201,7 @@ export async function githubListIssues(owner, repo, state = 'open') {
  * @returns {Promise<Object>} Created issue
  */
 export async function githubCreateIssue({ owner, repo, title, body, labels, assignees }) {
-  const response = await authFetch(`${API_BASE}/api/integrations/github/issues`, {
+  const response = await authFetch(`${API_BASE}/integrations/github/issues`, {
     method: 'POST',
     body: JSON.stringify({ owner, repo, title, body, labels, assignees }),
   });
@@ -220,7 +220,7 @@ export async function githubCreateIssue({ owner, repo, title, body, labels, assi
  * @returns {Promise<Object>} List of PRs
  */
 export async function githubListPRs(owner, repo, state = 'open') {
-  const response = await authFetch(`${API_BASE}/api/integrations/github/pulls/${owner}/${repo}?state=${state}`);
+  const response = await authFetch(`${API_BASE}/integrations/github/pulls/${owner}/${repo}?state=${state}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to list GitHub PRs');

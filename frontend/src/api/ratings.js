@@ -16,7 +16,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} Submission status
  */
 export async function submitRating({ conversation_id, message_index, model_id, rating, feedback_text, query_category }) {
-  const response = await authFetch(`${API_BASE}/api/ratings`, {
+  const response = await authFetch(`${API_BASE}/ratings`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -45,7 +45,7 @@ export async function submitRating({ conversation_id, message_index, model_id, r
  */
 export async function getRating(conversationId, messageIndex, modelId) {
   const response = await authFetch(
-    `${API_BASE}/api/ratings/${conversationId}/${messageIndex}/${encodeURIComponent(modelId)}`
+    `${API_BASE}/ratings/${conversationId}/${messageIndex}/${encodeURIComponent(modelId)}`
   );
   if (!response.ok) {
     throw new Error('Failed to get rating');
@@ -58,7 +58,7 @@ export async function getRating(conversationId, messageIndex, modelId) {
  * @returns {Promise<Object>} Model rating statistics
  */
 export async function getModelRatings() {
-  const response = await authFetch(`${API_BASE}/api/ratings/models`);
+  const response = await authFetch(`${API_BASE}/ratings/models`);
   if (!response.ok) {
     throw new Error('Failed to get model ratings');
   }
@@ -73,7 +73,7 @@ export async function getModelRatings() {
  */
 export async function getRatingRecommendations(query, numRecommendations = 3) {
   const response = await authFetch(
-    `${API_BASE}/api/ratings/recommendations?query=${encodeURIComponent(query)}&num_recommendations=${numRecommendations}`
+    `${API_BASE}/ratings/recommendations?query=${encodeURIComponent(query)}&num_recommendations=${numRecommendations}`
   );
   if (!response.ok) {
     throw new Error('Failed to get recommendations');
@@ -86,7 +86,7 @@ export async function getRatingRecommendations(query, numRecommendations = 3) {
  * @returns {Promise<Object>} Rating analytics summary
  */
 export async function getRatingAnalytics() {
-  const response = await authFetch(`${API_BASE}/api/ratings/analytics`);
+  const response = await authFetch(`${API_BASE}/ratings/analytics`);
   if (!response.ok) {
     throw new Error('Failed to get rating analytics');
   }
@@ -98,7 +98,7 @@ export async function getRatingAnalytics() {
  * @returns {Promise<Object>} Clear status
  */
 export async function clearRatings() {
-  const response = await authFetch(`${API_BASE}/api/ratings/clear`, {
+  const response = await authFetch(`${API_BASE}/ratings/clear`, {
     method: 'POST',
   });
   if (!response.ok) {

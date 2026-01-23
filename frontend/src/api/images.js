@@ -15,7 +15,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} Generated image with URL or base64
  */
 export async function generateImage({ prompt, provider = 'dalle-3', size = '1024x1024', quality = 'standard', style = 'vivid' }) {
-  const response = await authFetch(`${API_BASE}/api/images/generate`, {
+  const response = await authFetch(`${API_BASE}/images/generate`, {
     method: 'POST',
     body: JSON.stringify({ prompt, provider, size, quality, style }),
   });
@@ -31,7 +31,7 @@ export async function generateImage({ prompt, provider = 'dalle-3', size = '1024
  * @returns {Promise<Object>} List of providers with their capabilities
  */
 export async function getImageProviders() {
-  const response = await fetch(`${API_BASE}/api/images/providers`);
+  const response = await fetch(`${API_BASE}/images/providers`);
   if (!response.ok) {
     throw new Error('Failed to get image providers');
   }
@@ -44,7 +44,7 @@ export async function getImageProviders() {
  * @returns {Promise<Object>} List of generated images
  */
 export async function listImages(limit = 50) {
-  const response = await authFetch(`${API_BASE}/api/images?limit=${limit}`);
+  const response = await authFetch(`${API_BASE}/images?limit=${limit}`);
   if (!response.ok) {
     throw new Error('Failed to list images');
   }
@@ -57,7 +57,7 @@ export async function listImages(limit = 50) {
  * @returns {Promise<Object>} Image details
  */
 export async function getImage(imageId) {
-  const response = await authFetch(`${API_BASE}/api/images/${imageId}`);
+  const response = await authFetch(`${API_BASE}/images/${imageId}`);
   if (!response.ok) {
     throw new Error('Failed to get image');
   }
@@ -70,7 +70,7 @@ export async function getImage(imageId) {
  * @returns {Promise<Object>} Deletion status
  */
 export async function deleteImage(imageId) {
-  const response = await authFetch(`${API_BASE}/api/images/${imageId}`, {
+  const response = await authFetch(`${API_BASE}/images/${imageId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {

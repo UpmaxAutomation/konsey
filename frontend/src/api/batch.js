@@ -10,7 +10,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} Created batch job
  */
 export async function createBatchJob(questions) {
-  const response = await authFetch(`${API_BASE}/api/batch`, {
+  const response = await authFetch(`${API_BASE}/batch`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -28,7 +28,7 @@ export async function createBatchJob(questions) {
  * @returns {Promise<Object>} List of batch jobs
  */
 export async function listBatchJobs() {
-  const response = await authFetch(`${API_BASE}/api/batch`);
+  const response = await authFetch(`${API_BASE}/batch`);
   if (!response.ok) {
     throw new Error('Failed to list batch jobs');
   }
@@ -41,7 +41,7 @@ export async function listBatchJobs() {
  * @returns {Promise<Object>} Batch job details
  */
 export async function getBatchJob(jobId) {
-  const response = await authFetch(`${API_BASE}/api/batch/${jobId}`);
+  const response = await authFetch(`${API_BASE}/batch/${jobId}`);
   if (!response.ok) {
     throw new Error('Failed to get batch job');
   }
@@ -54,7 +54,7 @@ export async function getBatchJob(jobId) {
  * @returns {Promise<Object>} Deletion status
  */
 export async function deleteBatchJob(jobId) {
-  const response = await authFetch(`${API_BASE}/api/batch/${jobId}`, {
+  const response = await authFetch(`${API_BASE}/batch/${jobId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {

@@ -13,7 +13,7 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} Created agent task
  */
 export async function createAgent({ query, model = 'anthropic/claude-sonnet-4', context = null }) {
-  const response = await authFetch(`${API_BASE}/api/agents`, {
+  const response = await authFetch(`${API_BASE}/agents`, {
     method: 'POST',
     body: JSON.stringify({ query, model, context }),
   });
@@ -28,7 +28,7 @@ export async function createAgent({ query, model = 'anthropic/claude-sonnet-4', 
  * @returns {Promise<Object>} List of agent tasks
  */
 export async function listAgents() {
-  const response = await authFetch(`${API_BASE}/api/agents`);
+  const response = await authFetch(`${API_BASE}/agents`);
   if (!response.ok) {
     throw new Error('Failed to list agents');
   }
@@ -41,7 +41,7 @@ export async function listAgents() {
  * @returns {Promise<Object>} Agent task details
  */
 export async function getAgent(taskId) {
-  const response = await authFetch(`${API_BASE}/api/agents/${taskId}`);
+  const response = await authFetch(`${API_BASE}/agents/${taskId}`);
   if (!response.ok) {
     throw new Error('Failed to get agent');
   }
@@ -55,7 +55,7 @@ export async function getAgent(taskId) {
  * @returns {Promise<Object>} Completed agent task
  */
 export async function runAgent(taskId, maxSteps = 10) {
-  const response = await authFetch(`${API_BASE}/api/agents/${taskId}/run?max_steps=${maxSteps}`, {
+  const response = await authFetch(`${API_BASE}/agents/${taskId}/run?max_steps=${maxSteps}`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -72,7 +72,7 @@ export async function runAgent(taskId, maxSteps = 10) {
  * @returns {Promise<void>}
  */
 export async function runAgentStream(taskId, maxSteps = 10, onEvent) {
-  const response = await authFetch(`${API_BASE}/api/agents/${taskId}/run/stream?max_steps=${maxSteps}`, {
+  const response = await authFetch(`${API_BASE}/agents/${taskId}/run/stream?max_steps=${maxSteps}`, {
     method: 'POST',
   });
 
@@ -113,7 +113,7 @@ export async function runAgentStream(taskId, maxSteps = 10, onEvent) {
  * @returns {Promise<Object>} Cancellation status
  */
 export async function cancelAgent(taskId) {
-  const response = await authFetch(`${API_BASE}/api/agents/${taskId}/cancel`, {
+  const response = await authFetch(`${API_BASE}/agents/${taskId}/cancel`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -128,7 +128,7 @@ export async function cancelAgent(taskId) {
  * @returns {Promise<Object>} Deletion status
  */
 export async function deleteAgent(taskId) {
-  const response = await authFetch(`${API_BASE}/api/agents/${taskId}`, {
+  const response = await authFetch(`${API_BASE}/agents/${taskId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {

@@ -14,7 +14,7 @@ import { API_BASE, authFetch } from './client.js';
  */
 export async function exportConversation(conversationId, format = 'md') {
   const response = await authFetch(
-    `${API_BASE}/api/conversations/${conversationId}/export?format=${format}`
+    `${API_BASE}/conversations/${conversationId}/export?format=${format}`
   );
   if (!response.ok) {
     throw new Error('Failed to export conversation');
@@ -27,7 +27,7 @@ export async function exportConversation(conversationId, format = 'md') {
  * @param {string} conversationId - Conversation ID
  */
 export async function exportMarkdown(conversationId) {
-  const response = await authFetch(`${API_BASE}/api/export/${conversationId}/markdown`);
+  const response = await authFetch(`${API_BASE}/export/${conversationId}/markdown`);
   if (!response.ok) {
     throw new Error('Failed to export');
   }
@@ -39,7 +39,7 @@ export async function exportMarkdown(conversationId) {
  * @param {string} conversationId - Conversation ID
  */
 export async function exportJSON(conversationId) {
-  const response = await authFetch(`${API_BASE}/api/export/${conversationId}/json`);
+  const response = await authFetch(`${API_BASE}/export/${conversationId}/json`);
   if (!response.ok) {
     throw new Error('Failed to export');
   }
@@ -51,7 +51,7 @@ export async function exportJSON(conversationId) {
  * @param {string} conversationId - Conversation ID
  */
 export async function exportHTML(conversationId) {
-  const response = await authFetch(`${API_BASE}/api/export/${conversationId}/html`);
+  const response = await authFetch(`${API_BASE}/export/${conversationId}/html`);
   if (!response.ok) {
     throw new Error('Failed to export');
   }
@@ -66,7 +66,7 @@ export async function exportHTML(conversationId) {
  * @returns {Promise<{token: string, share_url: string}>}
  */
 export async function shareConversation(conversationId) {
-  const response = await authFetch(`${API_BASE}/api/share/${conversationId}`, {
+  const response = await authFetch(`${API_BASE}/share/${conversationId}`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -81,7 +81,7 @@ export async function shareConversation(conversationId) {
  * @returns {Promise<Object>} The conversation data
  */
 export async function getSharedConversation(token) {
-  const response = await fetch(`${API_BASE}/api/shared/${token}`);
+  const response = await fetch(`${API_BASE}/shared/${token}`);
   if (!response.ok) {
     throw new Error('Share link not found or expired');
   }

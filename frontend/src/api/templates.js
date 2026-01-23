@@ -11,8 +11,8 @@ import { API_BASE, authFetch } from './client.js';
  */
 export async function listTemplates(category = null) {
   const url = category
-    ? `${API_BASE}/api/templates?category=${encodeURIComponent(category)}`
-    : `${API_BASE}/api/templates`;
+    ? `${API_BASE}/templates?category=${encodeURIComponent(category)}`
+    : `${API_BASE}/templates`;
   const response = await authFetch(url);
   if (!response.ok) {
     throw new Error('Failed to list templates');
@@ -25,7 +25,7 @@ export async function listTemplates(category = null) {
  * @returns {Promise<Object>} Categories list
  */
 export async function getTemplateCategories() {
-  const response = await authFetch(`${API_BASE}/api/templates/categories`);
+  const response = await authFetch(`${API_BASE}/templates/categories`);
   if (!response.ok) {
     throw new Error('Failed to get template categories');
   }
@@ -38,7 +38,7 @@ export async function getTemplateCategories() {
  * @returns {Promise<Object>} Template object
  */
 export async function getTemplate(templateId) {
-  const response = await authFetch(`${API_BASE}/api/templates/${templateId}`);
+  const response = await authFetch(`${API_BASE}/templates/${templateId}`);
   if (!response.ok) {
     throw new Error('Failed to get template');
   }
@@ -55,7 +55,7 @@ export async function getTemplate(templateId) {
  * @returns {Promise<Object>} Created template
  */
 export async function createTemplate({ name, category, prompt_text, variables }) {
-  const response = await authFetch(`${API_BASE}/api/templates`, {
+  const response = await authFetch(`${API_BASE}/templates`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ export async function createTemplate({ name, category, prompt_text, variables })
  * @returns {Promise<Object>} Updated template
  */
 export async function updateTemplate(templateId, updates) {
-  const response = await authFetch(`${API_BASE}/api/templates/${templateId}`, {
+  const response = await authFetch(`${API_BASE}/templates/${templateId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -94,7 +94,7 @@ export async function updateTemplate(templateId, updates) {
  * @returns {Promise<Object>} Deletion status
  */
 export async function deleteTemplate(templateId) {
-  const response = await authFetch(`${API_BASE}/api/templates/${templateId}`, {
+  const response = await authFetch(`${API_BASE}/templates/${templateId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -110,7 +110,7 @@ export async function deleteTemplate(templateId) {
  * @returns {Promise<Object>} Filled prompt text
  */
 export async function fillTemplate(templateId, variableValues) {
-  const response = await authFetch(`${API_BASE}/api/templates/${templateId}/fill`, {
+  const response = await authFetch(`${API_BASE}/templates/${templateId}/fill`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

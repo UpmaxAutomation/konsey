@@ -10,7 +10,7 @@ import { API_BASE, authFetch } from './client.js';
  * List all projects.
  */
 export async function listProjects() {
-  const response = await authFetch(`${API_BASE}/api/projects`);
+  const response = await authFetch(`${API_BASE}/projects`);
   if (!response.ok) {
     throw new Error('Failed to list projects');
   }
@@ -21,7 +21,7 @@ export async function listProjects() {
  * Create a new project.
  */
 export async function createProject({ name, description, system_prompt, council_models, chairman_model }) {
-  const response = await authFetch(`${API_BASE}/api/projects`, {
+  const response = await authFetch(`${API_BASE}/projects`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -44,7 +44,7 @@ export async function createProject({ name, description, system_prompt, council_
  * Get a specific project.
  */
 export async function getProject(projectId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}`);
+  const response = await authFetch(`${API_BASE}/projects/${projectId}`);
   if (!response.ok) {
     throw new Error('Failed to get project');
   }
@@ -55,7 +55,7 @@ export async function getProject(projectId) {
  * Update a project.
  */
 export async function updateProject(projectId, updates) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -72,7 +72,7 @@ export async function updateProject(projectId, updates) {
  * Delete a project.
  */
 export async function deleteProject(projectId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -85,7 +85,7 @@ export async function deleteProject(projectId) {
  * Add a file to project's knowledge base.
  */
 export async function addKnowledgeToProject(projectId, { filename, content, file_type }) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/knowledge`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/knowledge`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -106,7 +106,7 @@ export async function addKnowledgeToProject(projectId, { filename, content, file
  * Remove a file from project's knowledge base.
  */
 export async function removeKnowledgeFromProject(projectId, fileId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/knowledge/${fileId}`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/knowledge/${fileId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -119,7 +119,7 @@ export async function removeKnowledgeFromProject(projectId, fileId) {
  * Get knowledge base file content.
  */
 export async function getKnowledgeContent(projectId, fileId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/knowledge/${fileId}`);
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/knowledge/${fileId}`);
   if (!response.ok) {
     throw new Error('Failed to get knowledge content');
   }
@@ -130,7 +130,7 @@ export async function getKnowledgeContent(projectId, fileId) {
  * Create a new conversation in a project.
  */
 export async function createConversationInProject(projectId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/conversations`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/conversations`, {
     method: 'POST',
   });
   if (!response.ok) {
@@ -145,7 +145,7 @@ export async function createConversationInProject(projectId) {
  * Get project memory context.
  */
 export async function getProjectMemory(projectId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/memory`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'get_context' }),
@@ -160,7 +160,7 @@ export async function getProjectMemory(projectId) {
  * Get project memory statistics.
  */
 export async function getProjectMemoryStats(projectId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/memory`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'stats' }),
@@ -175,7 +175,7 @@ export async function getProjectMemoryStats(projectId) {
  * Clear project memory.
  */
 export async function clearProjectMemory(projectId) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/memory`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'clear' }),
@@ -190,7 +190,7 @@ export async function clearProjectMemory(projectId) {
  * Add a fact to project memory.
  */
 export async function addProjectFact(projectId, content, category = 'general') {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/memory`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'add_fact', content, category }),
@@ -205,7 +205,7 @@ export async function addProjectFact(projectId, content, category = 'general') {
  * Set a project preference.
  */
 export async function setProjectPreference(projectId, key, value) {
-  const response = await authFetch(`${API_BASE}/api/projects/${projectId}/memory`, {
+  const response = await authFetch(`${API_BASE}/projects/${projectId}/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set_preference', key, value }),
@@ -223,7 +223,7 @@ export async function setProjectPreference(projectId, key, value) {
  * @returns {Promise<Object>} Folders list
  */
 export async function listFolders() {
-  const response = await authFetch(`${API_BASE}/api/folders`);
+  const response = await authFetch(`${API_BASE}/folders`);
   if (!response.ok) {
     throw new Error('Failed to list folders');
   }
@@ -239,7 +239,7 @@ export async function listFolders() {
  * @returns {Promise<Object>} Created folder
  */
 export async function createFolder({ name, color = '#4a90e2', icon = 'folder' }) {
-  const response = await authFetch(`${API_BASE}/api/folders`, {
+  const response = await authFetch(`${API_BASE}/folders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -258,7 +258,7 @@ export async function createFolder({ name, color = '#4a90e2', icon = 'folder' })
  * @returns {Promise<Object>} Deletion status
  */
 export async function deleteFolder(folderId) {
-  const response = await authFetch(`${API_BASE}/api/folders/${folderId}`, {
+  const response = await authFetch(`${API_BASE}/folders/${folderId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -274,7 +274,7 @@ export async function deleteFolder(folderId) {
  * @returns {Promise<Object>} Tags list
  */
 export async function listAllTags() {
-  const response = await authFetch(`${API_BASE}/api/tags`);
+  const response = await authFetch(`${API_BASE}/tags`);
   if (!response.ok) {
     throw new Error('Failed to list tags');
   }
@@ -287,7 +287,7 @@ export async function listAllTags() {
  * List all teams the user belongs to.
  */
 export async function listTeams() {
-  const response = await authFetch(`${API_BASE}/api/teams`);
+  const response = await authFetch(`${API_BASE}/teams`);
   if (!response.ok) {
     throw new Error('Failed to list teams');
   }
@@ -301,7 +301,7 @@ export async function listTeams() {
  * @param {string} teamData.description - Team description
  */
 export async function createTeam({ name, description }) {
-  const response = await authFetch(`${API_BASE}/api/teams`, {
+  const response = await authFetch(`${API_BASE}/teams`, {
     method: 'POST',
     body: JSON.stringify({ name, description }),
   });
@@ -316,7 +316,7 @@ export async function createTeam({ name, description }) {
  * @param {string} teamId - Team ID
  */
 export async function getTeam(teamId) {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}`);
+  const response = await authFetch(`${API_BASE}/teams/${teamId}`);
   if (!response.ok) {
     throw new Error('Failed to get team');
   }
@@ -329,7 +329,7 @@ export async function getTeam(teamId) {
  * @param {Object} updates - Updates to apply
  */
 export async function updateTeam(teamId, updates) {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}`, {
+  const response = await authFetch(`${API_BASE}/teams/${teamId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
   });
@@ -344,7 +344,7 @@ export async function updateTeam(teamId, updates) {
  * @param {string} teamId - Team ID
  */
 export async function deleteTeam(teamId) {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}`, {
+  const response = await authFetch(`${API_BASE}/teams/${teamId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -360,7 +360,7 @@ export async function deleteTeam(teamId) {
  * @param {string} role - Member role (owner, admin, member)
  */
 export async function inviteTeamMember(teamId, email, role = 'member') {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}/members`, {
+  const response = await authFetch(`${API_BASE}/teams/${teamId}/members`, {
     method: 'POST',
     body: JSON.stringify({ email, role }),
   });
@@ -376,7 +376,7 @@ export async function inviteTeamMember(teamId, email, role = 'member') {
  * @param {string} memberId - Member ID
  */
 export async function removeTeamMember(teamId, memberId) {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}/members/${memberId}`, {
+  const response = await authFetch(`${API_BASE}/teams/${teamId}/members/${memberId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -391,7 +391,7 @@ export async function removeTeamMember(teamId, memberId) {
  * @param {string} conversationId - Conversation ID
  */
 export async function shareConversationToTeam(teamId, conversationId) {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}/conversations`, {
+  const response = await authFetch(`${API_BASE}/teams/${teamId}/conversations`, {
     method: 'POST',
     body: JSON.stringify({ conversation_id: conversationId }),
   });
@@ -406,7 +406,7 @@ export async function shareConversationToTeam(teamId, conversationId) {
  * @param {string} teamId - Team ID
  */
 export async function listTeamConversations(teamId) {
-  const response = await authFetch(`${API_BASE}/api/teams/${teamId}/conversations`);
+  const response = await authFetch(`${API_BASE}/teams/${teamId}/conversations`);
   if (!response.ok) {
     throw new Error('Failed to list team conversations');
   }

@@ -12,7 +12,7 @@ import { API_BASE, authFetch } from './client.js';
  * @param {number} timeout - Timeout in seconds
  */
 export async function executeCode(code, timeout = 30) {
-  const response = await authFetch(`${API_BASE}/api/interpreter/execute`, {
+  const response = await authFetch(`${API_BASE}/interpreter/execute`, {
     method: 'POST',
     body: JSON.stringify({ code, timeout }),
   });
@@ -28,7 +28,7 @@ export async function executeCode(code, timeout = 30) {
  * Get memory context.
  */
 export async function getMemoryContext() {
-  const response = await fetch(`${API_BASE}/api/tools/memory`, {
+  const response = await fetch(`${API_BASE}/tools/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'get_context' }),
@@ -43,7 +43,7 @@ export async function getMemoryContext() {
  * Get memory statistics.
  */
 export async function getMemoryStats() {
-  const response = await fetch(`${API_BASE}/api/tools/memory`, {
+  const response = await fetch(`${API_BASE}/tools/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'stats' }),
@@ -58,7 +58,7 @@ export async function getMemoryStats() {
  * Clear all memory.
  */
 export async function clearMemory() {
-  const response = await fetch(`${API_BASE}/api/tools/memory`, {
+  const response = await fetch(`${API_BASE}/tools/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'clear' }),
@@ -75,7 +75,7 @@ export async function clearMemory() {
  * @param {string} category - Category for organization
  */
 export async function rememberFact(content, category = 'general') {
-  const response = await fetch(`${API_BASE}/api/tools/memory`, {
+  const response = await fetch(`${API_BASE}/tools/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'remember_fact', content, category }),
@@ -92,7 +92,7 @@ export async function rememberFact(content, category = 'general') {
  * @param {any} value - Preference value
  */
 export async function setPreference(key, value) {
-  const response = await fetch(`${API_BASE}/api/tools/memory`, {
+  const response = await fetch(`${API_BASE}/tools/memory`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set_preference', key, value }),
@@ -128,7 +128,7 @@ export async function searchConversations({ query, folder, tags, from_date, to_d
   if (limit) params.append('limit', limit.toString());
   if (offset) params.append('offset', offset.toString());
 
-  const response = await fetch(`${API_BASE}/api/search?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/search?${params.toString()}`);
   if (!response.ok) {
     throw new Error('Failed to search conversations');
   }
@@ -146,7 +146,7 @@ export async function getSearchSuggestions(query, limit = 5) {
   params.append('q', query);
   params.append('limit', limit.toString());
 
-  const response = await fetch(`${API_BASE}/api/search/suggestions?${params.toString()}`);
+  const response = await fetch(`${API_BASE}/search/suggestions?${params.toString()}`);
   if (!response.ok) {
     throw new Error('Failed to get search suggestions');
   }

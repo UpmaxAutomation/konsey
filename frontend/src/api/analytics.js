@@ -8,7 +8,7 @@ import { API_BASE, authFetch } from './client.js';
  * Get comprehensive analytics overview.
  */
 export async function getAnalyticsOverview() {
-  const response = await authFetch(`${API_BASE}/api/analytics/overview`);
+  const response = await authFetch(`${API_BASE}/analytics/overview`);
   if (!response.ok) {
     throw new Error('Failed to get analytics overview');
   }
@@ -19,7 +19,7 @@ export async function getAnalyticsOverview() {
  * Get per-model analytics.
  */
 export async function getModelAnalytics() {
-  const response = await authFetch(`${API_BASE}/api/analytics/models`);
+  const response = await authFetch(`${API_BASE}/analytics/models`);
   if (!response.ok) {
     throw new Error('Failed to get model analytics');
   }
@@ -30,7 +30,7 @@ export async function getModelAnalytics() {
  * Get conversation analytics.
  */
 export async function getConversationAnalytics() {
-  const response = await authFetch(`${API_BASE}/api/analytics/conversations`);
+  const response = await authFetch(`${API_BASE}/analytics/conversations`);
   if (!response.ok) {
     throw new Error('Failed to get conversation analytics');
   }
@@ -41,7 +41,7 @@ export async function getConversationAnalytics() {
  * Export full analytics data.
  */
 export async function exportAnalytics() {
-  const response = await authFetch(`${API_BASE}/api/analytics/export`);
+  const response = await authFetch(`${API_BASE}/analytics/export`);
   if (!response.ok) {
     throw new Error('Failed to export analytics');
   }
