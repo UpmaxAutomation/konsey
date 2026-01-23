@@ -225,7 +225,30 @@ async def login(
     db: AsyncSession = Depends(get_db)
 ):
     """Login with email and password."""
-    user = await crud.users.get_by_email(db, request.email)
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H1","location":"auth.py:221","message":"login:entry","data":{"email":request.email,"has_password":bool(request.password)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
+    try:
+        user = await crud.users.get_by_email(db, request.email)
+    except Exception as e:
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H2","location":"auth.py:228","message":"login:db_error","data":{"error_type":type(e).__name__,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        raise
 
     if not user or not user.password_hash:
         raise HTTPException(
