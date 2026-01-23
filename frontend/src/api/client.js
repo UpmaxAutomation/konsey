@@ -19,6 +19,16 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 // Remove trailing slash and add /api if not present
 export const API_BASE = BASE_URL.replace(/\/$/, '') + (BASE_URL.includes('/api') ? '' : '/api');
 
+// Debug logging in production
+if (import.meta.env.PROD) {
+  console.log('🔍 API Configuration:', {
+    VITE_API_URL: import.meta.env.VITE_API_URL,
+    BASE_URL,
+    API_BASE,
+    mode: import.meta.env.MODE
+  });
+}
+
 /**
  * Parse response and throw appropriate error if not OK.
  * @param {Response} response - Fetch response
