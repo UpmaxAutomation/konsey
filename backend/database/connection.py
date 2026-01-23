@@ -59,13 +59,66 @@ if USE_DATABASE:
         if "pooler.supabase.com" in DATABASE_URL or "pooler" in DATABASE_URL.lower():
             connect_args["statement_cache_size"] = 0
         
+        # #region agent log
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                import json
+                from datetime import datetime
+                # Mask password in URL for logging
+                db_url_masked = DATABASE_URL
+                if "@" in db_url_masked:
+                    parts = db_url_masked.split("@")
+                    if len(parts) == 2:
+                        user_pass = parts[0].split("//")[-1]
+                        if ":" in user_pass:
+                            user = user_pass.split(":")[0]
+                            db_url_masked = db_url_masked.replace(user_pass, f"{user}:***")
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-engine-init","hypothesisId":"H1","location":"connection.py:55","message":"creating_engine","data":{"database_url_masked":db_url_masked,"has_pooler":"pooler" in DATABASE_URL.lower(),"statement_cache_size":connect_args.get("statement_cache_size", "default")},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        
         engine = create_async_engine(
             DATABASE_URL,
             echo=os.getenv("DB_ECHO", "false").lower() == "true",
             poolclass=NullPool,  # Use NullPool for better async compatibility
             connect_args=connect_args,
         )
+        
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                import json
+                from datetime import datetime
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-engine-init","hypothesisId":"H2","location":"connection.py:75","message":"engine_created","data":{"status":"success"},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
     except Exception as e:
+        # #region agent log
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                import json
+                from datetime import datetime
+                error_msg = str(e)
+                error_type = type(e).__name__
+                db_url_masked = DATABASE_URL
+                if "@" in db_url_masked:
+                    parts = db_url_masked.split("@")
+                    if len(parts) == 2:
+                        user_pass = parts[0].split("//")[-1]
+                        if ":" in user_pass:
+                            user = user_pass.split(":")[0]
+                            db_url_masked = db_url_masked.replace(user_pass, f"{user}:***")
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-engine-init","hypothesisId":"H3","location":"connection.py:68","message":"engine_creation_failed","data":{"error_type":error_type,"error":error_msg,"database_url_masked":db_url_masked},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         raise ValueError(
             f"Failed to create database engine with URL: {DATABASE_URL[:60]}... "
             f"Error: {e}. "
@@ -86,9 +139,66 @@ async def init_db() -> None:
     """Initialize database tables."""
     if not USE_DATABASE or engine is None:
         return
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await _ensure_anonymous_user()
+    
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"db-init","hypothesisId":"H4","location":"connection.py:85","message":"init_db:start","data":{"use_database":USE_DATABASE,"engine_exists":engine is not None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
+    
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-init","hypothesisId":"H5","location":"connection.py:95","message":"init_db:tables_created","data":{"status":"success"},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+    except Exception as e:
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                error_msg = str(e)
+                error_type = type(e).__name__
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-init","hypothesisId":"H6","location":"connection.py:98","message":"init_db:table_creation_failed","data":{"error_type":error_type,"error":error_msg},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        raise
+    
+    try:
+        await _ensure_anonymous_user()
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-init","hypothesisId":"H7","location":"connection.py:112","message":"init_db:anonymous_user_ensured","data":{"status":"success"},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+    except Exception as e:
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                error_msg = str(e)
+                error_type = type(e).__name__
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"db-init","hypothesisId":"H8","location":"connection.py:115","message":"init_db:anonymous_user_failed","data":{"error_type":error_type,"error":error_msg},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        raise
 
 
 async def _ensure_anonymous_user() -> None:
@@ -97,21 +207,69 @@ async def _ensure_anonymous_user() -> None:
         return
     anonymous_id = uuid.UUID(ANONYMOUS_USER_ID)
     anonymous_email = f"anonymous-{ANONYMOUS_USER_ID}@local"
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(User).where(User.id == anonymous_id)
-        )
-        if result.scalar_one_or_none() is None:
-            session.add(
-                User(
-                    id=anonymous_id,
-                    email=anonymous_email,
-                    name="Anonymous",
-                    is_active=True,
-                    is_verified=True,
-                )
+    try:
+        async with AsyncSessionLocal() as session:
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"anonymous-user","hypothesisId":"H9","location":"connection.py:100","message":"anonymous_user:session_created","data":{"anonymous_id":str(anonymous_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+            
+            result = await session.execute(
+                select(User).where(User.id == anonymous_id)
             )
-            await session.commit()
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    user_exists = result.scalar_one_or_none() is not None
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"anonymous-user","hypothesisId":"H10","location":"connection.py:108","message":"anonymous_user:query_result","data":{"user_exists":user_exists},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+            
+            if result.scalar_one_or_none() is None:
+                session.add(
+                    User(
+                        id=anonymous_id,
+                        email=anonymous_email,
+                        name="Anonymous",
+                        is_active=True,
+                        is_verified=True,
+                    )
+                )
+                await session.commit()
+                # #region agent log
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"anonymous-user","hypothesisId":"H11","location":"connection.py:122","message":"anonymous_user:created","data":{"status":"success"},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
+    except Exception as e:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                error_msg = str(e)
+                error_type = type(e).__name__
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"anonymous-user","hypothesisId":"H12","location":"connection.py:125","message":"anonymous_user:error","data":{"error_type":error_type,"error":error_msg},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        raise
 
 
 async def close_db() -> None:
