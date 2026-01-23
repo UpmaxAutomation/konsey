@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './SearchModal.css';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+import { API_BASE } from '../api/client';
 
 export default function SearchModal({ isOpen, onClose, onSelectConversation }) {
   const [query, setQuery] = useState('');

@@ -4,7 +4,7 @@ import CompareView from './CompareView';
 import CopyButton from './CopyButton';
 import './Stage1.css';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+import { API_BASE } from '../api/client';
 
 export default function Stage1({ responses, conversationId, messageIndex }) {
   const [activeTab, setActiveTab] = useState(0);
