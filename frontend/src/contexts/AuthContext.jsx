@@ -20,7 +20,7 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const response = await fetch(`${API_BASE}/api/auth/me`, {
+        const response = await fetch(`${API_BASE}/auth/me`, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
           },
@@ -64,7 +64,7 @@ export function AuthProvider({ children }) {
         console.log('Registering with API:', API_BASE);
       }
       
-      const response = await safeFetch(`${API_BASE}/api/auth/register`, {
+      const response = await safeFetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name }),
@@ -101,7 +101,7 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setError(null);
     try {
-      const response = await safeFetch(`${API_BASE}/api/auth/login`, {
+      const response = await safeFetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -136,7 +136,7 @@ export function AuthProvider({ children }) {
   const loginWithGoogle = async (credential) => {
     setError(null);
     try {
-      const response = await safeFetch(`${API_BASE}/api/auth/google`, {
+      const response = await safeFetch(`${API_BASE}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential }),
@@ -175,7 +175,7 @@ export function AuthProvider({ children }) {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+      const response = await fetch(`${API_BASE}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: storedRefresh }),
@@ -203,7 +203,7 @@ export function AuthProvider({ children }) {
 
     try {
       if (refreshTokenValue) {
-        await fetch(`${API_BASE}/api/auth/logout`, {
+        await fetch(`${API_BASE}/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refresh_token: refreshTokenValue }),
@@ -223,7 +223,7 @@ export function AuthProvider({ children }) {
     if (updates.name) params.append('name', updates.name);
     if (updates.avatar_url) params.append('avatar_url', updates.avatar_url);
 
-    const response = await fetch(`${API_BASE}/api/auth/me?${params}`, {
+    const response = await fetch(`${API_BASE}/auth/me?${params}`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
