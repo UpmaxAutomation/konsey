@@ -19,7 +19,7 @@ import {
  * List all conversations.
  */
 export async function listConversations() {
-  const response = await authFetch(`${API_BASE}/api/conversations`);
+  const response = await authFetch(`${API_BASE}/conversations`);
   if (!response.ok) {
     throw new Error('Failed to list conversations');
   }
@@ -31,9 +31,9 @@ export async function listConversations() {
  */
 export async function createConversation() {
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'conversations.js:32',message:'createConversation:request',data:{url:`${API_BASE}/api/conversations`},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'conversations.js:32',message:'createConversation:request',data:{url:`${API_BASE}/conversations`},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
-  const response = await authFetch(`${API_BASE}/api/conversations`, {
+  const response = await authFetch(`${API_BASE}/conversations`, {
     method: 'POST',
     body: JSON.stringify({}),
   });
@@ -61,7 +61,7 @@ export async function createConversation() {
  */
 export async function getConversation(conversationId) {
   const response = await authFetch(
-    `${API_BASE}/api/conversations/${conversationId}`
+    `${API_BASE}/conversations/${conversationId}`
   );
   if (!response.ok) {
     throw new Error('Failed to get conversation');
@@ -74,7 +74,7 @@ export async function getConversation(conversationId) {
  */
 export async function deleteConversation(conversationId) {
   const response = await authFetch(
-    `${API_BASE}/api/conversations/${conversationId}`,
+    `${API_BASE}/conversations/${conversationId}`,
     { method: 'DELETE' }
   );
   if (!response.ok) {
@@ -101,7 +101,7 @@ export async function sendMessage(conversationId, content, attachedFiles = [], r
   return withAPIRetry(
     async () => {
       const response = await authFetch(
-        `${API_BASE}/api/conversations/${conversationId}/message`,
+        `${API_BASE}/conversations/${conversationId}/message`,
         {
           method: 'POST',
           body: JSON.stringify(body),
@@ -143,7 +143,7 @@ export async function sendMessageStream(conversationId, content, onEvent, signal
   const response = await withStreamRetry(
     async () => {
       const res = await authFetch(
-        `${API_BASE}/api/conversations/${conversationId}/message/stream`,
+        `${API_BASE}/conversations/${conversationId}/message/stream`,
         {
           method: 'POST',
           body: JSON.stringify(body),
@@ -235,7 +235,7 @@ export async function sendQuickMessageStream(conversationId, content, model, onE
   const response = await withStreamRetry(
     async () => {
       const res = await authFetch(
-        `${API_BASE}/api/conversations/${conversationId}/quick-message`,
+        `${API_BASE}/conversations/${conversationId}/quick-message`,
         {
           method: 'POST',
           headers: {
@@ -317,7 +317,7 @@ export async function sendQuickMessageStream(conversationId, content, model, onE
  * @returns {Promise<Object>} Update status
  */
 export async function moveConversationToFolder(conversationId, folderId) {
-  const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/folder`, {
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/folder`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -337,7 +337,7 @@ export async function moveConversationToFolder(conversationId, folderId) {
  * @returns {Promise<Object>} Update status
  */
 export async function updateConversationTags(conversationId, tags) {
-  const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/tags`, {
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/tags`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -359,7 +359,7 @@ export async function uploadFile(conversationId, file) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/upload`, {
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/upload`, {
     method: 'POST',
     body: formData,
     // Note: Don't set Content-Type header, let browser set it with boundary for FormData
@@ -378,7 +378,7 @@ export async function uploadFile(conversationId, file) {
  * @returns {Promise<Array>} List of file objects
  */
 export async function listFiles(conversationId) {
-  const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/files`);
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/files`);
   if (!response.ok) {
     throw new Error('Failed to list files');
   }
@@ -392,7 +392,7 @@ export async function listFiles(conversationId) {
  * @returns {Promise<Object>} Status
  */
 export async function deleteFile(conversationId, filename) {
-  const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/files/${filename}`, {
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/files/${filename}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -412,7 +412,7 @@ export async function deleteFile(conversationId, filename) {
  * @returns {Promise<Object>} The imported conversation
  */
 export async function importConversation(data) {
-  const response = await authFetch(`${API_BASE}/api/conversations/import`, {
+  const response = await authFetch(`${API_BASE}/conversations/import`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
@@ -431,7 +431,7 @@ export async function importConversation(data) {
  * @returns {Promise<Object>} The new forked conversation
  */
 export async function forkConversation(conversationId, messageIndex) {
-  const response = await authFetch(`${API_BASE}/api/conversations/${conversationId}/fork`, {
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/fork`, {
     method: 'POST',
     body: JSON.stringify({ message_index: messageIndex }),
   });
