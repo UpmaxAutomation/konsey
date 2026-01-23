@@ -300,6 +300,20 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(RequestLoggingMiddleware)
 
 
+# Debug endpoint to check CORS configuration (only in non-production)
+@app.get("/api/debug/cors", tags=["debug"])
+async def debug_cors():
+    """Debug endpoint to check CORS configuration."""
+    import os
+    env_origins = os.getenv("CORS_ORIGINS") or os.getenv("ALLOWED_ORIGINS", "")
+    return {
+        "cors_origins": CORS_ORIGINS,
+        "env_origins": env_origins,
+        "default_origins": DEFAULT_ORIGINS,
+        "allow_credentials": True,
+    }
+
+
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
     pass
