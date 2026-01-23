@@ -55,10 +55,14 @@ function MainApp() {
     // Check backend connection first
     const checkBackend = async () => {
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
         const response = await fetch(`${API_BASE}/`, { 
           method: 'GET',
-          signal: AbortSignal.timeout(5000) // 5 second timeout
+          signal: controller.signal
         });
+        
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H5',location:'App.jsx:63',message:'checkBackend:response',data:{url:`${API_BASE}/`,status:response.status,ok:response.ok},timestamp:Date.now()})}).catch(()=>{});
         // #endregion

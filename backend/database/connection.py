@@ -53,10 +53,17 @@ if USE_DATABASE:
     
     # Create async engine
     try:
+        # For connection poolers (pgbouncer), disable prepared statement cache
+        # pgbouncer in transaction/statement mode doesn't support prepared statements
+        connect_args = {}
+        if "pooler.supabase.com" in DATABASE_URL or "pooler" in DATABASE_URL.lower():
+            connect_args["statement_cache_size"] = 0
+        
         engine = create_async_engine(
             DATABASE_URL,
             echo=os.getenv("DB_ECHO", "false").lower() == "true",
             poolclass=NullPool,  # Use NullPool for better async compatibility
+            connect_args=connect_args,
         )
     except Exception as e:
         raise ValueError(

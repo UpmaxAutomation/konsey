@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { safeFetch, NetworkError } from '../api/client';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
 
 const AuthContext = createContext(null);
 
@@ -12,17 +13,6 @@ export function AuthProvider({ children }) {
   // Check for existing session on mount
   useEffect(() => {
     const checkAuth = async () => {
-      // Check for guest session first
-      const isGuest = localStorage.getItem('guest_session');
-      if (isGuest) {
-        const guestUser = JSON.parse(localStorage.getItem('guest_user') || '{}');
-        if (guestUser.id) {
-          setUser(guestUser);
-          setLoading(false);
-          return;
-        }
-      }
-
       const accessToken = localStorage.getItem('access_token');
       if (!accessToken) {
         setLoading(false);
@@ -69,15 +59,27 @@ export function AuthProvider({ children }) {
   const register = async (email, password, name) => {
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/auth/register`, {
+      // Log API URL for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.log('Registering with API:', API_BASE);
+      }
+      
+      const response = await safeFetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, name }),
-      });
+      }, 'registration');
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Registration failed');
+        let errorMessage = 'Registration failed';
+        try {
+          const data = await response.json();
+          errorMessage = data.detail || errorMessage;
+        } catch (e) {
+          // If response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -85,7 +87,13 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       return data;
     } catch (err) {
-      setError(err.message);
+      // Provide better error messages for network errors
+      if (err instanceof NetworkError) {
+        const message = err.message || 'Failed to connect to server. Please check your internet connection and ensure the backend server is running.';
+        setError(message);
+        throw new Error(message);
+      }
+      setError(err.message || 'Registration failed. Please try again.');
       throw err;
     }
   };
@@ -93,15 +101,21 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/auth/login`, {
+      const response = await safeFetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
-      });
+      }, 'login');
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Login failed');
+        let errorMessage = 'Login failed';
+        try {
+          const data = await response.json();
+          errorMessage = data.detail || errorMessage;
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -109,7 +123,12 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       return data;
     } catch (err) {
-      setError(err.message);
+      if (err instanceof NetworkError) {
+        const message = err.message || 'Failed to connect to server. Please check your internet connection and ensure the backend server is running.';
+        setError(message);
+        throw new Error(message);
+      }
+      setError(err.message || 'Login failed. Please try again.');
       throw err;
     }
   };
@@ -117,15 +136,21 @@ export function AuthProvider({ children }) {
   const loginWithGoogle = async (credential) => {
     setError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/auth/google`, {
+      const response = await safeFetch(`${API_BASE}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential }),
-      });
+      }, 'google login');
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Google login failed');
+        let errorMessage = 'Google login failed';
+        try {
+          const data = await response.json();
+          errorMessage = data.detail || errorMessage;
+        } catch (e) {
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -133,31 +158,14 @@ export function AuthProvider({ children }) {
       setUser(data.user);
       return data;
     } catch (err) {
-      setError(err.message);
+      if (err instanceof NetworkError) {
+        const message = err.message || 'Failed to connect to server. Please check your internet connection.';
+        setError(message);
+        throw new Error(message);
+      }
+      setError(err.message || 'Google login failed. Please try again.');
       throw err;
     }
-  };
-
-  const loginAsGuest = async () => {
-    setError(null);
-    // Create a guest session without backend authentication
-    // This allows users to try the app without registering
-    const guestUser = {
-      id: `guest-${Date.now()}`,
-      email: 'guest@llm-council.local',
-      name: 'Guest User',
-      avatar_url: null,
-      is_verified: false,
-      is_admin: false,
-      is_guest: true,
-      created_at: new Date().toISOString(),
-    };
-
-    // Store a guest token marker
-    localStorage.setItem('guest_session', 'true');
-    localStorage.setItem('guest_user', JSON.stringify(guestUser));
-    setUser(guestUser);
-    return { user: guestUser };
   };
 
   const refreshToken = async () => {
@@ -191,14 +199,6 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    // Handle guest session logout
-    if (localStorage.getItem('guest_session')) {
-      localStorage.removeItem('guest_session');
-      localStorage.removeItem('guest_user');
-      setUser(null);
-      return;
-    }
-
     const refreshTokenValue = localStorage.getItem('refresh_token');
 
     try {
@@ -248,11 +248,9 @@ export function AuthProvider({ children }) {
     loading,
     error,
     isAuthenticated: !!user,
-    isGuest: user?.is_guest || false,
     register,
     login,
     loginWithGoogle,
-    loginAsGuest,
     logout,
     refreshToken,
     updateProfile,

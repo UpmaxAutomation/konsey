@@ -264,7 +264,7 @@ logger.info("cors_config", origins=CORS_ORIGINS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -3491,13 +3491,13 @@ async def send_message(
     # Add user message with attached files
     await storage.add_user_message(conversation_id, request.content, request.attached_files)
 
-    # If this is the first message, generate a title
-    if is_first_message:
-        title = await generate_conversation_title(request.content)
-        await storage.update_conversation_title(conversation_id, title)
-
     # Run the 3-stage council process with context, files, and user-specific API keys
     user_id = current_user.id if current_user else None
+    
+    # If this is the first message, generate a title (using user's API keys)
+    if is_first_message:
+        title = await generate_conversation_title(request.content, user_id=user_id, db=db)
+        await storage.update_conversation_title(conversation_id, title)
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
         request.content,
         conversation_context=conversation_context,
@@ -3588,7 +3588,7 @@ async def send_message_stream(
             # Start title generation in parallel (don't await yet)
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(generate_conversation_title(request.content, user_id=user_id, db=db))
 
             # Variables to store final results
             stage1_results = None
@@ -3766,7 +3766,7 @@ async def send_quick_mode(
             # Start title generation in parallel if first message
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.message))
+                title_task = asyncio.create_task(generate_conversation_title(request.message, user_id=user_id, db=db))
 
             # Prepare messages for the model
             messages = [{"role": "user", "content": request.message}]
@@ -3934,7 +3934,7 @@ async def send_quick_message(
             # Start title generation in parallel if first message
             title_task = None
             if is_first_message:
-                title_task = asyncio.create_task(generate_conversation_title(request.content))
+                title_task = asyncio.create_task(generate_conversation_title(request.content, user_id=user_id, db=db))
 
             # Prepare messages for the model
             messages = [{"role": "user", "content": request.content}]
@@ -4100,13 +4100,16 @@ async def run_debate_mode(conversation_id: str, request: DebateRequest):
     # Add user message with debate topic
     await storage.add_user_message(conversation_id, f"DEBATE: {request.topic}")
 
-    # If this is the first message, generate a title
+    # Get user_id for API key resolution
+    user_id = current_user.id if current_user else None
+
+    # If this is the first message, generate a title (using user's API keys)
     if is_first_message:
-        title = await generate_conversation_title(f"Debate: {request.topic}")
+        title = await generate_conversation_title(f"Debate: {request.topic}", user_id=user_id, db=db)
         await storage.update_conversation_title(conversation_id, title)
 
-    # Run the debate
-    debate_result = await run_debate(request.topic, request.rounds)
+    # Run the debate (using user-specific API keys)
+    debate_result = await run_debate(request.topic, request.rounds, user_id=user_id, db=db)
 
     # Add debate result as assistant message
     await storage.add_debate_message(
@@ -4124,7 +4127,12 @@ async def run_debate_mode(conversation_id: str, request: DebateRequest):
     summary="Run Council Vote",
     response_description="Vote results with winner determination"
 )
-async def run_conversation_vote(conversation_id: str, request: VoteRequest):
+async def run_conversation_vote(
+    conversation_id: str,
+    request: VoteRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Run a vote on a question with multiple options.
 
@@ -4171,8 +4179,11 @@ async def run_conversation_vote(conversation_id: str, request: VoteRequest):
     if len(request.options) > 26:
         raise HTTPException(status_code=400, detail="Maximum 26 options allowed")
 
-    # Run the vote
-    vote_results = await run_vote(request.question, request.options)
+    # Get user_id for API key resolution
+    user_id = current_user.id if current_user else None
+
+    # Run the vote (using user-specific API keys)
+    vote_results = await run_vote(request.question, request.options, user_id=user_id, db=db)
 
     return vote_results
 
@@ -6338,4 +6349,5 @@ async def export_analytics():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.getenv("PORT", 8001))
+    uvicorn.run(app, host="0.0.0.0", port=port)

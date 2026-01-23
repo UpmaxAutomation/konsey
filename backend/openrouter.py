@@ -133,15 +133,15 @@ async def query_model(
             cached_copy['from_cache'] = True
             return cached_copy
 
-    # Check if we have a direct API key for this provider (user-specific or global)
+    # Check if we have a direct API key for this provider (user-specific or system)
     provider = get_provider_from_model(model)
     direct_api_key = None
     if user_id and db:
-        # Try user-specific key first
-        direct_api_key = await db_crud.api_keys.resolve_api_key(db, user_id, provider)
-    if not direct_api_key:
-        # Fall back to global config
-        direct_api_key = get_api_key(provider)
+        # Try user-specific key first, allow system fallback for admin-set keys
+        direct_api_key = await db_crud.api_keys.resolve_api_key(db, user_id, provider, allow_system_fallback=True)
+    if not direct_api_key and db:
+        # Try system key (admin-set) as fallback
+        direct_api_key = await db_crud.api_keys.get_system_key(db, provider)
     
     if direct_api_key:
         result = await query_model_direct(model, messages, timeout, api_key=direct_api_key)
@@ -176,17 +176,17 @@ async def query_model(
     if is_reasoning_model(model):
         timeout = REASONING_MODEL_CONFIG["extended_timeout"]
 
-    # Get OpenRouter API key (user-specific or global)
+    # Get OpenRouter API key (user-specific or system admin-set)
     openrouter_key = None
     if user_id and db:
-        # Try user-specific OpenRouter key first
-        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter")
-    if not openrouter_key:
-        # Fall back to global config
-        openrouter_key = get_openrouter_api_key()
+        # Try user-specific OpenRouter key first, allow system fallback
+        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=True)
+    if not openrouter_key and db:
+        # Try system key (admin-set) as fallback
+        openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
     
     if not openrouter_key:
-        print(f"No OpenRouter API key available for model {model}")
+        print(f"No OpenRouter API key available for model {model}. User must set their own key or admin must set system key.")
         return None
 
     headers = {
@@ -292,19 +292,19 @@ async def query_model_stream(
     """
     global _session_usage
 
-    # Get OpenRouter API key (user-specific or global)
+    # Get OpenRouter API key (user-specific or system admin-set)
     openrouter_key = None
     if user_id and db:
-        # Try user-specific OpenRouter key first
-        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter")
-    if not openrouter_key:
-        # Fall back to global config
-        openrouter_key = get_openrouter_api_key()
+        # Try user-specific OpenRouter key first, allow system fallback
+        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=True)
+    if not openrouter_key and db:
+        # Try system key (admin-set) as fallback
+        openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
     
     if not openrouter_key:
         yield {
             "error": True,
-            "message": f"No OpenRouter API key available for model {model}"
+            "message": f"No OpenRouter API key available for model {model}. Please set your API key in Settings or contact admin."
         }
         return
 

@@ -1,12 +1,13 @@
 """Voting system for LLM Council."""
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+import uuid
 from .openrouter import query_models_parallel
 from .config import get_council_models
 import re
 
 
-async def run_vote(question: str, options: List[str]) -> Dict[str, Any]:
+async def run_vote(question: str, options: List[str], user_id: Optional[uuid.UUID] = None, db: Optional[Any] = None) -> Dict[str, Any]:
     """
     Run a vote where each council model votes on the provided options.
 
@@ -49,8 +50,8 @@ Now provide your vote:"""
 
     messages = [{"role": "user", "content": voting_prompt}]
 
-    # Query all council models in parallel
-    responses = await query_models_parallel(get_council_models(), messages)
+    # Query all council models in parallel (using user-specific API keys)
+    responses = await query_models_parallel(get_council_models(), messages, user_id=user_id, db=db)
 
     # Parse votes from each model
     votes = []

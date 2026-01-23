@@ -219,13 +219,16 @@ async def delete_system_key(db: AsyncSession, provider: str) -> bool:
 async def resolve_api_key(
     db: AsyncSession,
     user_id: Optional[uuid.UUID],
-    provider: str
+    provider: str,
+    allow_system_fallback: bool = False
 ) -> Optional[str]:
     """
     Resolve API key with priority:
     1. User's own key (if user_id provided)
-    2. System-wide shared key
-    3. Environment variable
+    2. System-wide shared key (only if allow_system_fallback=True)
+    
+    Note: Environment variable fallback removed - users must set their own keys
+    or admin must set system key explicitly.
     """
     # Try user's key first
     if user_id:
@@ -233,20 +236,11 @@ async def resolve_api_key(
         if user_key:
             return user_key
 
-    # Try system key
-    system_key = await get_system_key(db, provider)
-    if system_key:
-        return system_key
+    # Only try system key if explicitly allowed (for admin-set system keys)
+    if allow_system_fallback:
+        system_key = await get_system_key(db, provider)
+        if system_key:
+            return system_key
 
-    # Fall back to environment
-    env_key = os.getenv(f"{provider.upper()}_API_KEY")
-    if env_key:
-        return env_key
-
-    # Special case for OpenRouter
-    if provider != "openrouter":
-        openrouter_key = os.getenv("OPENROUTER_API_KEY")
-        if openrouter_key:
-            return openrouter_key
-
+    # No fallback to environment variables - users must set their own keys
     return None

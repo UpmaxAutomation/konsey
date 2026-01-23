@@ -320,12 +320,14 @@ def calculate_aggregate_rankings(
     return aggregate
 
 
-async def generate_conversation_title(user_query: str) -> str:
+async def generate_conversation_title(user_query: str, user_id: Optional[uuid.UUID] = None, db: Optional[Any] = None) -> str:
     """
     Generate a short title for a conversation based on the first user message.
 
     Args:
         user_query: The first user message
+        user_id: Optional user ID for user-specific API keys
+        db: Optional database session for resolving API keys
 
     Returns:
         A short title (3-5 words)
@@ -340,7 +342,8 @@ Title:"""
     messages = [{"role": "user", "content": title_prompt}]
 
     # Use gemini-2.5-flash for title generation (fast and cheap)
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0)
+    # Pass user_id and db to use user-specific API keys
+    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0, user_id=user_id, db=db)
 
     if response is None:
         # Fallback to a generic title

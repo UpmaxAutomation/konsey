@@ -5,6 +5,7 @@ import Analytics from './Analytics';
 import Projects from './Projects';
 import BatchProcessor from './BatchProcessor';
 import SearchModal from './SearchModal';
+import AdminPanel from './AdminPanel';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -30,6 +31,7 @@ export default function Sidebar({
   const [showProjects, setShowProjects] = useState(false);
   const [showBatch, setShowBatch] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState(null);
 
@@ -533,6 +535,17 @@ export default function Sidebar({
                         </svg>
                         Analytics
                       </button>
+                      {user?.is_admin && (
+                        <button onClick={() => { setShowAdminPanel(true); setShowMoreMenu(false); }}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                          </svg>
+                          Admin Panel
+                        </button>
+                      )}
                       <div className="more-menu-divider" />
                       <button onClick={() => { toggleTheme(); setShowMoreMenu(false); }}>
                         {theme === 'light' ? '🌙' : '☀️'}
@@ -797,6 +810,7 @@ export default function Sidebar({
       <BatchProcessor isOpen={showBatch} onClose={() => setShowBatch(false)} />
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
       <Analytics isOpen={showAnalytics} onClose={() => setShowAnalytics(false)} />
+      <AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} />
     </>
   );
 }

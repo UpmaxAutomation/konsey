@@ -1,11 +1,12 @@
 """Debate mode for LLM Council - pro vs con arguments."""
 
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
+import uuid
 from .openrouter import query_models_parallel
 from .config import get_council_models, get_chairman_model
 
 
-async def run_debate(topic: str, rounds: int = 2) -> Dict[str, Any]:
+async def run_debate(topic: str, rounds: int = 2, user_id: Optional[uuid.UUID] = None, db: Optional[Any] = None) -> Dict[str, Any]:
     """
     Run a structured debate between council models.
 
@@ -109,9 +110,9 @@ Your task: Provide a clear, well-reasoned argument opposing this position. Consi
 
 Provide your argument (2-3 paragraphs):"""
 
-        # Get pro arguments
+        # Get pro arguments (using user-specific API keys)
         pro_messages = [{"role": "user", "content": pro_prompt}]
-        pro_responses = await query_models_parallel(pro_models, pro_messages)
+        pro_responses = await query_models_parallel(pro_models, pro_messages, user_id=user_id, db=db)
 
         pro_arguments = []
         for model, response in pro_responses.items():
@@ -130,9 +131,9 @@ Provide your argument (2-3 paragraphs):"""
                 pro_summary += f"\n- {arg['argument']}\n"
             con_prompt += pro_summary
 
-        # Get con arguments (with pro arguments as context)
+        # Get con arguments (with pro arguments as context, using user-specific API keys)
         con_messages = [{"role": "user", "content": con_prompt}]
-        con_responses = await query_models_parallel(con_models, con_messages)
+        con_responses = await query_models_parallel(con_models, con_messages, user_id=user_id, db=db)
 
         con_arguments = []
         for model, response in con_responses.items():
@@ -151,12 +152,14 @@ Provide your argument (2-3 paragraphs):"""
             "con": con_arguments
         })
 
-    # Chairman synthesis
+    # Chairman synthesis (using user-specific API keys)
     synthesis = await synthesize_debate(
         topic=topic,
         rounds=debate_rounds,
         pro_models=pro_models,
-        con_models=con_models
+        con_models=con_models,
+        user_id=user_id,
+        db=db
     )
 
     return {
@@ -175,7 +178,9 @@ async def synthesize_debate(
     topic: str,
     rounds: List[Dict[str, Any]],
     pro_models: List[str],
-    con_models: List[str]
+    con_models: List[str],
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[Any] = None
 ) -> Dict[str, Any]:
     """
     Chairman synthesizes the debate by weighing both sides.
@@ -230,7 +235,8 @@ Provide your final synthesis (3-4 paragraphs):"""
     from .openrouter import query_model
 
     messages = [{"role": "user", "content": chairman_prompt}]
-    response = await query_model(chairman_model, messages)
+    # Use user-specific API keys
+    response = await query_model(chairman_model, messages, user_id=user_id, db=db)
 
     if response is None:
         return {

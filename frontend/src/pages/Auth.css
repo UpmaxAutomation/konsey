@@ -8,7 +8,8 @@
   justify-content: center;
   padding: 20px;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
 }
 
@@ -194,16 +195,27 @@
 .input-wrapper input {
   width: 100%;
   padding: 14px 16px 14px 48px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
   border-radius: 12px;
   font-size: 15px;
-  color: white;
+  color: white !important;
   transition: all 0.3s ease;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+.input-wrapper input[type="text"],
+.input-wrapper input[type="email"],
+.input-wrapper input[type="password"] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: white !important;
 }
 
 .input-wrapper input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.4) !important;
+  opacity: 1;
 }
 
 .input-wrapper input:focus {
@@ -221,6 +233,21 @@
   background: rgba(255, 255, 255, 0.05);
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* Fix autofill styling */
+.input-wrapper input:-webkit-autofill,
+.input-wrapper input:-webkit-autofill:hover,
+.input-wrapper input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px rgba(255, 255, 255, 0.08) inset !important;
+  -webkit-text-fill-color: white !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.input-wrapper input:-moz-autofill {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: white !important;
 }
 
 /* Success state for password match */
@@ -317,17 +344,6 @@
 .auth-button.secondary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-/* Guest Button Special Styling */
-.guest-button {
-  font-size: 17px;
-  padding: 18px 24px;
-}
-
-.guest-button svg {
-  width: 22px;
-  height: 22px;
 }
 
 /* Loading Spinner in Button */
@@ -458,6 +474,8 @@
 .password-hint {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+  text-align: right;
   margin-top: 6px;
 }
 

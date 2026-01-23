@@ -149,6 +149,21 @@ export default function Settings({ isOpen, onClose }) {
   const handleSave = async () => {
     setSaving(true);
     setError(null);
+    
+    // Validate chairman selection
+    if (!selectedChairman) {
+      showMessage('error', 'Please select a chairman model');
+      setSaving(false);
+      return;
+    }
+    
+    // Validate council models
+    if (selectedCouncil.length === 0) {
+      showMessage('error', 'Please select at least one council model');
+      setSaving(false);
+      return;
+    }
+    
     try {
       await api.updateConfig({
         council_models: selectedCouncil,
@@ -851,9 +866,11 @@ export default function Settings({ isOpen, onClose }) {
                   <label className="chairman-label">Chairman Model (synthesizes final answer)</label>
                   <select
                     className="chairman-select"
-                    value={selectedChairman}
+                    value={selectedChairman || ''}
                     onChange={(e) => setSelectedChairman(e.target.value)}
+                    required
                   >
+                    <option value="">-- Select Chairman Model --</option>
                     {config && Object.entries(config.available_models).map(([modelId, info]) => (
                       <option key={modelId} value={modelId}>{info.name}</option>
                     ))}

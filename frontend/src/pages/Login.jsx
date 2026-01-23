@@ -51,24 +51,15 @@ const AlertIcon = ({ className }) => (
   </svg>
 );
 
-const RocketIcon = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-    <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-    <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-    <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-  </svg>
-);
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isGuestLoading, setIsGuestLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const { login, loginAsGuest } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -86,22 +77,6 @@ export default function Login() {
       setError(err.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleGuestLogin = async () => {
-    setError('');
-    setIsGuestLoading(true);
-
-    try {
-      if (loginAsGuest) {
-        await loginAsGuest();
-      }
-      navigate(from, { replace: true });
-    } catch (err) {
-      setError(err.message || 'Guest login failed. Please try again.');
-    } finally {
-      setIsGuestLoading(false);
     }
   };
 
@@ -123,30 +98,6 @@ export default function Login() {
           </div>
         )}
 
-        {/* Guest Login - Primary Action */}
-        <button
-          type="button"
-          className="auth-button primary guest-button"
-          onClick={handleGuestLogin}
-          disabled={isGuestLoading || isLoading}
-        >
-          {isGuestLoading ? (
-            <>
-              <span className="button-spinner"></span>
-              Starting...
-            </>
-          ) : (
-            <>
-              <RocketIcon />
-              Continue as Guest
-            </>
-          )}
-        </button>
-
-        <div className="auth-divider">
-          <span>or sign in with email</span>
-        </div>
-
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label htmlFor="email">Email</label>
@@ -159,7 +110,7 @@ export default function Login() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                disabled={isLoading || isGuestLoading}
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -175,7 +126,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
-                disabled={isLoading || isGuestLoading}
+                disabled={isLoading}
               />
               <button
                 type="button"
@@ -190,8 +141,8 @@ export default function Login() {
 
           <button
             type="submit"
-            className="auth-button secondary"
-            disabled={isLoading || isGuestLoading}
+            className="auth-button primary"
+            disabled={isLoading}
           >
             {isLoading ? (
               <>

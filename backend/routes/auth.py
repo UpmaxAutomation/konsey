@@ -4,13 +4,15 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
 
 from ..database.connection import get_db
 from ..database.models import User, RefreshToken
 from ..database import crud
+from sqlalchemy import select, func
 from ..auth.password import hash_password, verify_password
 from ..auth.jwt_handler import (
     create_access_token,
@@ -19,7 +21,7 @@ from ..auth.jwt_handler import (
     get_token_hash,
 )
 from ..auth.oauth import verify_google_token, exchange_google_code
-from ..auth.dependencies import get_current_user
+from ..auth.dependencies import get_current_user, get_current_admin_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -155,37 +157,65 @@ async def register(
     db: AsyncSession = Depends(get_db)
 ):
     """Register a new user with email and password."""
-    # Check if email already exists
-    existing = await crud.users.get_by_email(db, request.email)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+    try:
+        # Check if email already exists
+        existing = await crud.users.get_by_email(db, request.email)
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+
+        # Check if this is the first real user (make them admin)
+        # Exclude anonymous user from count
+        from ..config import ANONYMOUS_USER_ID
+        from sqlalchemy import select, func
+        anonymous_id = uuid.UUID(ANONYMOUS_USER_ID)
+        result = await db.execute(
+            select(func.count(User.id)).where(User.id != anonymous_id)
         )
+        real_user_count = result.scalar() or 0
+        is_first_user = real_user_count == 0
+        
+        # Create user
+        password_hash = hash_password(request.password)
+        user = await crud.users.create(
+            db,
+            email=request.email,
+            password_hash=password_hash,
+            name=request.name,
+            is_verified=False,  # TODO: Implement email verification
+        )
+        
+        # Make first user an admin
+        if is_first_user:
+            await crud.users.update_user(db, user.id, is_admin=True)
+            await db.flush()  # Flush to ensure admin status is updated
+            await db.refresh(user)
 
-    # Create user
-    password_hash = hash_password(request.password)
-    user = await crud.users.create(
-        db,
-        email=request.email,
-        password_hash=password_hash,
-        name=request.name,
-        is_verified=False,  # TODO: Implement email verification
-    )
+        # Generate tokens
+        access_token = create_access_token(user.id, user.email, user.is_admin)
+        refresh_token, expires_at = create_refresh_token(user.id)
 
-    # Generate tokens
-    access_token = create_access_token(user.id, user.email, user.is_admin)
-    refresh_token, expires_at = create_refresh_token(user.id)
+        # Store refresh token
+        device_info = req.headers.get("User-Agent", "")[:255]
+        await _store_refresh_token(db, user.id, refresh_token, expires_at, device_info)
 
-    # Store refresh token
-    device_info = req.headers.get("User-Agent", "")[:255]
-    await _store_refresh_token(db, user.id, refresh_token, expires_at, device_info)
-
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        user=_user_to_response(user),
-    )
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user=_user_to_response(user),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Registration error: {error_details}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -481,3 +511,140 @@ async def logout_all_devices(
         .values(is_revoked=True)
     )
     return MessageResponse(message="Logged out from all devices")
+
+
+# Admin endpoints
+@router.get("/admin/users", response_model=List[UserResponse])
+async def list_all_users(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    active_only: bool = Query(True),
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """List all users (admin only)."""
+    skip = (page - 1) * limit
+    users = await crud.users.list_users(db, skip=skip, limit=limit, active_only=active_only)
+    return [_user_to_response(user) for user in users]
+
+
+@router.get("/admin/users/count", response_model=dict)
+async def get_user_count(
+    active_only: bool = Query(True),
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get total user count (admin only)."""
+    count = await crud.users.count_users(db, active_only=active_only)
+    return {"total_users": count, "active_only": active_only}
+
+
+@router.post("/admin/users/{user_id}/promote", response_model=UserResponse)
+async def promote_to_admin(
+    user_id: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Promote a user to admin (admin only)."""
+    try:
+        target_user_id = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format"
+        )
+    
+    user = await crud.users.get_by_id(db, target_user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    await crud.users.update_user(db, target_user_id, is_admin=True)
+    await db.flush()  # Flush to ensure admin status is updated in current transaction
+    await db.refresh(user)
+    
+    return _user_to_response(user)
+
+
+# Admin API Key Management
+class SystemAPIKeyRequest(BaseModel):
+    """Request to set a system-wide API key."""
+    provider: str = Field(..., description="Provider name (openrouter, openai, anthropic, etc.)")
+    api_key: str = Field(..., description="API key value")
+
+
+@router.post("/admin/api-keys", response_model=dict)
+async def set_system_api_key(
+    request: SystemAPIKeyRequest,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Set a system-wide API key (admin only)."""
+    valid_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+    if request.provider not in valid_providers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid provider. Must be one of: {', '.join(valid_providers)}"
+        )
+    
+    await crud.api_keys.set_system_key(db, request.provider, request.api_key, encrypt=True)
+    await db.flush()
+    
+    return {
+        "status": "success",
+        "message": f"System API key set for {request.provider}",
+        "provider": request.provider
+    }
+
+
+@router.get("/admin/api-keys", response_model=dict)
+async def get_system_api_keys(
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all system API keys (masked, admin only)."""
+    providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+    keys = {}
+    
+    for provider in providers:
+        system_key = await crud.api_keys.get_system_key(db, provider)
+        if system_key:
+            # Mask the key
+            if len(system_key) > 8:
+                keys[provider] = system_key[:4] + "..." + system_key[-4:]
+            else:
+                keys[provider] = "***"
+        else:
+            keys[provider] = ""
+    
+    return {
+        "api_keys": keys,
+        "providers": providers
+    }
+
+
+@router.delete("/admin/api-keys/{provider}", response_model=dict)
+async def delete_system_api_key(
+    provider: str,
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a system-wide API key (admin only)."""
+    valid_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+    if provider not in valid_providers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid provider. Must be one of: {', '.join(valid_providers)}"
+        )
+    
+    deleted = await crud.api_keys.delete_system_key(db, provider)
+    await db.flush()
+    
+    return {
+        "status": "success",
+        "message": f"System API key deleted for {provider}",
+        "provider": provider,
+        "deleted": deleted
+    }

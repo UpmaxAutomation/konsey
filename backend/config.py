@@ -448,13 +448,18 @@ def set_api_key(provider: str, api_key: str):
 
 
 def get_openrouter_api_key() -> str:
-    """Get OpenRouter API key - checks Settings first, then environment."""
-    # First check if set via Settings UI
+    """
+    Get OpenRouter API key - checks Settings first.
+    
+    NOTE: Environment variable fallback removed. 
+    Users must set their own keys or admin must set system key via admin panel.
+    """
+    # Check if set via Settings UI (legacy support)
     settings_key = _runtime_config.get("api_keys", {}).get("openrouter", "")
     if settings_key:
         return settings_key
-    # Fall back to environment variable
-    return _OPENROUTER_API_KEY_ENV
+    # No longer fallback to environment - return empty
+    return ""
 
 
 def get_provider_from_model(model_id: str) -> str:
