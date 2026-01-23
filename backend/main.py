@@ -4145,7 +4145,7 @@ async def send_quick_message(
                     pass
             # #endregion
             # Add user message
-            await storage.add_user_message(conversation_id, request.content, db=db, user_id=user_id)
+            await storage.add_user_message(conversation_id, request.content, db=db)
             # #region agent log
             if os.path.exists(os.path.dirname(debug_log_path)):
                 try:
@@ -4252,8 +4252,25 @@ async def send_quick_message(
                 yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
-            # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            import traceback
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-exception","hypothesisId":"H35","location":"main.py:4254","message":"quick_message_exception","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"error_type":type(e).__name__,"error":str(e),"traceback":traceback.format_exc()[:500]},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+            logger.exception("quick_message_stream_error", conversation_id=conversation_id, error=str(e))
+            error_message = str(e)
+            # In development, include more details
+            if os.getenv("ENVIRONMENT", "development").lower() != "production":
+                error_message = f"{type(e).__name__}: {error_message}"
+            yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
         finally:
             # Always clean up the stream registration
             _active_streams.pop(conversation_id, None)
