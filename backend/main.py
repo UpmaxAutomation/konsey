@@ -260,6 +260,11 @@ else:
     CORS_ORIGINS = DEFAULT_ORIGINS
 
 logger.info("cors_config", origins=CORS_ORIGINS)
+# #region agent log
+import json
+with open('/Users/sezars/llm-council/.cursor/debug.log', 'a') as f:
+    f.write(json.dumps({"sessionId":"debug-session","runId":"cors-debug","hypothesisId":"H2","location":"main.py:262","message":"cors_config","data":{"origins":CORS_ORIGINS,"env_origins":env_origins},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+# #endregion
 
 app.add_middleware(
     CORSMiddleware,

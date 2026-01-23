@@ -68,26 +68,29 @@ export async function handleResponse(response, context = 'API call') {
  * @throws {NetworkError|AbortError} On network or abort errors
  */
 export async function safeFetch(url, options = {}, context = 'fetch') {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:70',message:'safeFetch:entry',data:{url,method:options.method || 'GET',origin:window.location.origin,apiBase:API_BASE},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3',location:'client.js:58',message:'safeFetch:start',data:{url,method:options.method || 'GET'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H6',location:'client.js:60',message:'safeFetch:originCheck',data:{pageOrigin:window.location.origin,requestOrigin:new URL(url, window.location.origin).origin,isCrossOrigin:window.location.origin !== new URL(url, window.location.origin).origin},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000); // 30s default timeout
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:81',message:'safeFetch:beforeFetch',data:{url,headers:Object.keys(options.headers || {})},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
     });
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:87',message:'safeFetch:response',data:{url,status:response.status,ok:response.ok,headers:Object.fromEntries(response.headers.entries())},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3',location:'client.js:70',message:'safeFetch:error',data:{url,name:error?.name || 'unknown',message:error?.message || 'unknown'},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:92',message:'safeFetch:error',data:{url,name:error?.name,message:error?.message,stack:error?.stack?.substring(0,200),isCORS:error?.message?.includes('CORS') || error?.message?.includes('Access-Control')},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     // Handle abort (timeout or manual)
     if (error.name === 'AbortError') {
