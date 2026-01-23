@@ -241,17 +241,27 @@ async def login(
     try:
         user = await crud.users.get_by_email(db, request.email)
     except Exception as e:
+        error_msg = str(e)
+        error_type = type(e).__name__
         # #region agent log
         if os.path.exists(os.path.dirname(debug_log_path)):
             try:
                 with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H2","location":"auth.py:228","message":"login:db_error","data":{"error_type":type(e).__name__,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H2","location":"auth.py:241","message":"login:db_error","data":{"error_type":error_type,"error":error_msg},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
             except Exception:
                 pass
         # #endregion
+        
+        # Check for specific Supabase errors
+        if "tenant" in error_msg.lower() or "user not found" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database connection error: Invalid database credentials. Please check DATABASE_URL in Railway environment variables."
+            )
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(e)}"
+            detail=f"Database error: {error_msg}"
         )
 
     if not user or not user.password_hash:

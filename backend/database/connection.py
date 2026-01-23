@@ -129,8 +129,31 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
             await session.commit()
-        except Exception:
+        except Exception as e:
             await session.rollback()
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    error_msg = str(e)
+                    error_type = type(e).__name__
+                    # Mask password in DATABASE_URL for logging
+                    db_url_masked = DATABASE_URL
+                    if "@" in db_url_masked:
+                        parts = db_url_masked.split("@")
+                        if len(parts) == 2:
+                            user_pass = parts[0].split("//")[-1]
+                            if ":" in user_pass:
+                                user = user_pass.split(":")[0]
+                                db_url_masked = db_url_masked.replace(user_pass, f"{user}:***")
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"db-connection-debug","hypothesisId":"H1","location":"connection.py:129","message":"db_error","data":{"error_type":error_type,"error":error_msg,"database_url_masked":db_url_masked,"use_database":USE_DATABASE},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             raise
         finally:
             await session.close()

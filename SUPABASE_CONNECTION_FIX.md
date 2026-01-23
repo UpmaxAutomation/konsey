@@ -1,42 +1,78 @@
-# Supabase Connection Issue
+# 🔧 Fix: "Tenant or user not found" Database Error
 
-## Problem
-The hostname `db.rdjxqrrnhfbekpbsjgjk.supabase.co` is not resolving.
+## The Problem
 
-## Solution: Get the Correct Connection String
+The error **"Tenant or user not found"** is a Supabase authentication error. This means the database connection string is incorrect.
 
-The hostname format might be different. Please get the exact connection string from your Supabase dashboard:
+## Common Causes
 
-### Steps:
-1. Go to: https://supabase.com/dashboard/project/rdjxqrrnhfbekpbsjgjk
-2. Click **Settings** → **Database**
-3. Scroll to **Connection string** section
-4. Select **URI** tab (not Session mode)
-5. Copy the connection string - it should look like:
+1. **Wrong DATABASE_URL format** - Using direct connection instead of pooler
+2. **Incorrect password** - Password in connection string doesn't match Supabase
+3. **Wrong user** - Database user doesn't exist
+4. **Missing USE_DATABASE** - Database mode not enabled
+
+## Fix Steps
+
+### 1. Check Railway Environment Variables
+
+Go to **Railway Dashboard** → Your Service → **Variables** tab
+
+**Required variables:**
+- `USE_DATABASE=true` (must be set to "true")
+- `DATABASE_URL` - Must use the **Connection Pooler** URL from Supabase
+
+### 2. Get Correct Supabase Connection String
+
+1. Go to **Supabase Dashboard** → Your Project → **Settings** → **Database**
+2. Find **Connection Pooling** section
+3. Copy the **Connection Pooler** URL (NOT the direct connection)
+4. Format should be:
    ```
-   postgresql://postgres:[YOUR-PASSWORD]@[HOSTNAME]:5432/postgres
+   postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
+   ```
+   Example:
+   ```
+   postgresql://postgres.rdjxqrrnhfbekpbsjgjk:YOUR_PASSWORD@aws-0-us-west-2.pooler.supabase.com:6543/postgres
    ```
 
-### Common Supabase Hostname Formats:
-- Direct: `db.[project-ref].supabase.co` (port 5432)
-- Pooler: `aws-0-[region].pooler.supabase.com` (port 6543)
-- Sometimes: `[project-ref].supabase.co` (without `db.` prefix)
+### 3. Update Railway DATABASE_URL
 
-### Alternative: Use Connection Pooling (Recommended)
+1. In Railway, set `DATABASE_URL` to the pooler URL from step 2
+2. Make sure password is correct (no special character encoding issues)
+3. Ensure `USE_DATABASE=true` is set
 
-In Supabase dashboard → Settings → Database → Connection string:
-- Select **Transaction** mode (connection pooling)
-- Copy that connection string
-- It will use port 6543 and a different hostname
+### 4. Verify Connection String Format
 
-## Once You Have the Correct Connection String:
-
-Update your `.env` file:
-```bash
-DATABASE_URL=postgresql+asyncpg://[THE-EXACT-CONNECTION-STRING-FROM-SUPABASE]
+**Correct format (pooler):**
+```
+postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
 ```
 
-Make sure to:
-1. Replace `postgresql://` with `postgresql+asyncpg://` (for asyncpg driver)
-2. Keep the password as-is (or URL-encode special characters)
-3. Use the exact hostname from Supabase dashboard
+**Wrong format (direct connection - will fail):**
+```
+postgresql://postgres:[PASSWORD]@db.[PROJECT_REF].supabase.co:5432/postgres
+```
+
+### 5. Test Connection
+
+After updating, Railway will auto-redeploy. Check logs for:
+- ✅ "Database tables initialized" - Success
+- ❌ "Tenant or user not found" - Still wrong credentials
+
+## Quick Checklist
+
+- [ ] `USE_DATABASE=true` in Railway
+- [ ] `DATABASE_URL` uses pooler URL (contains "pooler.supabase.com")
+- [ ] Password is correct (no typos)
+- [ ] URL format: `postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres`
+
+## Still Not Working?
+
+If you still get the error after fixing the connection string:
+
+1. **Double-check password** - Copy directly from Supabase (no manual typing)
+2. **Verify project reference** - Make sure `[PROJECT_REF]` matches your Supabase project
+3. **Check region** - Make sure region matches (e.g., `us-west-2`, `us-east-1`)
+4. **Test with psql** - Try connecting with `psql` to verify credentials work
+
+Share the error message from Railway logs if it persists!
