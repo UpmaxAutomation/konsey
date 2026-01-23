@@ -3368,6 +3368,27 @@ async def create_conversation(
         conversation = await storage.create_conversation(
             conversation_id, user_id=user_id, db=db
         )
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H1","location":"main.py:3368","message":"conversation_created","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"has_user":bool(user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        await db.commit()  # Commit the conversation creation
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H2","location":"main.py:3380","message":"conversation_committed","data":{"conversation_id":conversation_id},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         return conversation
     except Exception as exc:
         # region agent log
@@ -3612,8 +3633,9 @@ async def send_message(
     Raises:
         HTTPException 404: If conversation not found
     """
-    # Check if conversation exists
-    conversation = await storage.get_conversation(conversation_id)
+    # Check if conversation exists (with user_id for proper scoping)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -3623,18 +3645,15 @@ async def send_message(
     # Get conversation context for follow-up questions (before adding current message)
     conversation_context = None
     if not is_first_message:
-        conversation_context = await storage.get_conversation_context(conversation_id, limit=3)
+        conversation_context = await storage.get_conversation_context(conversation_id, limit=3, user_id=user_id, db=db)
 
-    # Add user message with attached files
-    await storage.add_user_message(conversation_id, request.content, request.attached_files)
-
-    # Run the 3-stage council process with context, files, and user-specific API keys
-    user_id = current_user.id if current_user else None
+    # Add user message with attached files (use same db session)
+    await storage.add_user_message(conversation_id, request.content, request.attached_files, db=db)
     
     # If this is the first message, generate a title (using user's API keys)
     if is_first_message:
         title = await generate_conversation_title(request.content, user_id=user_id, db=db)
-        await storage.update_conversation_title(conversation_id, title)
+        await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
         request.content,
         conversation_context=conversation_context,
@@ -3644,13 +3663,29 @@ async def send_message(
         db=db
     )
 
-    # Add assistant message with all stages
+    # Add assistant message with all stages (use same db session)
     await storage.add_assistant_message(
         conversation_id,
         stage1_results,
         stage2_results,
-        stage3_result
+        stage3_result,
+        db=db
     )
+    
+    # Commit all changes (conversation, messages, title update)
+    await db.commit()
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"message-save","hypothesisId":"H3","location":"main.py:3660","message":"messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
 
     # Return the complete response with metadata
     return {
@@ -3719,8 +3754,8 @@ async def send_message_stream(
         cancelled = False
 
         try:
-            # Add user message with attached files
-            await storage.add_user_message(conversation_id, request.content, request.attached_files)
+            # Add user message with attached files (use same db session)
+            await storage.add_user_message(conversation_id, request.content, request.attached_files, db=db)
 
             # Start title generation in parallel (don't await yet)
             title_task = None
@@ -3763,7 +3798,7 @@ async def send_message_stream(
             # Wait for title generation if it was started (and not cancelled)
             if title_task and not cancelled:
                 title = await title_task
-                await storage.update_conversation_title(conversation_id, title)
+                await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
             elif title_task and cancelled:
                 # Cancel the title task if stream was cancelled
@@ -3775,8 +3810,25 @@ async def send_message_stream(
                     conversation_id,
                     stage1_results,
                     stage2_results,
-                    stage3_result
+                    stage3_result,
+                    db=db
                 )
+            
+            # Commit all changes (messages, title) if not cancelled
+            if not cancelled:
+                await db.commit()
+                # #region agent log
+                import os
+                import json
+                from datetime import datetime
+                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"message-stream-save","hypothesisId":"H4","location":"main.py:3820","message":"stream_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
 
         except Exception as e:
             # Send error event
@@ -3898,7 +3950,7 @@ async def send_quick_mode(
 
         try:
             # Add user message
-            await storage.add_user_message(conversation_id, request.message)
+            await storage.add_user_message(conversation_id, request.message, db=db)
 
             # Start title generation in parallel if first message
             title_task = None
@@ -3943,7 +3995,7 @@ async def send_quick_mode(
             # Wait for title generation if it was started (and not cancelled)
             if title_task and not cancelled:
                 title = await title_task
-                await storage.update_conversation_title(conversation_id, title)
+                await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
             elif title_task and cancelled:
                 title_task.cancel()
@@ -3955,8 +4007,23 @@ async def send_quick_mode(
                     full_content,
                     model_to_use,
                     thinking=thinking,
-                    usage=usage_info
+                    usage=usage_info,
+                    db=db
                 )
+                # Commit all changes (messages, title)
+                await db.commit()
+                # #region agent log
+                import os
+                import json
+                from datetime import datetime
+                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"quick-stream-save","hypothesisId":"H5","location":"main.py:3998","message":"quick_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
 
                 # Send completion event with full response
                 completion_data = {
@@ -4066,7 +4133,7 @@ async def send_quick_message(
 
         try:
             # Add user message
-            await storage.add_user_message(conversation_id, request.content)
+            await storage.add_user_message(conversation_id, request.content, db=db)
 
             # Start title generation in parallel if first message
             title_task = None
@@ -4111,7 +4178,7 @@ async def send_quick_message(
             # Wait for title generation if it was started (and not cancelled)
             if title_task and not cancelled:
                 title = await title_task
-                await storage.update_conversation_title(conversation_id, title)
+                await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
                 yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
             elif title_task and cancelled:
                 title_task.cancel()
@@ -4123,8 +4190,23 @@ async def send_quick_message(
                     full_content,
                     model_to_use,
                     thinking=thinking,
-                    usage=usage_info
+                    usage=usage_info,
+                    db=db
                 )
+                # Commit all changes (messages, title)
+                await db.commit()
+                # #region agent log
+                import os
+                import json
+                from datetime import datetime
+                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-stream-save","hypothesisId":"H6","location":"main.py:4165","message":"quick_message_stream_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
 
                 # Send completion event
                 completion_data = {
@@ -4204,7 +4286,12 @@ async def get_chat_models():
     summary="Run Debate Mode",
     response_description="Debate results with pro/con arguments and synthesis"
 )
-async def run_debate_mode(conversation_id: str, request: DebateRequest):
+async def run_debate_mode(
+    conversation_id: str,
+    request: DebateRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Run a debate with council models split into pro vs con teams.
 
@@ -4226,16 +4313,17 @@ async def run_debate_mode(conversation_id: str, request: DebateRequest):
     Raises:
         HTTPException 404: Conversation not found
     """
-    # Check if conversation exists
-    conversation = await storage.get_conversation(conversation_id)
+    # Check if conversation exists (with user_id for proper scoping)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Check if this is the first message
     is_first_message = len(conversation["messages"]) == 0
 
-    # Add user message with debate topic
-    await storage.add_user_message(conversation_id, f"DEBATE: {request.topic}")
+    # Add user message with debate topic (use same db session)
+    await storage.add_user_message(conversation_id, f"DEBATE: {request.topic}", db=db)
 
     # Get user_id for API key resolution
     user_id = current_user.id if current_user else None
@@ -4243,16 +4331,32 @@ async def run_debate_mode(conversation_id: str, request: DebateRequest):
     # If this is the first message, generate a title (using user's API keys)
     if is_first_message:
         title = await generate_conversation_title(f"Debate: {request.topic}", user_id=user_id, db=db)
-        await storage.update_conversation_title(conversation_id, title)
+        await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
 
     # Run the debate (using user-specific API keys)
     debate_result = await run_debate(request.topic, request.rounds, user_id=user_id, db=db)
 
-    # Add debate result as assistant message
+    # Add debate result as assistant message (use same db session)
     await storage.add_debate_message(
         conversation_id,
-        debate_result
+        debate_result,
+        db=db
     )
+    
+    # Commit all changes (messages, title)
+    await db.commit()
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"debate-save","hypothesisId":"H7","location":"main.py:4295","message":"debate_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
 
     # Return the complete debate
     return debate_result
@@ -4304,8 +4408,9 @@ async def run_conversation_vote(
         }
         ```
     """
-    # Check if conversation exists
-    conversation = await storage.get_conversation(conversation_id)
+    # Check if conversation exists (with user_id for proper scoping)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -4316,11 +4421,35 @@ async def run_conversation_vote(
     if len(request.options) > 26:
         raise HTTPException(status_code=400, detail="Maximum 26 options allowed")
 
-    # Get user_id for API key resolution
-    user_id = current_user.id if current_user else None
+    # Add user message with vote question (use same db session)
+    await storage.add_user_message(conversation_id, f"VOTE: {request.question}\nOptions: {', '.join(request.options)}", db=db)
 
     # Run the vote (using user-specific API keys)
     vote_results = await run_vote(request.question, request.options, user_id=user_id, db=db)
+
+    # Save vote results as assistant message (use same db session)
+    await storage.add_assistant_message(
+        conversation_id,
+        [],  # stage1 - empty for votes
+        [],  # stage2 - empty for votes
+        vote_results,  # stage3 - store vote results
+        db=db
+    )
+    
+    # Commit all changes (messages)
+    await db.commit()
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"vote-save","hypothesisId":"H8","location":"main.py:4445","message":"vote_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
 
     return vote_results
 

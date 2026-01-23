@@ -185,11 +185,13 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
 async def add_user_message(
     conversation_id: str,
     content: str,
-    attached_files: Optional[List[str]] = None
+    attached_files: Optional[List[str]] = None,
+    db: Optional[AsyncSession] = None
 ):
     """Add a user message to a conversation."""
     if USE_DATABASE:
-        async with get_db_context() as db:
+        if db:
+            # Use provided database session
             try:
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
@@ -203,6 +205,23 @@ async def add_user_message(
                 message_type="user",
                 attached_files=attached_files
             )
+            await db.flush()  # Flush to ensure message is saved
+        else:
+            # Create new session if none provided
+            async with get_db_context() as db_session:
+                try:
+                    conv_uuid = uuid.UUID(conversation_id)
+                except ValueError:
+                    raise ValueError(f"Invalid conversation ID: {conversation_id}")
+
+                await db_conversations.add_message(
+                    db_session,
+                    conversation_id=conv_uuid,
+                    role="user",
+                    content=content,
+                    message_type="user",
+                    attached_files=attached_files
+                )
     else:
         json_storage.add_user_message(conversation_id, content, attached_files)
 
@@ -211,11 +230,13 @@ async def add_assistant_message(
     conversation_id: str,
     stage1: List[Dict[str, Any]],
     stage2: List[Dict[str, Any]],
-    stage3: Dict[str, Any]
+    stage3: Dict[str, Any],
+    db: Optional[AsyncSession] = None
 ):
     """Add an assistant message with all 3 stages to a conversation."""
     if USE_DATABASE:
-        async with get_db_context() as db:
+        if db:
+            # Use provided database session
             try:
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
@@ -230,6 +251,24 @@ async def add_assistant_message(
                 stage2=stage2,
                 stage3=stage3
             )
+            await db.flush()  # Flush to ensure message is saved
+        else:
+            # Create new session if none provided
+            async with get_db_context() as db_session:
+                try:
+                    conv_uuid = uuid.UUID(conversation_id)
+                except ValueError:
+                    raise ValueError(f"Invalid conversation ID: {conversation_id}")
+
+                await db_conversations.add_message(
+                    db_session,
+                    conversation_id=conv_uuid,
+                    role="assistant",
+                    message_type="council",
+                    stage1=stage1,
+                    stage2=stage2,
+                    stage3=stage3
+                )
     else:
         json_storage.add_assistant_message(conversation_id, stage1, stage2, stage3)
 
@@ -239,11 +278,13 @@ async def add_quick_message(
     content: str,
     model: str,
     thinking: Optional[str] = None,
-    usage: Optional[Dict[str, Any]] = None
+    usage: Optional[Dict[str, Any]] = None,
+    db: Optional[AsyncSession] = None
 ):
     """Add a quick mode assistant message."""
     if USE_DATABASE:
-        async with get_db_context() as db:
+        if db:
+            # Use provided database session
             try:
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
@@ -259,23 +300,56 @@ async def add_quick_message(
                 thinking=thinking,
                 usage_info=usage
             )
+            await db.flush()  # Flush to ensure message is saved
+        else:
+            # Create new session if none provided
+            async with get_db_context() as db_session:
+                try:
+                    conv_uuid = uuid.UUID(conversation_id)
+                except ValueError:
+                    raise ValueError(f"Invalid conversation ID: {conversation_id}")
+
+                await db_conversations.add_message(
+                    db_session,
+                    conversation_id=conv_uuid,
+                    role="assistant",
+                    content=content,
+                    message_type="quick",
+                    model=model,
+                    thinking=thinking,
+                    usage_info=usage
+                )
     else:
         json_storage.add_quick_message(conversation_id, content, model, thinking, usage)
 
 
-async def update_conversation_title(conversation_id: str, title: str):
+async def update_conversation_title(conversation_id: str, title: str, user_id: Optional[uuid.UUID] = None, db: Optional[AsyncSession] = None):
     """Update the title of a conversation."""
     if USE_DATABASE:
-        async with get_db_context() as db:
-            user_id = _get_user_id()
+        if db:
+            # Use provided database session
             try:
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
                 raise ValueError(f"Invalid conversation ID: {conversation_id}")
 
+            actual_user_id = user_id or _get_user_id()
             await db_conversations.update_conversation(
-                db, conv_uuid, user_id, title=title
+                db, conv_uuid, actual_user_id, title=title
             )
+            await db.flush()  # Flush to ensure update is saved
+        else:
+            # Create new session if none provided
+            async with get_db_context() as db_session:
+                actual_user_id = user_id or _get_user_id()
+                try:
+                    conv_uuid = uuid.UUID(conversation_id)
+                except ValueError:
+                    raise ValueError(f"Invalid conversation ID: {conversation_id}")
+
+                await db_conversations.update_conversation(
+                    db_session, conv_uuid, actual_user_id, title=title
+                )
     else:
         json_storage.update_conversation_title(conversation_id, title)
 
@@ -295,10 +369,11 @@ async def delete_conversation(conversation_id: str) -> bool:
         return json_storage.delete_conversation(conversation_id)
 
 
-async def add_debate_message(conversation_id: str, debate_result: Dict[str, Any]):
+async def add_debate_message(conversation_id: str, debate_result: Dict[str, Any], db: Optional[AsyncSession] = None):
     """Add a debate message to a conversation."""
     if USE_DATABASE:
-        async with get_db_context() as db:
+        if db:
+            # Use provided database session
             try:
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
@@ -311,17 +386,36 @@ async def add_debate_message(conversation_id: str, debate_result: Dict[str, Any]
                 message_type="debate",
                 stage1=debate_result  # Store debate in stage1 field
             )
+            await db.flush()  # Flush to ensure message is saved
+        else:
+            # Create new session if none provided
+            async with get_db_context() as db_session:
+                try:
+                    conv_uuid = uuid.UUID(conversation_id)
+                except ValueError:
+                    raise ValueError(f"Invalid conversation ID: {conversation_id}")
+
+                await db_conversations.add_message(
+                    db_session,
+                    conversation_id=conv_uuid,
+                    role="assistant",
+                    message_type="debate",
+                    stage1=debate_result  # Store debate in stage1 field
+                )
     else:
         json_storage.add_debate_message(conversation_id, debate_result)
 
 
 async def get_conversation_context(
     conversation_id: str,
-    limit: int = 3
+    limit: int = 3,
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None
 ) -> Optional[str]:
     """Get summarized context from recent conversation history."""
     if USE_DATABASE:
-        async with get_db_context() as db:
+        if db:
+            # Use provided database session
             try:
                 conv_uuid = uuid.UUID(conversation_id)
             except ValueError:
@@ -343,6 +437,30 @@ async def get_conversation_context(
                     context_lines.append(f"A: {answer}...")
 
             return "\n".join(context_lines)
+        else:
+            # Create new session if none provided
+            async with get_db_context() as db_session:
+                try:
+                    conv_uuid = uuid.UUID(conversation_id)
+                except ValueError:
+                    return None
+
+                context = await db_conversations.get_context(db_session, conv_uuid, limit)
+                if not context:
+                    return None
+
+                # Format context as readable summary (matching JSON format)
+                context_lines = ["Previous conversation context:"]
+                for i, exchange in enumerate(context, 1):
+                    if exchange["role"] == "user":
+                        question = exchange["content"][:300] if exchange["content"] else ""
+                        context_lines.append(f"\nExchange {i}:")
+                        context_lines.append(f"Q: {question}")
+                    elif exchange["role"] == "assistant":
+                        answer = exchange["content"][:500] if exchange["content"] else ""
+                        context_lines.append(f"A: {answer}...")
+
+                return "\n".join(context_lines)
     else:
         return json_storage.get_conversation_context(conversation_id, limit)
 
