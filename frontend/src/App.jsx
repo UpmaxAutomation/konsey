@@ -474,6 +474,9 @@ function MainApp() {
 
             case 'error':
               console.error('Stream error:', event.message);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'council-error',hypothesisId:'H30',location:'App.jsx:475',message:'frontend_error_received',data:{error_message:event.message||'unknown',error_data:event},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
               // Show error message to user
               setCurrentConversation((prev) => {
                 if (!prev?.messages?.length) return prev;
@@ -500,9 +503,6 @@ function MainApp() {
                 chairmanModel: '',
                 chairmanStatus: 'pending'
               });
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'council-error',hypothesisId:'H7',location:'App.jsx:475',message:'frontend_error_received',data:{error_message:event.message||'unknown'},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               break;
 
             default:
