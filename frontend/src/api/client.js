@@ -14,7 +14,10 @@ import {
   logError,
 } from '../utils/errors.js';
 
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+// Get API base URL - Vite env vars are available at build time
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+// Remove trailing slash and add /api if not present
+export const API_BASE = BASE_URL.replace(/\/$/, '') + (BASE_URL.includes('/api') ? '' : '/api');
 
 /**
  * Parse response and throw appropriate error if not OK.

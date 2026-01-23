@@ -10,7 +10,7 @@ import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001') + '/api';
+import { API_BASE } from '../api/client';
 
 export default function Sidebar({
   conversations,
