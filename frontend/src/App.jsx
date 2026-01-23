@@ -58,7 +58,9 @@ function MainApp() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
         
-        const response = await fetch(`${API_BASE}/`, { 
+        // Check root endpoint (not /api/) - backend root is at /
+        const baseUrl = API_BASE.replace('/api', '');
+        const response = await fetch(`${baseUrl}/`, { 
           method: 'GET',
           signal: controller.signal
         });
