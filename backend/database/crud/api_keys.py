@@ -109,6 +109,7 @@ async def set_user_key(
                 updated_at=datetime.utcnow()
             )
         )
+        await db.flush()  # Ensure update is flushed before commit
         return existing
     else:
         new_key = UserAPIKey(
@@ -117,7 +118,7 @@ async def set_user_key(
             encrypted_key=encrypted,
         )
         db.add(new_key)
-        await db.flush()
+        await db.flush()  # Ensure new key is flushed before commit
         return new_key
 
 

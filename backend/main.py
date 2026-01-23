@@ -921,8 +921,39 @@ async def set_api_key_endpoint(
 
     # If user is authenticated, store in database (user-specific)
     if current_user:
-        await db_crud.api_keys.set_user_key(db, current_user.id, request.provider, request.api_key or "")
-        await db.commit()
+        try:
+            await db_crud.api_keys.set_user_key(db, current_user.id, request.provider, request.api_key or "")
+            await db.commit()
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save","hypothesisId":"H1","location":"main.py:924","message":"api_key_saved","data":{"user_id":str(current_user.id),"provider":request.provider,"has_key":bool(request.api_key)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+        except Exception as e:
+            await db.rollback()
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save","hypothesisId":"H2","location":"main.py:930","message":"api_key_save_error","data":{"user_id":str(current_user.id),"provider":request.provider,"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save API key: {str(e)}"
+            )
     else:
         # Fallback to global config for anonymous users
         set_api_key(request.provider, request.api_key)
