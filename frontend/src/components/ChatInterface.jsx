@@ -585,6 +585,9 @@ export default function ChatInterface({
           message,
           modelToUse,
           (type, event) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'quick-frontend',hypothesisId:'H36',location:'ChatInterface.jsx:587',message:'quick_event_received',data:{event_type:type,has_data:!!event.data,has_message:!!event.message},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             if (type === 'chunk') {
               setStreamingText(prev => prev + event.data);
             } else if (type === 'complete' || type === 'title_complete') {
@@ -592,8 +595,12 @@ export default function ChatInterface({
               setStreamingText('');
               onConversationUpdate?.(conversation.id);
             } else if (type === 'error') {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'quick-frontend-error',hypothesisId:'H37',location:'ChatInterface.jsx:595',message:'quick_error_received',data:{error_message:event.message||'unknown',event:event},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
               streamCompleted = true;
               setStreamingText('');
+              console.error('Quick message error:', event.message || event);
             }
           },
           abortControllerRef.current.signal,
@@ -601,6 +608,9 @@ export default function ChatInterface({
         );
       } catch (err) {
         if (err.name !== 'AbortError') {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'quick-frontend-exception',hypothesisId:'H38',location:'ChatInterface.jsx:602',message:'quick_exception',data:{error_name:err.name,error_message:err.message,error_stack:err.stack?.substring(0,500)},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           console.error('Request failed:', err);
         }
         setStreamingText('');

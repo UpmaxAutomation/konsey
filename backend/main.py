@@ -4132,8 +4132,28 @@ async def send_quick_message(
         cancelled = False
 
         try:
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-start","hypothesisId":"H31","location":"main.py:4128","message":"quick_message_start","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"model":model_to_use,"is_first":is_first_message},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             # Add user message
-            await storage.add_user_message(conversation_id, request.content, db=db)
+            await storage.add_user_message(conversation_id, request.content, db=db, user_id=user_id)
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-start","hypothesisId":"H32","location":"main.py:4136","message":"user_message_added","data":{"conversation_id":conversation_id},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
 
             # Start title generation in parallel if first message
             title_task = None
@@ -4152,6 +4172,14 @@ async def send_quick_message(
             thinking = None
             usage_info = None
 
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-start","hypothesisId":"H33","location":"main.py:4150","message":"starting_query_stream","data":{"model":model_to_use,"user_id":str(user_id) if user_id else None,"has_context":bool(conversation_context)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             async for chunk in query_model_stream(model_to_use, messages, user_id=user_id, db=db):
                 # Check for cancellation
                 if cancel_event.is_set():
