@@ -285,6 +285,18 @@ if os.path.exists(os.path.dirname(debug_log_path)):
         pass
 # #endregion
 
+# CORS middleware - MUST be first to handle preflight requests
+# #region agent log
+import os
+debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+if os.path.exists(os.path.dirname(debug_log_path)):
+    try:
+        with open(debug_log_path, 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"cors-investigation","hypothesisId":"H4","location":"main.py:288","message":"cors_middleware:adding","data":{"cors_origins":CORS_ORIGINS,"allow_credentials":True,"allow_methods":"*","allow_headers":"*"},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+# #endregion
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
