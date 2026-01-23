@@ -261,9 +261,16 @@ else:
 
 logger.info("cors_config", origins=CORS_ORIGINS)
 # #region agent log
+# Debug logging - only write if file exists (local dev only)
 import json
-with open('/Users/sezars/llm-council/.cursor/debug.log', 'a') as f:
-    f.write(json.dumps({"sessionId":"debug-session","runId":"cors-debug","hypothesisId":"H2","location":"main.py:262","message":"cors_config","data":{"origins":CORS_ORIGINS,"env_origins":env_origins},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+import os
+debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+if os.path.exists(os.path.dirname(debug_log_path)):
+    try:
+        with open(debug_log_path, 'a') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"cors-debug","hypothesisId":"H2","location":"main.py:262","message":"cors_config","data":{"origins":CORS_ORIGINS,"env_origins":env_origins},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+    except (FileNotFoundError, PermissionError, OSError):
+        pass  # Ignore file errors in production
 # #endregion
 
 app.add_middleware(
