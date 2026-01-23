@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { safeFetch, NetworkError } from '../api/client';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+import { API_BASE } from '../api/client';
 
 const AuthContext = createContext(null);
 
