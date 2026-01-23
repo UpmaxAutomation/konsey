@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse, PlainTextResponse, HTMLResponse, FileResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse, HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import uuid
@@ -221,6 +221,33 @@ For production, configure JWT authentication via the `/api/auth` endpoints.
     lifespan=lifespan,
     openapi_tags=tags_metadata,
 )
+
+# Global exception handler for better error messages
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions with detailed error messages."""
+    import traceback
+    import os
+    
+    # Log the error
+    logger.exception("unhandled_exception", path=request.url.path, method=request.method, error=str(exc))
+    
+    # In production, return generic error; in dev, return details
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    if environment == "production":
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error. Check logs for details."}
+        )
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": str(exc),
+                "type": type(exc).__name__,
+                "traceback": traceback.format_exc()
+            }
+        )
 
 # Setup rate limiting
 setup_rate_limiting(app)
