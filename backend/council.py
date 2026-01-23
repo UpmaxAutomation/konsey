@@ -55,6 +55,21 @@ async def stage1_collect_responses(user_query: str, context: Optional[str] = Non
     # Query all models in parallel (with user-specific API keys)
     responses = await query_models_parallel(council_models, messages_by_model, user_id=user_id, db=db)
 
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            successful = sum(1 for r in responses.values() if r is not None)
+            failed = len(responses) - successful
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"stage1-collect","hypothesisId":"H2","location":"council.py:56","message":"stage1_responses_collected","data":{"total_models":len(council_models),"successful":successful,"failed":failed,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
+
     # Format results
     stage1_results = []
     for model, response in responses.items():
@@ -67,6 +82,15 @@ async def stage1_collect_responses(user_query: str, context: Optional[str] = Non
             if 'thinking' in response:
                 result['thinking'] = response.get('thinking')
             stage1_results.append(result)
+        else:
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"stage1-collect","hypothesisId":"H3","location":"council.py:69","message":"stage1_model_failed","data":{"model":model,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
 
     return stage1_results
 
@@ -466,9 +490,21 @@ async def run_full_council(
 
     # If no models responded successfully, return error
     if not stage1_results:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"council-error","hypothesisId":"H5","location":"council.py:468","message":"all_models_failed","data":{"user_query":user_query[:100],"user_id":str(user_id) if user_id else None,"council_models_count":len(council_models) if 'council_models' in locals() else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         return [], [], {
             "model": "error",
-            "response": "All models failed to respond. Please try again."
+            "response": "All models failed to respond. Please check your API key in Settings → API Keys and ensure OpenRouter API key is set."
         }, {}
 
     # Stage 2: Collect rankings (use original query for ranking, not enhanced)
@@ -665,9 +701,21 @@ async def run_full_council_stream(
     yield {"type": "stage1_complete", "data": stage1_results}
 
     if not stage1_results:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"council-stream-error","hypothesisId":"H6","location":"council.py:667","message":"all_models_failed_stream","data":{"user_query":user_query[:100],"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         yield {
             "type": "error",
-            "message": "All models failed to respond. Please try again."
+            "message": "All models failed to respond. Please check your API key in Settings → API Keys and ensure OpenRouter API key is set."
         }
         return
 

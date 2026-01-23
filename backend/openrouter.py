@@ -186,6 +186,18 @@ async def query_model(
         openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
     
     if not openrouter_key:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-resolution","hypothesisId":"H4","location":"openrouter.py:189","message":"no_openrouter_key","data":{"model":model,"user_id":str(user_id) if user_id else None,"provider":provider},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         print(f"No OpenRouter API key available for model {model}. User must set their own key or admin must set system key.")
         return None
 
@@ -267,6 +279,19 @@ async def query_model(
             return result
 
     except Exception as e:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        import traceback
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"query-model-error","hypothesisId":"H9","location":"openrouter.py:269","message":"query_model_exception","data":{"model":model,"error_type":type(e).__name__,"error":str(e),"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         print(f"Error querying model {model}: {e}")
         return None
 

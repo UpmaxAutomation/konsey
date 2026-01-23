@@ -474,6 +474,24 @@ function MainApp() {
 
             case 'error':
               console.error('Stream error:', event.message);
+              // Show error message to user
+              setCurrentConversation((prev) => {
+                if (!prev?.messages?.length) return prev;
+                const messages = [...prev.messages];
+                const lastMsg = messages[messages.length - 1];
+                if (lastMsg) {
+                  lastMsg.stage3 = {
+                    model: 'error',
+                    response: event.message || 'An error occurred. Please try again.'
+                  };
+                  if (lastMsg.loading) {
+                    lastMsg.loading.stage1 = false;
+                    lastMsg.loading.stage2 = false;
+                    lastMsg.loading.stage3 = false;
+                  }
+                }
+                return { ...prev, messages };
+              });
               setIsLoading(false);
               setCouncilProgress({
                 stage: 0,
@@ -482,6 +500,9 @@ function MainApp() {
                 chairmanModel: '',
                 chairmanStatus: 'pending'
               });
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'council-error',hypothesisId:'H7',location:'App.jsx:475',message:'frontend_error_received',data:{error_message:event.message||'unknown'},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
               break;
 
             default:
@@ -501,12 +522,46 @@ function MainApp() {
         return;
       }
       console.error('Failed to send message:', error);
-      // Rollback to state before optimistic updates using stored count
-      setCurrentConversation((prev) => ({
-        ...prev,
-        messages: (prev?.messages || []).slice(0, messageCountBeforeOptimistic),
-      }));
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'council-error',hypothesisId:'H8',location:'App.jsx:497',message:'send_message_exception',data:{error_name:error.name,error_message:error.message,error_stack:error.stack?.substring(0,500)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // Show error message to user instead of just rolling back
+      setCurrentConversation((prev) => {
+        const messages = [...(prev?.messages || [])];
+        // Keep user message but add error message
+        if (messages.length > messageCountBeforeOptimistic) {
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg && lastMsg.role === 'assistant') {
+            lastMsg.stage3 = {
+              model: 'error',
+              response: error.message || 'Failed to send message. Please check your API key in Settings → API Keys.'
+            };
+            if (lastMsg.loading) {
+              lastMsg.loading.stage1 = false;
+              lastMsg.loading.stage2 = false;
+              lastMsg.loading.stage3 = false;
+            }
+          } else {
+            // Add error message
+            messages.push({
+              role: 'assistant',
+              stage3: {
+                model: 'error',
+                response: error.message || 'Failed to send message. Please check your API key in Settings → API Keys.'
+              }
+            });
+          }
+        }
+        return { ...prev, messages };
+      });
       setIsLoading(false);
+      setCouncilProgress({
+        stage: 0,
+        models: [],
+        modelProgress: {},
+        chairmanModel: '',
+        chairmanStatus: 'pending'
+      });
     } finally {
       councilAbortRef.current = null;
     }
