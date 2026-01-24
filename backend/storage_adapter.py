@@ -69,7 +69,7 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                 except Exception:
                     pass
             # #endregion
-            return {
+            result = {
                 "id": conversation_id,  # Keep string ID for compatibility
                 "created_at": conv.created_at.isoformat(),
                 "title": conv.title,
@@ -77,17 +77,35 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                 "folder_id": conv.folder_id,
                 "tags": conv.tags or []
             }
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H59","location":"storage_adapter.py:72","message":"create_conversation:returning","data":{"conversation_id":conversation_id,"result_id":result.get("id"),"result_keys":list(result.keys())},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+            return result
         else:
             # Create new session
             async with get_db_context() as db_session:
                 actual_user_id = user_id or _get_user_id()
+                # #region agent log
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H60","location":"storage_adapter.py:54","message":"create_conversation:new_session","data":{"conversation_id":conversation_id,"actual_user_id":str(actual_user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
                 conv = await db_conversations.create(
                     db_session,
                     conversation_id=uuid.UUID(conversation_id),
                     user_id=actual_user_id,
                     title="New Conversation"
                 )
-                return {
+                await db_session.commit()
+                result = {
                     "id": conversation_id,
                     "created_at": conv.created_at.isoformat(),
                     "title": conv.title,
@@ -95,6 +113,15 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                     "folder_id": conv.folder_id,
                     "tags": conv.tags or []
                 }
+                # #region agent log
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H61","location":"storage_adapter.py:70","message":"create_conversation:new_session_created","data":{"conversation_id":conversation_id,"result_id":result.get("id")},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
+                return result
     else:
         return json_storage.create_conversation(conversation_id)
 
