@@ -570,16 +570,37 @@ async def get_config(
             council_models = settings.council_models
             chairman_model = settings.chairman_model
         
-        # Get user API keys (masked)
-        providers = await db_crud.api_keys.list_user_providers(db, current_user.id)
+        # Get user API keys (masked) - optimized single query
+        all_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
         api_keys = {}
-        for provider in ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]:
-            user_key = await db_crud.api_keys.get_user_key(db, current_user.id, provider)
-            if user_key:
-                if len(user_key) > 8:
-                    api_keys[provider] = user_key[:4] + "..." + user_key[-4:]
-                else:
-                    api_keys[provider] = "***"
+        
+        # Fetch all user keys in one query
+        from sqlalchemy import select
+        from .database.models import UserAPIKey
+        result = await db.execute(
+            select(UserAPIKey).where(
+                UserAPIKey.user_id == current_user.id,
+                UserAPIKey.is_active == True,
+                UserAPIKey.provider.in_(all_providers)
+            )
+        )
+        user_keys = result.scalars().all()
+        
+        # Create a map of provider -> key
+        key_map = {key.provider: key for key in user_keys}
+        
+        # Decrypt and mask keys
+        for provider in all_providers:
+            if provider in key_map:
+                try:
+                    from .database.crud.api_keys import _decrypt
+                    decrypted = _decrypt(key_map[provider].encrypted_key)
+                    if len(decrypted) > 8:
+                        api_keys[provider] = decrypted[:4] + "..." + decrypted[-4:]
+                    else:
+                        api_keys[provider] = "***"
+                except Exception:
+                    api_keys[provider] = ""
             else:
                 api_keys[provider] = ""
     else:
