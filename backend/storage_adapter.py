@@ -150,7 +150,30 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
         if db:
             # Use provided database session
             actual_user_id = user_id or _get_user_id()
+            # #region agent log
+            import os
+            import json
+            from datetime import datetime
+            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations-storage","hypothesisId":"H42","location":"storage_adapter.py:147","message":"list_conversations:entry","data":{"has_user_id":bool(actual_user_id),"user_id":str(actual_user_id) if actual_user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
+            if actual_user_id is None:
+                # Return empty list for anonymous users in database mode
+                return []
             convs = await db_conversations.list_by_user(db, actual_user_id)
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations-storage","hypothesisId":"H43","location":"storage_adapter.py:163","message":"list_conversations:query_result","data":{"conversation_count":len(convs)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             return [
                 {
                     "id": str(conv.id),
@@ -166,6 +189,9 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
             # Create new session
             async with get_db_context() as db_session:
                 actual_user_id = user_id or _get_user_id()
+                if actual_user_id is None:
+                    # Return empty list for anonymous users in database mode
+                    return []
                 convs = await db_conversations.list_by_user(db_session, actual_user_id)
                 return [
                     {

@@ -3310,8 +3310,46 @@ async def list_conversations(
     Returns:
         List[ConversationMetadata]: List of conversation summaries
     """
-    user_id = current_user.id if current_user else None
-    return await storage.list_conversations(user_id=user_id, db=db)
+    try:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations","hypothesisId":"H39","location":"main.py:3296","message":"list_conversations:entry","data":{"has_user":bool(current_user),"user_id":str(current_user.id) if current_user else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        user_id = current_user.id if current_user else None
+        result = await storage.list_conversations(user_id=user_id, db=db)
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations","hypothesisId":"H40","location":"main.py:3314","message":"list_conversations:success","data":{"count":len(result) if result else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        return result
+    except Exception as e:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        import traceback
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations","hypothesisId":"H41","location":"main.py:3316","message":"list_conversations:exception","data":{"error_type":type(e).__name__,"error":str(e),"traceback":traceback.format_exc()[:500]},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        logger.exception("list_conversations_error", error=str(e))
+        raise
 
 
 @app.post(
@@ -3745,7 +3783,7 @@ async def send_message_stream(
     # Get conversation context for follow-up questions (before adding current message)
     conversation_context = None
     if not is_first_message:
-        conversation_context = await storage.get_conversation_context(conversation_id, limit=3)
+        conversation_context = await storage.get_conversation_context(conversation_id, limit=3, user_id=user_id, db=db)
 
     async def event_generator():
         # Create cancellation event and register this stream
