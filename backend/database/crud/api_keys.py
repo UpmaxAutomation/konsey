@@ -59,7 +59,7 @@ async def get_user_key(
     if os.path.exists(os.path.dirname(debug_log_path)):
         try:
             with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H17","location":"api_keys.py:48","message":"get_user_key:entry","data":{"user_id":str(user_id),"provider":provider},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H62","location":"api_keys.py:48","message":"get_user_key:entry","data":{"user_id":str(user_id),"provider":provider},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
         except Exception:
             pass
     # #endregion
@@ -75,7 +75,7 @@ async def get_user_key(
     if os.path.exists(os.path.dirname(debug_log_path)):
         try:
             with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H18","location":"api_keys.py:61","message":"get_user_key:query_result","data":{"user_id":str(user_id),"provider":provider,"found_record":bool(key_record)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H63","location":"api_keys.py:61","message":"get_user_key:query_result","data":{"user_id":str(user_id),"provider":provider,"found_record":bool(key_record),"key_id":str(key_record.id) if key_record else None,"is_active":key_record.is_active if key_record else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
         except Exception:
             pass
     # #endregion
@@ -86,7 +86,7 @@ async def get_user_key(
             if os.path.exists(os.path.dirname(debug_log_path)):
                 try:
                     with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H19","location":"api_keys.py:64","message":"get_user_key:decrypted","data":{"user_id":str(user_id),"provider":provider,"key_length":len(decrypted) if decrypted else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H64","location":"api_keys.py:64","message":"get_user_key:decrypted","data":{"user_id":str(user_id),"provider":provider,"key_length":len(decrypted) if decrypted else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
                 except Exception:
                     pass
             # #endregion
@@ -96,7 +96,7 @@ async def get_user_key(
             if os.path.exists(os.path.dirname(debug_log_path)):
                 try:
                     with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H20","location":"api_keys.py:66","message":"get_user_key:decrypt_failed","data":{"user_id":str(user_id),"provider":provider,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-get","hypothesisId":"H65","location":"api_keys.py:66","message":"get_user_key:decrypt_failed","data":{"user_id":str(user_id),"provider":provider,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
                 except Exception:
                     pass
             # #endregion
@@ -125,6 +125,18 @@ async def set_user_key(
     api_key: str
 ) -> UserAPIKey:
     """Set or update API key for a user and provider."""
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-set","hypothesisId":"H66","location":"api_keys.py:121","message":"set_user_key:entry","data":{"user_id":str(user_id),"provider":provider,"has_api_key":bool(api_key),"key_length":len(api_key) if api_key else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
     encrypted = _encrypt(api_key)
 
     # Check if exists
@@ -135,6 +147,14 @@ async def set_user_key(
         )
     )
     existing = result.scalar_one_or_none()
+    # #region agent log
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-set","hypothesisId":"H67","location":"api_keys.py:137","message":"set_user_key:existing_check","data":{"user_id":str(user_id),"provider":provider,"has_existing":bool(existing),"existing_id":str(existing.id) if existing else None,"existing_is_active":existing.is_active if existing else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
 
     if existing:
         await db.execute(
@@ -147,6 +167,14 @@ async def set_user_key(
             )
         )
         await db.flush()  # Ensure update is flushed before commit
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-set","hypothesisId":"H68","location":"api_keys.py:149","message":"set_user_key:updated","data":{"user_id":str(user_id),"provider":provider,"key_id":str(existing.id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         return existing
     else:
         new_key = UserAPIKey(
@@ -156,6 +184,14 @@ async def set_user_key(
         )
         db.add(new_key)
         await db.flush()  # Ensure new key is flushed before commit
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-set","hypothesisId":"H69","location":"api_keys.py:159","message":"set_user_key:created","data":{"user_id":str(user_id),"provider":provider,"key_id":str(new_key.id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         return new_key
 
 

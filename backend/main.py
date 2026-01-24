@@ -853,17 +853,67 @@ async def get_api_keys_endpoint(
             - providers: List of all supported provider names
     """
     if current_user:
-        # Get user-specific keys from database
-        providers = await db_crud.api_keys.list_user_providers(db, current_user.id)
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H70","location":"main.py:855","message":"get_api_keys:entry","data":{"user_id":str(current_user.id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        # Get user-specific keys from database - optimized single query
+        all_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
         keys = {}
-        for provider in ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]:
-            user_key = await db_crud.api_keys.get_user_key(db, current_user.id, provider)
-            if user_key:
-                # Mask the key
-                if len(user_key) > 8:
-                    keys[provider] = user_key[:4] + "..." + user_key[-4:]
-                else:
-                    keys[provider] = "***"
+        
+        # Fetch all user keys in one query
+        from sqlalchemy import select
+        from ..database.models import UserAPIKey
+        result = await db.execute(
+            select(UserAPIKey).where(
+                UserAPIKey.user_id == current_user.id,
+                UserAPIKey.is_active == True,
+                UserAPIKey.provider.in_(all_providers)
+            )
+        )
+        user_keys = result.scalars().all()
+        
+        # Create a map of provider -> key
+        key_map = {key.provider: key for key in user_keys}
+        
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H71","location":"main.py:870","message":"get_api_keys:query_result","data":{"user_id":str(current_user.id),"keys_found":len(user_keys),"providers":list(key_map.keys())},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        
+        # Decrypt and mask keys
+        for provider in all_providers:
+            if provider in key_map:
+                try:
+                    from ..database.crud.api_keys import _decrypt
+                    decrypted = _decrypt(key_map[provider].encrypted_key)
+                    # Mask the key
+                    if len(decrypted) > 8:
+                        keys[provider] = decrypted[:4] + "..." + decrypted[-4:]
+                    else:
+                        keys[provider] = "***"
+                except Exception as e:
+                    # #region agent log
+                    if os.path.exists(os.path.dirname(debug_log_path)):
+                        try:
+                            with open(debug_log_path, 'a') as f:
+                                f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H72","location":"main.py:885","message":"get_api_keys:decrypt_error","data":{"user_id":str(current_user.id),"provider":provider,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                        except Exception:
+                            pass
+                    # #endregion
+                    keys[provider] = ""
             else:
                 keys[provider] = ""
     else:
@@ -923,9 +973,29 @@ async def set_api_key_endpoint(
 
     # If user is authenticated, store in database (user-specific)
     if current_user:
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H73","location":"main.py:925","message":"set_api_key:entry","data":{"user_id":str(current_user.id),"provider":request.provider,"has_key":bool(request.api_key),"key_length":len(request.api_key) if request.api_key else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         try:
-            await db_crud.api_keys.set_user_key(db, current_user.id, request.provider, request.api_key or "")
+            key_record = await db_crud.api_keys.set_user_key(db, current_user.id, request.provider, request.api_key or "")
             await db.commit()
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H74","location":"main.py:928","message":"set_api_key:committed","data":{"user_id":str(current_user.id),"provider":request.provider,"key_id":str(key_record.id) if key_record else None,"is_active":key_record.is_active if key_record else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             # #region agent log
             import os
             import json

@@ -118,13 +118,25 @@ export default function Settings({ isOpen, onClose }) {
 
     setSavingKey(provider);
     setError(null);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H75',location:'Settings.jsx:115',message:'save_api_key:start',data:{provider,has_key:!!key,key_length:key?.length || 0},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
-      await api.setApiKey(provider, key);
+      const result = await api.setApiKey(provider, key);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H76',location:'Settings.jsx:122',message:'save_api_key:success',data:{provider,result_status:result?.status,user_specific:result?.user_specific},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const keysData = await api.getApiKeys();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H77',location:'Settings.jsx:124',message:'save_api_key:refreshed',data:{provider,has_key_in_response:!!(keysData.api_keys?.[provider])},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       setApiKeys(keysData.api_keys || {});
       setApiKeyInputs({ ...apiKeyInputs, [provider]: '' });
       showMessage('success', `${provider} API key saved successfully`);
     } catch (err) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H78',location:'Settings.jsx:128',message:'save_api_key:error',data:{provider,error_name:err?.name,error_message:err?.message},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       showMessage('error', `Failed to save ${provider} API key: ${err.message || 'Unknown error'}`);
     } finally {
       setSavingKey(null);
