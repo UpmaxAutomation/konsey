@@ -3435,28 +3435,20 @@ async def create_conversation(
         # #endregion
         return conversation
     except Exception as exc:
-        # region agent log
-        try:
-            open("/Users/sezars/llm-council/.cursor/debug.log", "a").write(
-                json.dumps(
-                    {
-                        "sessionId": "debug-session",
-                        "runId": "pre-fix",
-                        "hypothesisId": "H10",
-                        "location": "main.py:3220",
-                        "message": "create_conversation:error",
-                        "data": {
-                            "error_type": type(exc).__name__,
-                            "error": str(exc),
-                        },
-                        "timestamp": int(datetime.now().timestamp() * 1000),
-                    }
-                )
-                + "\n"
-            )
-        except Exception:
-            pass
-        # endregion
+        # #region agent log
+        import os
+        import json
+        from datetime import datetime
+        import traceback
+        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation","hypothesisId":"H58","location":"main.py:3437","message":"create_conversation:exception","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"error_type":type(exc).__name__,"error":str(exc),"traceback":traceback.format_exc()[:1000]},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        logger.exception("create_conversation_error", conversation_id=conversation_id, user_id=str(user_id) if user_id else None, error=str(exc))
         raise
 
 
