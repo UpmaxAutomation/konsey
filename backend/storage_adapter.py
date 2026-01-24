@@ -30,10 +30,30 @@ def _get_user_id() -> uuid.UUID:
 
 async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID] = None, db: Optional[AsyncSession] = None) -> Dict[str, Any]:
     """Create a new conversation."""
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H49","location":"storage_adapter.py:31","message":"create_conversation:entry","data":{"conversation_id":conversation_id,"has_user_id":bool(user_id),"user_id":str(user_id) if user_id else None,"has_db":bool(db)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
     if USE_DATABASE:
         if db:
             # Use provided database session
             actual_user_id = user_id or _get_user_id()
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H50","location":"storage_adapter.py:40","message":"create_conversation:before_create","data":{"conversation_id":conversation_id,"user_id_provided":str(user_id) if user_id else None,"actual_user_id":str(actual_user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             conv = await db_conversations.create(
                 db,
                 conversation_id=uuid.UUID(conversation_id),
@@ -41,6 +61,14 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                 title="New Conversation"
             )
             await db.flush()
+            # #region agent log
+            if os.path.exists(os.path.dirname(debug_log_path)):
+                try:
+                    with open(debug_log_path, 'a') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H51","location":"storage_adapter.py:50","message":"create_conversation:db_created","data":{"conversation_id":conversation_id,"conv_id":str(conv.id) if conv else None,"conv_user_id":str(conv.user_id) if conv else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                except Exception:
+                    pass
+            # #endregion
             return {
                 "id": conversation_id,  # Keep string ID for compatibility
                 "created_at": conv.created_at.isoformat(),
