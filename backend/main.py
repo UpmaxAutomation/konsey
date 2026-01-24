@@ -451,6 +451,8 @@ class Conversation(BaseModel):
     created_at: str
     title: str
     messages: List[Dict[str, Any]]
+    folder_id: Optional[str] = None
+    tags: Optional[List[str]] = None
 
 
 class CreateProjectRequest(BaseModel):
