@@ -199,6 +199,9 @@ export async function authFetch(url, options = {}, context = 'authFetch') {
 
   // If unauthorized, try refreshing the token
   if (response.status === 401) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'auth-401','hypothesisId':'H44',location:'client.js:200',message:'auth_401_detected',data:{url,hasToken:Boolean(localStorage.getItem('access_token'))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
       await refreshAccessToken();
       // Retry with new token
@@ -208,19 +211,31 @@ export async function authFetch(url, options = {}, context = 'authFetch') {
       fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4',location:'client.js:179',message:'authFetch:retryAfterRefresh',data:{url,status:response.status},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       
-      // If still 401 after refresh, redirect to login
+      // If still 401 after refresh, only redirect if not a streaming request
       if (response.status === 401) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'auth-401-failed','hypothesisId':'H45',location:'client.js:212',message:'auth_401_after_refresh',data:{url,isStream:url.includes('/stream')},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        // Don't redirect for streaming requests - let the error handler deal with it
+        if (!url.includes('/stream')) {
+          window.location.href = '/login';
+        }
         throw new Error('Session expired. Please log in again.');
       }
     } catch (err) {
-      // If refresh failed, redirect to login
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'auth-refresh-error','hypothesisId':'H46',location:'client.js:218',message:'auth_refresh_exception',data:{url,error:err.message,isStream:url.includes('/stream')},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // If refresh failed, only redirect if not a streaming request
       if (err.message.includes('Token refresh failed') || err.message.includes('No refresh token')) {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        window.location.href = '/login';
+        // Don't redirect for streaming requests - let the error handler deal with it
+        if (!url.includes('/stream')) {
+          window.location.href = '/login';
+        }
       }
       throw parseError(err);
     }
