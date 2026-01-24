@@ -1030,14 +1030,27 @@ async def set_api_key_endpoint(
         try:
             key_record = await db_crud.api_keys.set_user_key(db, current_user.id, request.provider, request.api_key or "")
             await db.commit()
+            # Verify the key was actually saved by querying it back
+            verify_key = await db_crud.api_keys.get_user_key(db, current_user.id, request.provider)
             # #region agent log
             if os.path.exists(os.path.dirname(debug_log_path)):
                 try:
                     with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H74","location":"main.py:928","message":"set_api_key:committed","data":{"user_id":str(current_user.id),"provider":request.provider,"key_id":str(key_record.id) if key_record else None,"is_active":key_record.is_active if key_record else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H74","location":"main.py:1011","message":"set_api_key:committed","data":{"user_id":str(current_user.id),"provider":request.provider,"key_id":str(key_record.id) if key_record else None,"is_active":key_record.is_active if key_record else None,"verify_found":bool(verify_key),"verify_length":len(verify_key) if verify_key else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
                 except Exception:
                     pass
             # #endregion
+            if not verify_key and request.api_key:
+                # Key was saved but can't be retrieved - this is a problem
+                # #region agent log
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H89","location":"main.py:1018","message":"set_api_key:verification_failed","data":{"user_id":str(current_user.id),"provider":request.provider,"key_id":str(key_record.id) if key_record else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
+                logger.warning(f"API key saved but verification failed for user {current_user.id}, provider {request.provider}")
             # #region agent log
             import os
             import json
