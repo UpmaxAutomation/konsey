@@ -3380,32 +3380,30 @@ async def create_conversation(
     """
     conversation_id = str(uuid.uuid4())
     user_id = current_user.id if current_user else None
-    # region agent log
-    try:
-        open("/Users/sezars/llm-council/.cursor/debug.log", "a").write(
-            json.dumps(
-                {
-                    "sessionId": "debug-session",
-                    "runId": "pre-fix",
-                    "hypothesisId": "H9",
-                    "location": "main.py:3204",
-                    "message": "create_conversation:entry",
-                    "data": {
-                        "has_user": bool(user_id),
-                        "conversation_id": conversation_id,
-                    },
-                    "timestamp": int(datetime.now().timestamp() * 1000),
-                }
-            )
-            + "\n"
-        )
-    except Exception:
-        pass
-    # endregion
+    # #region agent log
+    import os
+    import json
+    from datetime import datetime
+    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation","hypothesisId":"H47","location":"main.py:3381","message":"create_conversation:entry","data":{"has_user":bool(current_user),"user_id":str(user_id) if user_id else None,"conversation_id":conversation_id},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
     try:
         conversation = await storage.create_conversation(
             conversation_id, user_id=user_id, db=db
         )
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation","hypothesisId":"H48","location":"main.py:3406","message":"create_conversation:storage_success","data":{"conversation_id":conversation_id,"has_conversation":bool(conversation)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
         # #region agent log
         import os
         import json
