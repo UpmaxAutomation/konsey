@@ -3421,7 +3421,15 @@ async def create_conversation(
         if os.path.exists(os.path.dirname(debug_log_path)):
             try:
                 with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H2","location":"main.py:3380","message":"conversation_committed","data":{"conversation_id":conversation_id},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H2","location":"main.py:3421","message":"conversation_committed","data":{"conversation_id":conversation_id,"has_conversation":bool(conversation),"conversation_keys":list(conversation.keys()) if conversation else []},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+            except Exception:
+                pass
+        # #endregion
+        # #region agent log
+        if os.path.exists(os.path.dirname(debug_log_path)):
+            try:
+                with open(debug_log_path, 'a') as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H57","location":"main.py:3430","message":"conversation_returning","data":{"conversation_id":conversation_id,"conversation_id_in_response":conversation.get("id") if conversation else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
             except Exception:
                 pass
         # #endregion

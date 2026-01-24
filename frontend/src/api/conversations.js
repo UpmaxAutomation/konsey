@@ -31,29 +31,47 @@ export async function listConversations() {
  */
 export async function createConversation() {
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'conversations.js:32',message:'createConversation:request',data:{url:`${API_BASE}/conversations`},timestamp:Date.now()})}).catch(()=>{});
+  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H52',location:'conversations.js:32',message:'createConversation:request',data:{url:`${API_BASE}/conversations`,apiBase:API_BASE},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
-  const response = await authFetch(`${API_BASE}/conversations`, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2',location:'conversations.js:37',message:'createConversation:response',data:{status:response.status,ok:response.ok},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  if (!response.ok) {
-    let errorMessage = 'Failed to create conversation';
-    try {
-      const errorData = await response.json();
-      errorMessage = errorData.detail || errorData.message || errorMessage;
-    } catch (e) {
-      // If response is not JSON, use status text
-      errorMessage = response.statusText || errorMessage;
+  try {
+    const response = await authFetch(`${API_BASE}/conversations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H53',location:'conversations.js:40',message:'createConversation:response_received',data:{status:response.status,ok:response.ok,statusText:response.statusText},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    if (!response.ok) {
+      let errorMessage = 'Failed to create conversation';
+      let errorData = null;
+      try {
+        errorData = await response.json();
+        errorMessage = errorData.detail || errorData.message || errorMessage;
+      } catch (e) {
+        // If response is not JSON, use status text
+        errorMessage = response.statusText || errorMessage;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H54',location:'conversations.js:50',message:'createConversation:error_response',data:{status:response.status,errorMessage,errorData},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      const error = new Error(errorMessage);
+      error.status = response.status;
+      throw error;
     }
-    const error = new Error(errorMessage);
-    error.status = response.status;
+    const data = await response.json();
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H55',location:'conversations.js:58',message:'createConversation:success',data:{conversation_id:data?.id,has_id:!!data?.id,has_messages:!!data?.messages},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return data;
+  } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H56',location:'conversations.js:62',message:'createConversation:exception',data:{error_name:error?.name,error_message:error?.message,error_status:error?.status,error_stack:error?.stack?.substring(0,500)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     throw error;
   }
-  return response.json();
 }
 
 /**
