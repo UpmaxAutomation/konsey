@@ -592,14 +592,35 @@ async def get_config(
         # Decrypt and mask keys
         for provider in all_providers:
             if provider in key_map:
+                key_record = key_map[provider]
+                # #region agent log
+                if os.path.exists(os.path.dirname(debug_log_path)):
+                    try:
+                        with open(debug_log_path, 'a') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H83","location":"main.py:885","message":"get_api_keys:processing_key","data":{"user_id":str(current_user.id),"provider":provider,"key_id":str(key_record.id),"is_active":key_record.is_active},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                    except Exception:
+                        pass
+                # #endregion
+                # Only include active keys
+                if not key_record.is_active:
+                    api_keys[provider] = ""
+                    continue
                 try:
                     from .database.crud.api_keys import _decrypt
-                    decrypted = _decrypt(key_map[provider].encrypted_key)
+                    decrypted = _decrypt(key_record.encrypted_key)
                     if len(decrypted) > 8:
                         api_keys[provider] = decrypted[:4] + "..." + decrypted[-4:]
                     else:
                         api_keys[provider] = "***"
-                except Exception:
+                except Exception as e:
+                    # #region agent log
+                    if os.path.exists(os.path.dirname(debug_log_path)):
+                        try:
+                            with open(debug_log_path, 'a') as f:
+                                f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H84","location":"main.py:895","message":"get_api_keys:decrypt_error","data":{"user_id":str(current_user.id),"provider":provider,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+                        except Exception:
+                            pass
+                    # #endregion
                     api_keys[provider] = ""
             else:
                 api_keys[provider] = ""

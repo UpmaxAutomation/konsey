@@ -139,7 +139,7 @@ async def set_user_key(
     # #endregion
     encrypted = _encrypt(api_key)
 
-    # Check if exists
+    # Check if exists (including inactive ones - we'll reactivate them)
     result = await db.execute(
         select(UserAPIKey).where(
             UserAPIKey.user_id == user_id,
@@ -147,6 +147,14 @@ async def set_user_key(
         )
     )
     existing = result.scalar_one_or_none()
+    # #region agent log
+    if os.path.exists(os.path.dirname(debug_log_path)):
+        try:
+            with open(debug_log_path, 'a') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-set","hypothesisId":"H82","location":"api_keys.py:143","message":"set_user_key:existing_check","data":{"user_id":str(user_id),"provider":provider,"has_existing":bool(existing),"existing_id":str(existing.id) if existing else None,"existing_is_active":existing.is_active if existing else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
+        except Exception:
+            pass
+    # #endregion
     # #region agent log
     if os.path.exists(os.path.dirname(debug_log_path)):
         try:
