@@ -50,7 +50,7 @@ Added comprehensive file upload capability to LLM Council, allowing users to upl
 
 ### File Upload
 - **Supported formats**: txt, md, py, js, ts, jsx, tsx, json, csv, html, css, yaml, yml, xml, sql, sh, bash, c, cpp, h, java, go, rs, rb, php, swift, kt
-- **Max size**: 10MB per file
+- **Max size**: 25MB per file
 - **Storage**: `data/uploads/{conversation_id}/`
 - **Security**: File type whitelist, size limits, path traversal prevention, SHA-256 hashing
 
@@ -124,7 +124,7 @@ The test script:
 ## Security Considerations
 
 1. ✅ **File type whitelist** - Only allows safe text-based file types
-2. ✅ **Size limits** - Maximum 10MB per file
+2. ✅ **Size limits** - Maximum 25MB per file
 3. ✅ **Path traversal prevention** - Validates filenames
 4. ✅ **Hash verification** - SHA-256 for integrity checking
 5. ✅ **Isolated storage** - Each conversation has separate directory

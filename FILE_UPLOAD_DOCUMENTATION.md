@@ -9,7 +9,7 @@ The LLM Council now supports file uploads for conversations. Users can upload co
 - **Upload files** to conversations (txt, md, py, js, ts, json, csv, html, css, yaml, etc.)
 - **Automatic context inclusion**: Attached files are prepended to the query before sending to models
 - **File management**: List, download, and delete files from conversations
-- **Size limits**: Maximum 10MB per file
+- **Size limits**: Maximum 25MB per file
 - **Security**: Validates file types and prevents path traversal attacks
 
 ## Supported File Types
@@ -178,7 +178,7 @@ data/
 ### File Too Large
 ```json
 {
-  "detail": "File size 15.2MB exceeds maximum 10MB"
+  "detail": "File size 15.2MB exceeds maximum 25MB"
 }
 ```
 
@@ -231,7 +231,7 @@ User messages with attached files are stored as:
 ## Security Features
 
 1. **File Type Whitelist**: Only allows specific safe file extensions
-2. **Size Limit**: Maximum 10MB per file
+2. **Size Limit**: Maximum 25MB per file
 3. **Path Traversal Prevention**: Validates filenames don't contain `..`, `/`, or `\`
 4. **Hash Verification**: SHA-256 hash generated for each file
 5. **Isolated Storage**: Each conversation has its own directory
@@ -306,7 +306,7 @@ await fetch(`/api/conversations/${conversationId}/message`, {
 ## Limits and Quotas
 
 Current limits:
-- **Max file size**: 10MB
+- **Max file size**: 25MB
 - **Max files per conversation**: Unlimited (but consider disk space)
 - **Total storage**: Limited by available disk space
 

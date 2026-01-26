@@ -158,7 +158,7 @@ def save_file(conversation_id: str, filename: str, content: bytes) -> Dict:
 
 def get_file_content(conversation_id: str, filename: str) -> str:
     """
-    Read file content as text.
+    Read file content as text with graceful encoding handling.
 
     Args:
         conversation_id: Unique conversation identifier
@@ -169,7 +169,6 @@ def get_file_content(conversation_id: str, filename: str) -> str:
 
     Raises:
         FileNotFoundError: If file doesn't exist
-        UnicodeDecodeError: If file is not valid text
         ValueError: If path traversal is detected
     """
     file_path = _safe_file_path(conversation_id, filename)
@@ -177,9 +176,25 @@ def get_file_content(conversation_id: str, filename: str) -> str:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {filename} not found")
 
-    # Read file content
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read()
+    # Try multiple encodings
+    encodings_to_try = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252']
+
+    for encoding in encodings_to_try:
+        try:
+            with open(file_path, 'r', encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+
+    # If all encodings fail, read as binary and decode with errors='replace'
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            # Try to decode with replacement for invalid chars
+            return content.decode('utf-8', errors='replace')
+    except Exception:
+        # Last resort - return placeholder
+        return f"[Binary file - content cannot be displayed: {filename}]"
 
 
 def get_file_bytes(conversation_id: str, filename: str) -> bytes:

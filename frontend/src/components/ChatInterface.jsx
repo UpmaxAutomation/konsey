@@ -55,6 +55,7 @@ export default function ChatInterface({
   const [councilModels, setCouncilModels] = useState([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [pendingUserMessage, setPendingUserMessage] = useState(null); // Show user message immediately in quick mode
   const [mode, setMode] = useState('quick'); // 'quick', 'council', or 'compare'
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [modelSearch, setModelSearch] = useState('');
@@ -678,7 +679,7 @@ export default function ChatInterface({
   // Scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation, streamingText]);
+  }, [conversation, streamingText, pendingUserMessage]);
 
   // Stop/cancel ongoing request
   const handleStop = async () => {
@@ -842,6 +843,13 @@ export default function ChatInterface({
       setStreamingText('');
       setRouteInfo(null);
 
+      // Show user message immediately (optimistic update)
+      setPendingUserMessage({
+        role: 'user',
+        content: message,
+        attached_files: files
+      });
+
       // Create abort controller for cancellation
       abortControllerRef.current = new AbortController();
       let streamCompleted = false;
@@ -878,12 +886,14 @@ export default function ChatInterface({
             } else if (eventType === 'complete') {
               streamCompleted = true;
               setIsStreaming(false);
+              setPendingUserMessage(null); // Clear as conversation will reload
               // Reload conversation to get the saved message
               if (onConversationUpdate) {
                 onConversationUpdate(conversation.id);
               }
             } else if (eventType === 'error') {
               setIsStreaming(false);
+              setPendingUserMessage(null); // Clear on error
               console.error('Stream error:', event.message);
             }
           },
@@ -900,6 +910,7 @@ export default function ChatInterface({
           console.error('Auto mode error:', error);
         }
         setIsStreaming(false);
+        setPendingUserMessage(null); // Clear on error/abort
       } finally {
         abortControllerRef.current = null;
         // Only reload if stream completed successfully
@@ -911,6 +922,13 @@ export default function ChatInterface({
       // Quick mode - stream directly with manually selected model
       setStreamingText('');
       setRouteInfo(null);
+
+      // Show user message immediately (optimistic update)
+      setPendingUserMessage({
+        role: 'user',
+        content: message,
+        attached_files: files
+      });
 
       // Upload pasted images first
       let allFiles = [...files];
@@ -965,10 +983,12 @@ export default function ChatInterface({
             } else if (type === 'complete' || type === 'title_complete') {
               streamCompleted = true;
               setStreamingText('');
+              setPendingUserMessage(null); // Clear pending message as conversation will reload
               onConversationUpdate?.(conversation.id);
             } else if (type === 'error') {
               streamCompleted = true;
               setStreamingText('');
+              setPendingUserMessage(null); // Clear on error
               const errorMsg = event.message || 'An error occurred';
               console.error('Quick message error:', errorMsg);
               // Show error to user
@@ -995,6 +1015,7 @@ export default function ChatInterface({
           }
         }
         setStreamingText('');
+        setPendingUserMessage(null); // Clear on error/abort
       } finally {
         // Always clean up state regardless of how we exit
         setIsStreaming(false);
@@ -1484,6 +1505,27 @@ export default function ChatInterface({
                 You preferred: <strong>{getModelName(compareVote)}</strong>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Pending user message (shown immediately in quick mode before response) */}
+        {pendingUserMessage && (
+          <div className="claude-message user">
+            <div className="claude-message-content">
+              <div className="claude-message-role">You</div>
+              <div className="claude-message-text">
+                <SafeMarkdown components={{ code: CodeBlock }}>
+                  {pendingUserMessage.content}
+                </SafeMarkdown>
+              </div>
+              {pendingUserMessage.attached_files?.length > 0 && (
+                <div className="message-attachments">
+                  {pendingUserMessage.attached_files.map((filename, idx) => (
+                    <span key={idx} className="attachment-chip">📎 {filename}</span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

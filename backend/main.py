@@ -3936,7 +3936,7 @@ async def send_message_stream(
             metadata = None
 
             # Stream the council process with real-time token updates (using user-specific API keys)
-            logger.info(f"Council request: fast_mode={request.fast_mode}, web_search={request.web_search}, deep_search={request.deep_search}")
+            logger.info(f"Council request: fast_mode={request.fast_mode}, web_search={request.web_search}, deep_search={request.deep_search}, files={request.attached_files}")
             async for event in run_full_council_stream(
                 request.content,
                 conversation_context,
@@ -3944,7 +3944,9 @@ async def send_message_stream(
                 deep_search=request.deep_search,
                 user_id=user_id,
                 db=db,
-                fast_mode=request.fast_mode
+                fast_mode=request.fast_mode,
+                conversation_id=conversation_id,
+                attached_files=request.attached_files
             ):
                 # Check for cancellation
                 if cancel_event.is_set():

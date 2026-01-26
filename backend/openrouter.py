@@ -311,26 +311,32 @@ async def query_model_stream(
     # Get OpenRouter API key (user-specific or system admin-set)
     openrouter_key = None
     if user_id and db:
-        # Check if user is admin to allow system fallback
-        is_admin = False
-        try:
-            user = await db_crud.users.get_by_id(db, user_id)
-            if user:
-                is_admin = user.is_admin
-        except Exception:
-            pass # Default to False if user fetch fails
-
-        # Try user-specific OpenRouter key first, allow system fallback only if admin
-        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=is_admin)
+        # Try user-specific OpenRouter key first, allow system fallback for all users
+        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=True)
     if not openrouter_key and db:
         # Try system key (admin-set) as fallback
         openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
-    
+
     if not openrouter_key:
-        yield {
-            "error": True,
-            "message": f"No OpenRouter API key available for model {model}. Please set your API key in Settings or contact admin."
-        }
+        # Check if user has a direct provider key (to give a better error message)
+        provider = get_provider_from_model(model)
+        has_direct_key = False
+        if user_id and db:
+            direct_key = await db_crud.api_keys.resolve_api_key(db, user_id, provider, allow_system_fallback=True)
+            has_direct_key = direct_key is not None
+
+        logger.warning(f"No OpenRouter key for streaming: user_id={user_id}, model={model}, provider={provider}, has_direct_key={has_direct_key}")
+
+        if has_direct_key:
+            yield {
+                "error": True,
+                "message": f"You have a {provider} API key, but streaming requires an OpenRouter key. Please add an OpenRouter API key in Settings."
+            }
+        else:
+            yield {
+                "error": True,
+                "message": f"No API key available for model {model}. Please set your OpenRouter or {provider} API key in Settings."
+            }
         return
 
     headers = {

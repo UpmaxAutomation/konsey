@@ -702,7 +702,9 @@ async def run_full_council_stream(
     deep_search: Optional[bool] = None,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None,
-    fast_mode: Optional[bool] = False
+    fast_mode: Optional[bool] = False,
+    conversation_id: Optional[str] = None,
+    attached_files: Optional[List[str]] = None
 ):
     """
     Run the complete 3-stage council process with streaming.
@@ -753,6 +755,31 @@ async def run_full_council_stream(
     enhanced_query = user_query
     context_sections = []
 
+    # Handle attached files (images and text files)
+    image_content = []
+    if conversation_id and attached_files:
+        from . import files
+        # Separate image files from text files
+        image_files = [f for f in attached_files if files.is_image_file(f)]
+        text_files = [f for f in attached_files if not files.is_image_file(f)]
+
+        # Add text files to context (works with all models)
+        if text_files:
+            try:
+                file_context = files.format_files_for_context(conversation_id, text_files)
+                if file_context:
+                    context_sections.append(file_context)
+            except Exception as e:
+                logger.error(f"Error formatting text files: {e}")
+
+        # Prepare image content for vision models (will be handled separately)
+        if image_files:
+            try:
+                image_content = files.format_files_for_vision(conversation_id, image_files)
+                logger.info(f"Prepared {len(image_content)} images for vision models")
+            except Exception as e:
+                logger.error(f"Error formatting images: {e}")
+
     if conversation_context:
         context_sections.append(conversation_context)
 
@@ -784,8 +811,40 @@ async def run_full_council_stream(
             council_models = get_council_models()
     else:
         council_models = get_council_models()
-    
-    messages = [{"role": "user", "content": enhanced_query if context_sections else user_query}]
+
+    # Build per-model messages (for vision model support)
+    from .config import supports_vision
+    final_query = enhanced_query if context_sections else user_query
+    messages_by_model = {}
+
+    for model in council_models:
+        persona = get_model_persona(model)
+
+        # Build user content - multimodal for vision models with images
+        if image_content and supports_vision(model):
+            # Build multimodal content array for vision models
+            user_content = [{"type": "text", "text": final_query}]
+            for img in image_content:
+                if img.get("type") == "image":
+                    source = img.get("source", {})
+                    if source.get("type") == "base64":
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
+                            }
+                        })
+        else:
+            # Plain text content for non-vision models or no images
+            user_content = final_query
+
+        if persona:
+            messages_by_model[model] = [
+                {"role": "system", "content": persona},
+                {"role": "user", "content": user_content}
+            ]
+        else:
+            messages_by_model[model] = [{"role": "user", "content": user_content}]
 
     stage1_results = []
 
@@ -795,7 +854,8 @@ async def run_full_council_stream(
         yield {"type": "stage1_model_start", "model": model}
 
         full_response = ""
-        async for event in query_model_stream(model, messages, user_id=user_id, db=db):
+        model_messages = messages_by_model[model]
+        async for event in query_model_stream(model, model_messages, user_id=user_id, db=db):
             if event.get("chunk"):
                 full_response += event["chunk"]
                 yield {"type": "stage1_model_chunk", "model": model, "chunk": event["chunk"]}
@@ -974,6 +1034,7 @@ Your task is to synthesize all responses into a single, comprehensive, accurate 
         return
 
     # Stage 2: Stream rankings from all models in parallel
+    logger.info("⚠️ RUNNING STAGE 2 - fast_mode was False or not set!")
     # Create anonymized labels
     labels = [chr(65 + i) for i in range(len(stage1_results))]
     label_to_model = {
