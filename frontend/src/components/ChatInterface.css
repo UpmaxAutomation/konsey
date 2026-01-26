@@ -2656,6 +2656,7 @@ input:focus-visible {
 /* Compare inline picker positioning */
 .compare-inline-picker {
   position: absolute;
+  top: auto !important; /* Override .model-picker's top value */
   bottom: calc(100% + 8px);
   right: 0;
   left: auto;

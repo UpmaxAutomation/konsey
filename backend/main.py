@@ -4907,7 +4907,11 @@ async def get_knowledge_file_content(project_id: str, file_id: str):
     summary="Create Project Conversation",
     response_description="New conversation linked to project"
 )
-async def create_conversation_in_project(project_id: str):
+async def create_conversation_in_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Create a new conversation within a project.
 
@@ -4930,9 +4934,14 @@ async def create_conversation_in_project(project_id: str):
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Create conversation
+    # Create conversation with user association
     conversation_id = str(uuid.uuid4())
-    conversation = await storage.create_conversation(conversation_id)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.create_conversation(
+        conversation_id,
+        user_id=user_id,
+        db=db,
+    )
 
     # Link to project
     projects.add_conversation_to_project(project_id, conversation_id)
