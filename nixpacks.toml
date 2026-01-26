@@ -14,3 +14,4 @@ cmd = "uvicorn backend.main:app --host 0.0.0.0 --port $PORT"
 [variables]
 NIXPACKS_NO_INSTALL_UV = "1"
 NIXPACKS_BUILD_CMD = "true"
+PIP_BREAK_SYSTEM_PACKAGES = "1"
