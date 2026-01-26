@@ -226,32 +226,12 @@ async def login(
     db: AsyncSession = Depends(get_db)
 ):
     """Login with email and password."""
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H1","location":"auth.py:227","message":"login:entry","data":{"email":request.email,"has_password":bool(request.password)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
     try:
         user = await crud.users.get_by_email(db, request.email)
     except Exception as e:
         error_msg = str(e)
         error_type = type(e).__name__
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"login-debug","hypothesisId":"H2","location":"auth.py:241","message":"login:db_error","data":{"error_type":error_type,"error":error_msg},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-        
+
         # Check for specific Supabase errors
         if "tenant" in error_msg.lower() or "user not found" in error_msg.lower():
             raise HTTPException(
@@ -675,13 +655,128 @@ async def delete_system_api_key(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid provider. Must be one of: {', '.join(valid_providers)}"
         )
-    
+
     deleted = await crud.api_keys.delete_system_key(db, provider)
     await db.flush()
-    
+
     return {
         "status": "success",
         "message": f"System API key deleted for {provider}",
         "provider": provider,
         "deleted": deleted
     }
+
+
+# Diagnostic endpoint for debugging authentication issues
+@router.get("/debug/token", response_model=dict)
+async def debug_token(
+    req: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Debug endpoint to diagnose JWT token validation issues.
+
+    Returns detailed information about:
+    - Whether a token is present
+    - Token decode status
+    - Specific failure reasons
+    - Environment configuration status
+
+    This endpoint is intentionally public for debugging authentication issues.
+    """
+    import os
+    from ..auth.jwt_handler import decode_access_token, SECRET_KEY
+    from jose import jwt, JWTError
+
+    result = {
+        "token_present": False,
+        "token_valid": False,
+        "decode_success": False,
+        "user_found": False,
+        "user_active": False,
+        "failure_reason": None,
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "secret_key_set": bool(os.getenv("SECRET_KEY")),
+        "secret_key_source": "env" if os.getenv("SECRET_KEY") else "default",
+    }
+
+    # Get Authorization header
+    auth_header = req.headers.get("Authorization")
+    if not auth_header:
+        result["failure_reason"] = "No Authorization header present"
+        return result
+
+    if not auth_header.startswith("Bearer "):
+        result["failure_reason"] = "Authorization header does not start with 'Bearer '"
+        return result
+
+    token = auth_header[7:]  # Remove "Bearer " prefix
+    result["token_present"] = True
+    result["token_length"] = len(token)
+
+    # Try to decode without verification first (to see payload structure)
+    try:
+        unverified = jwt.get_unverified_claims(token)
+        result["token_claims_readable"] = True
+        result["token_type"] = unverified.get("type")
+        result["token_user_id"] = unverified.get("sub")
+        result["token_email"] = unverified.get("email")
+        result["token_exp"] = unverified.get("exp")
+        result["token_iat"] = unverified.get("iat")
+
+        # Check expiration manually
+        from datetime import datetime, timezone
+        exp = unverified.get("exp")
+        if exp:
+            exp_dt = datetime.fromtimestamp(exp, tz=timezone.utc)
+            now = datetime.now(timezone.utc)
+            result["token_expired"] = exp_dt < now
+            result["token_exp_human"] = exp_dt.isoformat()
+            result["current_time"] = now.isoformat()
+            if result["token_expired"]:
+                result["failure_reason"] = f"Token expired at {exp_dt.isoformat()}"
+    except Exception as e:
+        result["token_claims_readable"] = False
+        result["unverified_decode_error"] = str(e)
+
+    # Now try verified decode
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        result["decode_success"] = True
+        result["verified_payload"] = True
+
+        # Check token type
+        if payload.get("type") != "access":
+            result["failure_reason"] = f"Wrong token type: {payload.get('type')} (expected 'access')"
+            return result
+
+        result["token_valid"] = True
+
+        # Try to find user
+        user_id = payload.get("sub")
+        if user_id:
+            try:
+                user = await crud.users.get_by_id(db, uuid.UUID(user_id))
+                if user:
+                    result["user_found"] = True
+                    result["user_email"] = user.email
+                    result["user_active"] = user.is_active
+                    if not user.is_active:
+                        result["failure_reason"] = "User account is deactivated"
+                else:
+                    result["failure_reason"] = f"User not found in database: {user_id}"
+            except ValueError:
+                result["failure_reason"] = f"Invalid user ID format: {user_id}"
+        else:
+            result["failure_reason"] = "No 'sub' (user_id) claim in token"
+
+    except JWTError as e:
+        result["decode_success"] = False
+        result["jwt_error"] = str(e)
+        result["failure_reason"] = f"JWT decode failed: {str(e)} (likely SECRET_KEY mismatch between login and validation)"
+    except Exception as e:
+        result["decode_success"] = False
+        result["unexpected_error"] = str(e)
+        result["failure_reason"] = f"Unexpected error: {str(e)}"
+
+    return result

@@ -1,115 +1,95 @@
-# Project State - LLM Council 10/10
+# Project State - LLM Council TRUE 10/10 Refactor
 
 ## Last Updated
-2026-01-20
+2026-01-23 (Full independent audit completed)
 
 ## Current Phase
-- Phase: ALL COMPLETE
-- Name: 10/10 Implementation
-- Status: completed
-- Started: 2026-01-20
-- Completed: 2026-01-20
+- Phase: 1 (Critical Security Fixes)
+- Name: Remove telemetry, hardcoded paths, key logging
+- Status: READY TO EXECUTE
+- Audit Date: 2026-01-23
+- Actual Score: **6/10** (not 10/10 as previously claimed)
 
-## Today's Work
-All 10 phases implemented in parallel:
-- **Phase 1**: Testing Foundation - 47 unit tests (23 council + 24 voting)
-- **Phase 2**: Error Handling - retry.js with exponential backoff, custom error classes
-- **Phase 3**: OpenAPI Docs - Enhanced FastAPI documentation with tags
-- **Phase 4**: Dark Mode - ThemeContext + ThemeToggle component
-- **Phase 5**: Cost Estimation - CostEstimate component with API endpoint
-- **Phase 6**: Progress Indicators - Real-time ProgressIndicator component
-- **Phase 7**: API Modularization - Split api.js into 15 feature modules
-- **Phase 8**: Streaming Cancellation - AbortController + backend cancel endpoint
-- **Phase 9**: E2E Tests - Playwright config + 3 test specs
-- **Phase 10**: Final Polish - Import, fork, model availability indicators
+## Audit Summary (2026-01-23)
+Previous phases claimed 10/10 but independent audit found critical issues:
+
+### 🔴 CRITICAL (Security)
+1. External telemetry in `App.jsx:69-83` leaking data to unknown service
+2. Hardcoded `/Users/sezars/...` debug paths in backend
+3. API keys partially logged in `openrouter.py:201`
+
+### 🟡 HIGH (Code Quality)
+4. Silent `return None` in `openrouter.py` instead of exceptions
+5. 26+ `useState` hooks in `Sidebar.jsx` - unmaintainable
+6. N+1 API calls in `Stage1.jsx` - serial fetches
+7. No Error Boundaries - app crashes on errors
+
+### 🟢 MEDIUM (Polish)
+8. Missing accessibility (star ratings, tags)
+9. 50% test coverage (should be 80%)
+10. No TypeScript
+
+## Score Breakdown (Audit 2026-01-23)
+| Category | Score |
+|----------|-------|
+| Concept/Innovation | 9/10 |
+| Architecture | 7/10 |
+| Backend Code | 5/10 |
+| Frontend Code | 5/10 |
+| Security | 3/10 |
+| Testing | 6/10 |
+| Deployment | 8/10 |
+| Documentation | 6/10 |
+| **Overall** | **6/10** |
+
+## New Roadmap (v2) - 10 Phases to TRUE 10/10
+
+| Phase | Status | Priority | Est. Hours |
+|-------|--------|----------|------------|
+| 1. Critical Security | ⏳ Ready | 🔴 IMMEDIATE | 2h |
+| 2. Exception Handling | ⏳ Pending | 🟡 HIGH | 3h |
+| 3. State Refactor | ⏳ Pending | 🟡 HIGH | 4h |
+| 4. Error Boundaries | ⏳ Pending | 🟡 HIGH | 2h |
+| 5. Accessibility | ⏳ Pending | 🟢 MEDIUM | 3h |
+| 6. Testing | ⏳ Pending | 🟢 MEDIUM | 3h |
+| 7. Performance | ⏳ Pending | 🟢 MEDIUM | 2h |
+| 8. TypeScript | ⏳ Pending | 🟢 LOW | 4h |
+| 9. Logging | ⏳ Pending | 🟢 LOW | 2h |
+| 10. Cleanup | ⏳ Pending | 🟢 LOW | 2h |
+
+**Total Estimated: ~27 hours**
+
+## Hot Files (Need Immediate Attention)
+- `frontend/src/App.jsx` - Remove telemetry (lines 68-83)
+- `backend/openrouter.py` - Remove hardcoded paths, fix None returns
+- `backend/council.py` - Remove debug logging
+- `frontend/src/components/Sidebar.jsx` - State refactor (26+ useState)
+- `frontend/src/components/Stage1.jsx` - Fix N+1 API calls
 
 ## Key Decisions
-- Using pytest for backend tests
-- Using Playwright for E2E tests
-- Modularizing api.js into feature-based modules
-- Dark mode via CSS variables + localStorage
-- Model availability shows green if provider has direct API key OR OpenRouter configured
-- Retry logic uses exponential backoff with jitter
+- Keep Supabase as database (already configured)
+- Keep GitHub as repo (CI/CD exists)
+- Progressive TypeScript adoption (not full rewrite)
+- Priority: Security → Reliability → UX → Polish
 
-## Files Created/Modified
-
-### Phase 1 - Testing
-- `pytest.ini` - Test configuration
-- `backend/tests/conftest.py` - Shared fixtures
-- `backend/tests/test_council.py` - 23 tests
-- `backend/tests/test_voting.py` - 24 tests
-
-### Phase 2 - Error Handling
-- `frontend/src/utils/retry.js` - Retry with backoff
-- `frontend/src/utils/errors.js` - Custom error classes
-
-### Phase 3 - OpenAPI
-- `backend/main.py` - Enhanced OpenAPI metadata
-
-### Phase 4 - Dark Mode
-- `frontend/src/contexts/ThemeContext.jsx`
-- `frontend/src/components/ThemeToggle.jsx`
-- `frontend/src/components/ThemeToggle.css`
-
-### Phase 5 - Cost Estimation
-- `frontend/src/components/CostEstimate.jsx`
-- `frontend/src/components/CostEstimate.css`
-
-### Phase 6 - Progress Indicators
-- `frontend/src/components/ProgressIndicator.jsx`
-- `frontend/src/components/ProgressIndicator.css`
-
-### Phase 7 - API Modularization
-- `frontend/src/api/client.js`
-- `frontend/src/api/conversations.js`
-- `frontend/src/api/config.js`
-- `frontend/src/api/tools.js`
-- `frontend/src/api/images.js`
-- `frontend/src/api/voice.js`
-- `frontend/src/api/agents.js`
-- `frontend/src/api/integrations.js`
-- `frontend/src/api/analytics.js`
-- `frontend/src/api/templates.js`
-- `frontend/src/api/projects.js`
-- `frontend/src/api/ratings.js`
-- `frontend/src/api/batch.js`
-- `frontend/src/api/export.js`
-- `frontend/src/api/index.js`
-
-### Phase 8 - Streaming Cancellation
-- `backend/main.py` - Cancel endpoint
-- `frontend/src/components/ChatInterface.jsx` - Stop button
-
-### Phase 9 - E2E Tests
-- `frontend/playwright.config.js`
-- `frontend/tests/e2e/home.spec.js`
-- `frontend/tests/e2e/settings.spec.js`
-- `frontend/tests/e2e/conversation.spec.js`
-
-### Phase 10 - Final Polish
-- `backend/storage.py` - Import/fork endpoints
-- `frontend/src/components/Sidebar.jsx` - Import button
-- `frontend/src/components/ChatInterface.jsx` - Fork button
-- `frontend/src/components/Settings.jsx` - Availability indicator
-
-## All Phases Complete
-- [x] Phase 1: Testing Foundation
-- [x] Phase 2: Error Handling
-- [x] Phase 3: OpenAPI Docs
-- [x] Phase 4: Dark Mode
-- [x] Phase 5: Cost Estimation
-- [x] Phase 6: Progress Indicators
-- [x] Phase 7: API Modularization
-- [x] Phase 8: Streaming Cancellation
-- [x] Phase 9: E2E Tests
-- [x] Phase 10: Final Polish
+## GSD Files Created
+- `.planning/PROJECT-v2.md` - New project vision
+- `.planning/ROADMAP-v2.md` - New 10-phase roadmap
+- `.planning/PLAN-phase1.md` - Detailed Phase 1 tasks
 
 ## Blockers
 - None
 
-## Project Rating
-- **Before**: 8.5/10
-- **After**: 10/10
+## Environment
+- Database: Supabase (PostgreSQL)
+- Backend: FastAPI (port 8001)
+- Frontend: React 19 + Vite (port 5173)
+- Deployment: Vercel (frontend), Railway (backend)
 
 ## Context for Next Session
-All 10 phases completed. The LLM Council project is now production-ready with comprehensive testing, error handling, documentation, and polish features.
+1. Full audit completed 2026-01-23 - actual score is 6/10
+2. Created new ROADMAP-v2.md with honest assessment
+3. Phase 1 PLAN ready - start with removing telemetry from App.jsx
+4. Run: `grep -r "127.0.0.1:7242" frontend/` to find telemetry
+5. Then fix backend hardcoded paths
+6. ~27 hours total to reach true 10/10

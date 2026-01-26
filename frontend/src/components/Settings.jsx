@@ -1,3 +1,4 @@
+// TEST COMMENT - If you see this in Antigravity, reload worked! Delete this line.
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTheme } from '../contexts/ThemeContext';
@@ -56,6 +57,21 @@ export default function Settings({ isOpen, onClose }) {
   const [showSavePresetModal, setShowSavePresetModal] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
 
+  // Features state (moved from ChatInterface)
+  const [features, setFeatures] = useState({
+    memory: true,
+    web_search: true,
+    deep_search: false,
+    code_execution: true
+  });
+
+  // Memory state
+  const [memoryContext, setMemoryContext] = useState('');
+  const [memoryStats, setMemoryStats] = useState(null);
+
+  // System instructions state
+  const [systemInstructions, setSystemInstructions] = useState('');
+
   useEffect(() => {
     if (isOpen) {
       loadData();
@@ -65,10 +81,11 @@ export default function Settings({ isOpen, onClose }) {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [configData, keysData, presetsData] = await Promise.all([
+      const [configData, keysData, presetsData, featuresData] = await Promise.all([
         api.getConfig(),
         api.getApiKeys(),
         api.getPresets(),
+        api.getFeatures().catch(() => null),
       ]);
       setConfig(configData);
       setSelectedCouncil(configData.council_models);
@@ -78,6 +95,27 @@ export default function Settings({ isOpen, onClose }) {
       setHasOpenRouterKey(!!(keysData.api_keys?.openrouter));
       setBuiltInPresets(presetsData.presets || []);
       setCustomPresets(loadCustomPresets());
+      if (featuresData) setFeatures(featuresData);
+
+      // Load memory data
+      try {
+        const [memContext, memStats] = await Promise.all([
+          api.getMemoryContext(),
+          api.getMemoryStats()
+        ]);
+        setMemoryContext(memContext.context || 'No memories stored yet.');
+        setMemoryStats(memStats);
+      } catch (e) {
+        console.error('Failed to load memory:', e);
+      }
+
+      // Load system instructions
+      try {
+        const prefs = await api.getPreferences?.() || {};
+        setSystemInstructions(prefs.system_instructions || '');
+      } catch (e) {
+        console.error('Failed to load preferences:', e);
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -87,12 +125,13 @@ export default function Settings({ isOpen, onClose }) {
   // Provider definitions with status
   const providers = [
     { id: 'openrouter', name: 'OpenRouter', models: 'All models via OpenRouter', hint: 'sk-or-v1-...', priority: true },
-    { id: 'openai', name: 'OpenAI', models: 'GPT-4o, GPT-4.1, o1, o3', hint: 'sk-...' },
+    { id: 'perplexity', name: 'Perplexity', models: 'Sonar Pro, Deep Research', hint: 'pplx-...', priority: true, description: 'Web search & research' },
+    { id: 'openai', name: 'OpenAI', models: 'GPT-4o, GPT-5, o1, o3', hint: 'sk-...' },
     { id: 'anthropic', name: 'Anthropic', models: 'Claude 4, Sonnet, Opus', hint: 'sk-ant-...' },
-    { id: 'google', name: 'Google', models: 'Gemini 2.5, 2.0 Flash', hint: 'AIza...' },
-    { id: 'x-ai', name: 'xAI', models: 'Grok 3, Grok 2', hint: 'xai-...' },
+    { id: 'google', name: 'Google', models: 'Gemini 2.5, 3.0 Flash', hint: 'AIza...' },
+    { id: 'x-ai', name: 'xAI', models: 'Grok 3, Grok 4', hint: 'xai-...' },
     { id: 'deepseek', name: 'DeepSeek', models: 'DeepSeek V3, R1', hint: 'sk-...' },
-    { id: 'mistralai', name: 'Mistral', models: 'Large, Medium, Codestral', hint: '' },
+    { id: 'mistralai', name: 'Mistral', models: 'Large, Codestral', hint: '' },
     { id: 'qwen', name: 'Qwen', models: 'Qwen 3, QwQ, Coder', hint: 'sk-...' },
     { id: 'cohere', name: 'Cohere', models: 'Command R+', hint: '' },
   ];
@@ -118,25 +157,13 @@ export default function Settings({ isOpen, onClose }) {
 
     setSavingKey(provider);
     setError(null);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H75',location:'Settings.jsx:115',message:'save_api_key:start',data:{provider,has_key:!!key,key_length:key?.length || 0},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       const result = await api.setApiKey(provider, key);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H76',location:'Settings.jsx:122',message:'save_api_key:success',data:{provider,result_status:result?.status,user_specific:result?.user_specific},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const keysData = await api.getApiKeys();
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H77',location:'Settings.jsx:124',message:'save_api_key:refreshed',data:{provider,has_key_in_response:!!(keysData.api_keys?.[provider])},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       setApiKeys(keysData.api_keys || {});
       setApiKeyInputs({ ...apiKeyInputs, [provider]: '' });
       showMessage('success', `${provider} API key saved successfully`);
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'save-api-key-frontend','hypothesisId':'H78',location:'Settings.jsx:128',message:'save_api_key:error',data:{provider,error_name:err?.name,error_message:err?.message},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       showMessage('error', `Failed to save ${provider} API key: ${err.message || 'Unknown error'}`);
     } finally {
       setSavingKey(null);
@@ -278,6 +305,53 @@ export default function Settings({ isOpen, onClose }) {
     showMessage('success', `Preset "${preset.name}" deleted`);
   };
 
+  // Feature toggle handler
+  const toggleFeature = async (feature) => {
+    const newValue = !features[feature];
+    try {
+      const updated = await api.setFeatures({ [feature]: newValue });
+      setFeatures(updated);
+      showMessage('success', `${feature.replace('_', ' ')} ${newValue ? 'enabled' : 'disabled'}`);
+    } catch (e) {
+      showMessage('error', `Failed to toggle ${feature}`);
+    }
+  };
+
+  // Memory handlers
+  const loadMemory = async () => {
+    try {
+      const [memContext, memStats] = await Promise.all([
+        api.getMemoryContext(),
+        api.getMemoryStats()
+      ]);
+      setMemoryContext(memContext.context || 'No memories stored yet.');
+      setMemoryStats(memStats);
+    } catch (e) {
+      showMessage('error', 'Failed to load memory');
+    }
+  };
+
+  const handleClearMemory = async () => {
+    if (!confirm('Clear all stored memories? This cannot be undone.')) return;
+    try {
+      await api.clearMemory();
+      await loadMemory();
+      showMessage('success', 'Memory cleared');
+    } catch (e) {
+      showMessage('error', 'Failed to clear memory');
+    }
+  };
+
+  // System instructions handler
+  const saveInstructions = async () => {
+    try {
+      await api.setPreference('system_instructions', systemInstructions);
+      showMessage('success', 'System instructions saved');
+    } catch (e) {
+      showMessage('error', 'Failed to save instructions');
+    }
+  };
+
   const toggleModel = (modelId) => {
     if (selectedCouncil.includes(modelId)) {
       setSelectedCouncil(selectedCouncil.filter((m) => m !== modelId));
@@ -410,10 +484,10 @@ export default function Settings({ isOpen, onClose }) {
               className={`settings-tab ${activeTab === 'routing' ? 'active' : ''}`}
               onClick={() => setActiveTab('routing')}
             >
-              <span className="tab-icon">🔀</span>
-              API Routing
+              <span className="tab-icon">🔑</span>
+              API Keys
               {directApiCount > 0 && (
-                <span className="tab-badge">{directApiCount} direct</span>
+                <span className="tab-badge">{directApiCount}</span>
               )}
             </button>
             <button
@@ -421,29 +495,8 @@ export default function Settings({ isOpen, onClose }) {
               onClick={() => setActiveTab('models')}
             >
               <span className="tab-icon">🤖</span>
-              Council Models
+              Models
               <span className="tab-badge">{selectedCouncil.length}</span>
-            </button>
-            <button
-              className={`settings-tab ${activeTab === 'teams' ? 'active' : ''}`}
-              onClick={() => setActiveTab('teams')}
-            >
-              <span className="tab-icon">👥</span>
-              Teams
-            </button>
-            <button
-              className={`settings-tab ${activeTab === 'apikeys' ? 'active' : ''}`}
-              onClick={() => setActiveTab('apikeys')}
-            >
-              <span className="tab-icon">🔑</span>
-              API Keys
-            </button>
-            <button
-              className={`settings-tab ${activeTab === 'analytics' ? 'active' : ''}`}
-              onClick={() => setActiveTab('analytics')}
-            >
-              <span className="tab-icon">📊</span>
-              Analytics
             </button>
             <button
               className={`settings-tab ${activeTab === 'appearance' ? 'active' : ''}`}
@@ -451,6 +504,27 @@ export default function Settings({ isOpen, onClose }) {
             >
               <span className="tab-icon">{theme === 'dark' ? '🌙' : '☀️'}</span>
               Theme
+            </button>
+            <button
+              className={`settings-tab ${activeTab === 'features' ? 'active' : ''}`}
+              onClick={() => setActiveTab('features')}
+            >
+              <span className="tab-icon">⚡</span>
+              Features
+            </button>
+            <button
+              className={`settings-tab ${activeTab === 'memory' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('memory'); loadMemory(); }}
+            >
+              <span className="tab-icon">🧠</span>
+              Memory
+            </button>
+            <button
+              className={`settings-tab ${activeTab === 'system' ? 'active' : ''}`}
+              onClick={() => setActiveTab('system')}
+            >
+              <span className="tab-icon">📝</span>
+              System
             </button>
           </div>
           <button className="close-btn" onClick={onClose}>×</button>
@@ -891,78 +965,6 @@ export default function Settings({ isOpen, onClose }) {
               </div>
             )}
 
-            {/* Teams Tab */}
-            {activeTab === 'teams' && (
-              <div className="settings-section teams-section">
-                <div className="section-intro">
-                  <h3>Team Workspaces</h3>
-                  <p>Collaborate with your team by sharing conversations and council configurations.</p>
-                </div>
-                <div className="team-placeholder">
-                  <div className="placeholder-icon">👥</div>
-                  <h4>Team Workspaces</h4>
-                  <p>Create teams, invite members, and share conversations collaboratively.</p>
-                  <button
-                    className="open-teams-btn"
-                    onClick={() => {
-                      onClose();
-                      window.dispatchEvent(new CustomEvent('openTeamManager'));
-                    }}
-                  >
-                    Open Team Manager
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* API Keys Tab */}
-            {activeTab === 'apikeys' && (
-              <div className="settings-section apikeys-section">
-                <div className="section-intro">
-                  <h3>Public API Access</h3>
-                  <p>Create API keys to access AI Konsey programmatically from your applications.</p>
-                </div>
-                <div className="apikeys-placeholder">
-                  <div className="placeholder-icon">🔑</div>
-                  <h4>API Keys</h4>
-                  <p>Generate and manage API keys with custom scopes and rate limits.</p>
-                  <button
-                    className="open-apikeys-btn"
-                    onClick={() => {
-                      onClose();
-                      window.dispatchEvent(new CustomEvent('openAPIKeysManager'));
-                    }}
-                  >
-                    Manage API Keys
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Analytics Tab */}
-            {activeTab === 'analytics' && (
-              <div className="settings-section analytics-section">
-                <div className="section-intro">
-                  <h3>Usage Analytics</h3>
-                  <p>Track your usage, costs, and model performance over time.</p>
-                </div>
-                <div className="analytics-placeholder">
-                  <div className="placeholder-icon">📊</div>
-                  <h4>Analytics Dashboard</h4>
-                  <p>View detailed usage statistics, cost breakdowns, and trends.</p>
-                  <button
-                    className="open-analytics-btn"
-                    onClick={() => {
-                      onClose();
-                      window.dispatchEvent(new CustomEvent('openAnalytics'));
-                    }}
-                  >
-                    Open Analytics Dashboard
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Appearance Tab */}
             {activeTab === 'appearance' && (
               <div className="settings-section appearance-section">
@@ -1004,6 +1006,149 @@ export default function Settings({ isOpen, onClose }) {
                       </div>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Features Tab */}
+            {activeTab === 'features' && (
+              <div className="tab-content features-tab">
+                <div className="section-intro">
+                  <h3>Features</h3>
+                  <p>Enable or disable AI capabilities for your conversations.</p>
+                </div>
+
+                <div className="feature-toggles-grid">
+                  <div className="feature-card" onClick={() => toggleFeature('memory')}>
+                    <div className="feature-icon">🧠</div>
+                    <div className="feature-info">
+                      <h4>Memory</h4>
+                      <p>Remember facts & decisions across sessions</p>
+                    </div>
+                    <div className={`feature-toggle ${features.memory ? 'active' : ''}`}>
+                      <div className="toggle-track">
+                        <div className="toggle-thumb"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="feature-card" onClick={() => toggleFeature('web_search')}>
+                    <div className="feature-icon">🔍</div>
+                    <div className="feature-info">
+                      <h4>Web Search</h4>
+                      <p>Search the web for current information</p>
+                    </div>
+                    <div className={`feature-toggle ${features.web_search ? 'active' : ''}`}>
+                      <div className="toggle-track">
+                        <div className="toggle-thumb"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="feature-card" onClick={() => toggleFeature('deep_search')}>
+                    <div className="feature-icon">🧭</div>
+                    <div className="feature-info">
+                      <h4>Deep Search</h4>
+                      <p>Long-form research with citations (Perplexity)</p>
+                    </div>
+                    <div className={`feature-toggle ${features.deep_search ? 'active' : ''}`}>
+                      <div className="toggle-track">
+                        <div className="toggle-thumb"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="feature-card" onClick={() => toggleFeature('code_execution')}>
+                    <div className="feature-icon">💻</div>
+                    <div className="feature-info">
+                      <h4>Code Execution</h4>
+                      <p>Run Python/JavaScript code</p>
+                    </div>
+                    <div className={`feature-toggle ${features.code_execution ? 'active' : ''}`}>
+                      <div className="toggle-track">
+                        <div className="toggle-thumb"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Memory Tab */}
+            {activeTab === 'memory' && (
+              <div className="tab-content memory-tab">
+                <div className="section-intro">
+                  <h3>Memory</h3>
+                  <p>View and manage what the AI remembers about you.</p>
+                </div>
+
+                {memoryStats && (
+                  <div className="memory-stats-grid">
+                    <div className="memory-stat">
+                      <span className="stat-icon">📝</span>
+                      <span className="stat-value">{memoryStats.facts_count}</span>
+                      <span className="stat-label">Facts</span>
+                    </div>
+                    <div className="memory-stat">
+                      <span className="stat-icon">📋</span>
+                      <span className="stat-value">{memoryStats.decisions_count}</span>
+                      <span className="stat-label">Decisions</span>
+                    </div>
+                    <div className="memory-stat">
+                      <span className="stat-icon">⚙️</span>
+                      <span className="stat-value">{memoryStats.preferences_count}</span>
+                      <span className="stat-label">Preferences</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="memory-content-box">
+                  <pre>{memoryContext}</pre>
+                </div>
+
+                <div className="memory-actions">
+                  <button className="action-btn secondary" onClick={loadMemory}>
+                    🔄 Refresh
+                  </button>
+                  <button className="action-btn danger" onClick={handleClearMemory}>
+                    🗑️ Clear All Memory
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* System Tab */}
+            {activeTab === 'system' && (
+              <div className="tab-content system-tab">
+                <div className="section-intro">
+                  <h3>System Instructions</h3>
+                  <p>Custom instructions that apply to all your conversations.</p>
+                </div>
+
+                <div className="instructions-section">
+                  <textarea
+                    className="instructions-textarea"
+                    value={systemInstructions}
+                    onChange={(e) => setSystemInstructions(e.target.value)}
+                    placeholder="e.g., Always respond in a formal tone. Focus on technical accuracy. Prefer concise answers..."
+                    rows={8}
+                  />
+                  <div className="instructions-footer">
+                    <span className="char-count">{systemInstructions.length} characters</span>
+                    <button className="action-btn primary" onClick={saveInstructions}>
+                      Save Instructions
+                    </button>
+                  </div>
+                </div>
+
+                <div className="instructions-tips">
+                  <h4>Tips for effective instructions:</h4>
+                  <ul>
+                    <li>Be specific about your preferred response format</li>
+                    <li>Mention your expertise level for calibrated explanations</li>
+                    <li>Include any domain-specific terminology preferences</li>
+                    <li>Specify languages or coding conventions if relevant</li>
+                  </ul>
                 </div>
               </div>
             )}

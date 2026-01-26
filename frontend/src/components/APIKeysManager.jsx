@@ -120,7 +120,7 @@ export default function APIKeysManager({ onClose }) {
           </p>
           <div className="api-endpoint">
             <span className="endpoint-label">API Endpoint:</span>
-            <code>{window.location.origin}/api/v1</code>
+            <code>{window.location.origin}/api</code>
           </div>
         </div>
 

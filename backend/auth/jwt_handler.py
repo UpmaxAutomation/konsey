@@ -81,21 +81,29 @@ def create_refresh_token(
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """Decode and validate an access token."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
 
         # Verify it's an access token
         if payload.get("type") != "access":
+            logger.warning(f"Token type mismatch: got '{payload.get('type')}', expected 'access'")
             return None
 
         # Check expiration
         exp = payload.get("exp")
         if exp and datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(timezone.utc):
+            logger.warning(f"Token expired for user {payload.get('sub')}")
             return None
 
         return payload
 
-    except JWTError:
+    except JWTError as e:
+        # Log the specific error - this is critical for debugging SECRET_KEY mismatches
+        logger.warning(f"JWT decode failed: {type(e).__name__}: {str(e)}")
+        # Common causes: Signature verification failed (SECRET_KEY mismatch), malformed token
         return None
 
 

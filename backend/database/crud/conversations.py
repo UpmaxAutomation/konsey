@@ -1,7 +1,7 @@
 """CRUD operations for conversations and messages."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 
 from sqlalchemy import select, update, delete, func
@@ -49,6 +49,7 @@ async def list_by_user(
     """List conversations for a user with optional filters."""
     query = (
         select(Conversation)
+        .options(selectinload(Conversation.messages))
         .where(Conversation.user_id == user_id)
         .order_by(Conversation.updated_at.desc())
         .offset(skip)
@@ -96,7 +97,7 @@ async def update_conversation(
     **kwargs
 ) -> Optional[Conversation]:
     """Update conversation fields (with user ownership check)."""
-    kwargs["updated_at"] = datetime.utcnow()
+    kwargs["updated_at"] = datetime.now(timezone.utc)
     await db.execute(
         update(Conversation)
         .where(
@@ -132,6 +133,16 @@ async def move_to_folder(
 ) -> Optional[Conversation]:
     """Move conversation to folder."""
     return await update_conversation(db, conversation_id, user_id, folder_id=folder_id)
+
+
+async def move_to_project(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+    project_id: Optional[uuid.UUID]
+) -> Optional[Conversation]:
+    """Move conversation to project."""
+    return await update_conversation(db, conversation_id, user_id, project_id=project_id)
 
 
 async def update_tags(
@@ -201,7 +212,12 @@ async def add_message(
     attached_files: Optional[List[str]] = None
 ) -> Message:
     """Add a message to a conversation."""
-    # Get next message index
+    # Get next message index (lock conversation to avoid concurrent increments)
+    await db.execute(
+        select(Conversation.id)
+        .where(Conversation.id == conversation_id)
+        .with_for_update()
+    )
     result = await db.execute(
         select(func.max(Message.message_index))
         .where(Message.conversation_id == conversation_id)
@@ -229,7 +245,7 @@ async def add_message(
     await db.execute(
         update(Conversation)
         .where(Conversation.id == conversation_id)
-        .values(updated_at=datetime.utcnow())
+        .values(updated_at=datetime.now(timezone.utc))
     )
 
     await db.flush()

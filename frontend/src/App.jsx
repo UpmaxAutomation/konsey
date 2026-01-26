@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import Sidebar from './components/Sidebar';
+import ClaudeSidebar from './components/ClaudeSidebar';
 import ChatInterface from './components/ChatInterface';
+import ProjectView from './components/ProjectView';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -21,6 +22,8 @@ function MainApp() {
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [currentConversation, setCurrentConversation] = useState(null);
+  const [currentProjectId, setCurrentProjectId] = useState(null); // null = all chats
+  const [selectedProject, setSelectedProject] = useState(null); // Full project object for ProjectView
   const [isLoading, setIsLoading] = useState(false);
   const [isCreatingConversation, setIsCreatingConversation] = useState(false);
   const [budgetAlerts, setBudgetAlerts] = useState({ alerts: [], exceeded: false, exceeded_periods: [] });
@@ -30,6 +33,7 @@ function MainApp() {
   const [showAPIKeysManager, setShowAPIKeysManager] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const toast = useToast();
+  const autoCreateChatRef = useRef(false);
   // Council progress tracking
   const [councilProgress, setCouncilProgress] = useState({
     stage: 0,
@@ -65,9 +69,6 @@ function MainApp() {
           signal: controller.signal
         });
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H5',location:'App.jsx:63',message:'checkBackend:response',data:{url:`${API_BASE}/`,status:response.status,ok:response.ok},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (response.ok) {
           // Backend is available, load data
           loadConversations();
@@ -78,9 +79,6 @@ function MainApp() {
         }
       } catch (error) {
         console.error('Backend connection check failed:', error);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H5',location:'App.jsx:71',message:'checkBackend:error',data:{url:`${API_BASE}/`,name:error?.name || 'unknown',message:error?.message || 'unknown'},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         // Don't show error toast here - let individual API calls handle it
         // Just try to load anyway in case it's a temporary issue
         loadConversations();
@@ -140,9 +138,110 @@ function MainApp() {
     try {
       const convs = await api.listConversations();
       setConversations(convs);
+      if (!currentConversationId && !autoCreateChatRef.current) {
+        autoCreateChatRef.current = true;
+        if (convs.length > 0 && convs[0].message_count === 0) {
+          // Select existing empty conversation and load it immediately
+          setCurrentConversationId(convs[0].id);
+          setCurrentConversation({
+            id: convs[0].id,
+            created_at: convs[0].created_at,
+            messages: [],
+            project_id: convs[0].project_id,
+          });
+        } else {
+          await handleNewConversation();
+        }
+      }
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      toast.error(getUserFriendlyMessage(error));
     }
+  };
+
+  // Filter conversations by project
+  const filteredConversations = useMemo(() => {
+    if (!currentProjectId) {
+      // Show all conversations when "All Chats" is selected
+      return conversations;
+    }
+    // Filter by project_id
+    return conversations.filter((c) => c.project_id === currentProjectId);
+  }, [conversations, currentProjectId]);
+
+  // Handle project change from sidebar
+  const handleProjectChange = (projectId) => {
+    setCurrentProjectId(projectId);
+    // Clear current conversation if it's not in the selected project
+    if (projectId && currentConversation?.project_id !== projectId) {
+      setCurrentConversationId(null);
+      setCurrentConversation(null);
+    }
+  };
+
+  // Handle project selection (opens ProjectView)
+  const handleProjectSelect = async (project) => {
+    if (!project || project.id === 'all') {
+      setSelectedProject(null);
+      setCurrentProjectId(null);
+      return;
+    }
+
+    setSelectedProject(project);
+    setCurrentProjectId(project.id);
+
+    // Find existing conversations for this project
+    const projectConversations = conversations.filter(c => c.project_id === project.id);
+
+    if (projectConversations.length > 0) {
+      // Select the first conversation
+      const conv = projectConversations[0];
+      setCurrentConversationId(conv.id);
+      setCurrentConversation({
+        id: conv.id,
+        created_at: conv.created_at,
+        messages: [],
+        project_id: conv.project_id,
+        title: conv.title,
+      });
+      // Load full conversation
+      loadConversation(conv.id);
+    } else {
+      // Create a new conversation for this project
+      try {
+        const response = await api.createConversationInProject(project.id);
+        // Backend returns { conversation: {...}, project_id: "..." }
+        const newConv = response.conversation || response;
+        const convProjectId = response.project_id || project.id;
+
+        setConversations(prev => [
+          { id: newConv.id, created_at: newConv.created_at, message_count: 0, project_id: convProjectId },
+          ...prev,
+        ]);
+        setCurrentConversationId(newConv.id);
+        setCurrentConversation({
+          id: newConv.id,
+          created_at: newConv.created_at,
+          messages: [],
+          project_id: convProjectId,
+        });
+      } catch (error) {
+        console.error('Failed to create conversation for project:', error);
+      }
+    }
+  };
+
+  // Handle back from ProjectView
+  const handleBackFromProject = () => {
+    setSelectedProject(null);
+    setCurrentProjectId(null);
+    setCurrentConversationId(null);
+    setCurrentConversation(null);
+  };
+
+  // Handle project update from ProjectView
+  const handleProjectUpdate = (updatedProject) => {
+    setSelectedProject(updatedProject);
   };
 
   const loadConversation = async (id) => {
@@ -175,27 +274,37 @@ function MainApp() {
 
   const handleNewConversation = async () => {
     if (isCreatingConversation) return; // Prevent double-clicks
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'App.jsx:166',message:'handleNewConversation:start',data:{hasCurrentConversation:Boolean(currentConversationId),isCreatingConversation},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setIsCreatingConversation(true);
     try {
-      const newConv = await api.createConversation();
+      let newConv;
+      if (currentProjectId) {
+        // Create conversation in the selected project
+        const response = await api.createConversationInProject(currentProjectId);
+        // Backend returns { conversation: {...}, project_id: "..." }
+        newConv = response.conversation || response;
+        newConv.project_id = response.project_id || currentProjectId;
+      } else {
+        // Create standalone conversation
+        newConv = await api.createConversation();
+      }
       setConversations([
-        { id: newConv.id, created_at: newConv.created_at, message_count: 0 },
+        { id: newConv.id, created_at: newConv.created_at, message_count: 0, project_id: newConv.project_id },
         ...conversations,
       ]);
       setCurrentConversationId(newConv.id);
+      // Set currentConversation immediately so chat opens right away
+      setCurrentConversation({
+        id: newConv.id,
+        created_at: newConv.created_at,
+        messages: [],
+        project_id: newConv.project_id,
+      });
       // Close sidebar on mobile after creating conversation
       if (window.innerWidth <= 768) {
         setIsSidebarOpen(false);
       }
-      toast.success('New chat created');
     } catch (error) {
       console.error('Failed to create conversation:', error);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1',location:'App.jsx:182',message:'handleNewConversation:error',data:{name:error?.name || 'unknown',message:error?.message || 'unknown'},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const errorMessage = getUserFriendlyMessage(error);
       // Show connection errors longer
       const duration = error instanceof NetworkError ? 10000 : 5000;
@@ -211,6 +320,18 @@ function MainApp() {
 
   const handleSelectConversation = (id) => {
     setCurrentConversationId(id);
+    // Set a minimal conversation object immediately so chat shows right away
+    // The full conversation will be loaded by the useEffect
+    const conv = conversations.find(c => c.id === id);
+    if (conv) {
+      setCurrentConversation({
+        id: conv.id,
+        created_at: conv.created_at,
+        messages: currentConversation?.id === id ? currentConversation.messages : [],
+        project_id: conv.project_id,
+        title: conv.title,
+      });
+    }
   };
 
   const handleDeleteConversation = async (id) => {
@@ -260,7 +381,7 @@ function MainApp() {
     });
   }, [currentConversationId]);
 
-  const handleSendMessage = async (content, attachedFiles = []) => {
+  const handleSendMessage = async (content, attachedFiles = [], features = null) => {
     if (!currentConversationId) return;
 
     // Store message count before adding optimistic updates for safe rollback
@@ -474,9 +595,6 @@ function MainApp() {
 
             case 'error':
               console.error('Stream error:', event.message);
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'council-error',hypothesisId:'H30',location:'App.jsx:475',message:'frontend_error_received',data:{error_message:event.message||'unknown',error_data:event},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               // Show error message to user
               setCurrentConversation((prev) => {
                 if (!prev?.messages?.length) return prev;
@@ -513,7 +631,9 @@ function MainApp() {
           }
         },
         councilAbortRef.current?.signal,
-        attachedFiles // Pass files to API
+        attachedFiles, // Pass files to API
+        {},
+        features
       );
     } catch (error) {
       // Don't log or rollback if it was intentionally aborted
@@ -522,9 +642,6 @@ function MainApp() {
         return;
       }
       console.error('Failed to send message:', error);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'council-error',hypothesisId:'H8',location:'App.jsx:497',message:'send_message_exception',data:{error_name:error.name,error_message:error.message,error_stack:error.stack?.substring(0,500)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       // Show error message to user instead of just rolling back
       setCurrentConversation((prev) => {
         const messages = [...(prev?.messages || [])];
@@ -603,6 +720,69 @@ function MainApp() {
   // Only show banner when budget is actually exceeded (not for warnings/info)
   const shouldShowBanner = showBudgetBanner && budgetAlerts.exceeded;
 
+  // If a project is selected, show the dedicated ProjectView
+  if (selectedProject) {
+    return (
+      <div className="app">
+        {shouldShowBanner && (
+          <div className={`budget-banner ${alertLevel}`}>
+            <div className="budget-banner-content">
+              <span className="budget-banner-icon">
+                {alertLevel === 'exceeded' ? '🚫' : alertLevel === 'critical' ? '⚠️' : '💰'}
+              </span>
+              <span className="budget-banner-message">{getBudgetBannerMessage()}</span>
+            </div>
+            <button
+              className="budget-banner-close"
+              onClick={() => setShowBudgetBanner(false)}
+              aria-label="Dismiss budget alert"
+            >
+              ×
+            </button>
+          </div>
+        )}
+        <ProjectView
+          project={selectedProject}
+          conversations={filteredConversations}
+          currentConversationId={currentConversationId}
+          currentConversation={currentConversation}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onBack={handleBackFromProject}
+          onDeleteConversation={handleDeleteConversation}
+          onProjectUpdate={handleProjectUpdate}
+          onSendMessage={handleSendMessage}
+          isLoading={isLoading}
+          onStopCouncil={handleStopCouncil}
+          onConversationUpdate={loadConversation}
+          councilProgress={councilProgress}
+        />
+
+        {/* Manager Modals */}
+        {showTeamManager && (
+          <>
+            <div className="modal-overlay" onClick={() => setShowTeamManager(false)} />
+            <TeamManager onClose={() => setShowTeamManager(false)} />
+          </>
+        )}
+
+        {showAPIKeysManager && (
+          <>
+            <div className="modal-overlay" onClick={() => setShowAPIKeysManager(false)} />
+            <APIKeysManager onClose={() => setShowAPIKeysManager(false)} />
+          </>
+        )}
+
+        {showAnalytics && (
+          <>
+            <div className="modal-overlay" onClick={() => setShowAnalytics(false)} />
+            <AnalyticsDashboard onClose={() => setShowAnalytics(false)} />
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {shouldShowBanner && (
@@ -645,16 +825,34 @@ function MainApp() {
         </svg>
       </button>
 
-      <Sidebar
-        conversations={conversations}
+      <ClaudeSidebar
+        conversations={filteredConversations}
         currentConversationId={currentConversationId}
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
-        onConversationsChange={loadConversations}
         isMobileOpen={isSidebarOpen}
         onToggleMobile={toggleSidebar}
         isCreatingConversation={isCreatingConversation}
+        onProjectChange={handleProjectChange}
+        onProjectSelect={handleProjectSelect}
+        onMoveToProject={async (conversationId, projectId) => {
+          try {
+            await api.moveConversationToProject(conversationId, projectId);
+            // Update local state
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === conversationId ? { ...c, project_id: projectId } : c
+              )
+            );
+            if (currentConversation?.id === conversationId) {
+              setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
+            }
+            toast.success(projectId ? 'Moved to project' : 'Removed from project');
+          } catch (error) {
+            toast.error('Failed to move conversation');
+          }
+        }}
       />
       <ChatInterface
         conversation={currentConversation}
@@ -664,6 +862,24 @@ function MainApp() {
         onToggleSidebar={toggleSidebar}
         onConversationUpdate={loadConversation}
         councilProgress={councilProgress}
+        currentProjectId={currentProjectId}
+        onMoveToProject={async (conversationId, projectId) => {
+          try {
+            await api.moveConversationToProject(conversationId, projectId);
+            // Update local state
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === conversationId ? { ...c, project_id: projectId } : c
+              )
+            );
+            if (currentConversation?.id === conversationId) {
+              setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
+            }
+            toast.success(projectId ? 'Moved to project' : 'Removed from project');
+          } catch (error) {
+            toast.error('Failed to move conversation');
+          }
+        }}
       />
 
       {/* Manager Modals */}

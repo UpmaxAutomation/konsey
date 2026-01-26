@@ -43,3 +43,4 @@ frontend/.env
 
 # Test files
 test-connection.html
+.vercel

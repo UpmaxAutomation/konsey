@@ -13,6 +13,8 @@ load_dotenv()
 
 # OpenRouter API key from environment (can be overridden via Settings)
 _OPENROUTER_API_KEY_ENV = os.getenv("OPENROUTER_API_KEY", "")
+# Perplexity API key from environment (can be overridden via Settings)
+_PERPLEXITY_API_KEY_ENV = os.getenv("PERPLEXITY_API_KEY", "")
 
 # Storage backend: "json" (file-based) or "database" (PostgreSQL)
 # Set USE_DATABASE=true to use PostgreSQL instead of JSON files
@@ -218,6 +220,7 @@ PROVIDER_API_ENDPOINTS = {
     "mistralai": "https://api.mistral.ai/v1/chat/completions",
     "cohere": "https://api.cohere.ai/v1/chat",
     "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "perplexity": "https://api.perplexity.ai/chat/completions",
 }
 
 # Runtime configuration (can be changed via API)
@@ -226,6 +229,7 @@ _runtime_config = {
     "chairman_model": DEFAULT_CHAIRMAN_MODEL,
     "enhanced_features": {
         "web_search": True,
+        "deep_search": False,
         "code_execution": True,
         "memory": True
     },
@@ -240,7 +244,8 @@ _runtime_config = {
         "deepseek": "",
         "mistralai": "",
         "cohere": "",
-        "qwen": ""
+        "qwen": "",
+        "perplexity": ""
     }
 }
 
@@ -256,11 +261,13 @@ def load_settings():
                 saved = json.load(f)
                 _runtime_config["council_models"] = saved.get("council_models", DEFAULT_COUNCIL_MODELS.copy())
                 _runtime_config["chairman_model"] = saved.get("chairman_model", DEFAULT_CHAIRMAN_MODEL)
-                _runtime_config["enhanced_features"] = saved.get("enhanced_features", {
-                    "web_search": True,
-                    "code_execution": True,
-                    "memory": True
-                })
+                saved_features = saved.get("enhanced_features", {})
+                _runtime_config["enhanced_features"] = {
+                    "web_search": saved_features.get("web_search", True),
+                    "deep_search": saved_features.get("deep_search", False),
+                    "code_execution": saved_features.get("code_execution", True),
+                    "memory": saved_features.get("memory", True)
+                }
                 _runtime_config["personas"] = saved.get("personas", {})
                 _runtime_config["custom_personas"] = saved.get("custom_personas", {})
                 _runtime_config["api_keys"] = saved.get("api_keys", {
@@ -271,7 +278,8 @@ def load_settings():
                     "deepseek": "",
                     "mistralai": "",
                     "cohere": "",
-                    "qwen": ""
+                    "qwen": "",
+                    "perplexity": ""
                 })
     except Exception as e:
         print(f"Error loading settings: {e}")
@@ -337,6 +345,17 @@ load_settings()
 
 # OpenRouter API endpoint
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Perplexity API endpoint and defaults
+PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
+DEFAULT_PERPLEXITY_SEARCH_MODEL = os.getenv(
+    "PERPLEXITY_SEARCH_MODEL",
+    "sonar"
+)
+DEFAULT_PERPLEXITY_DEEP_SEARCH_MODEL = os.getenv(
+    "PERPLEXITY_DEEP_SEARCH_MODEL",
+    "sonar-deep-research"
+)
 
 # Data directory for conversation storage
 DATA_DIR = "data/conversations"
@@ -420,6 +439,13 @@ def create_custom_persona(persona_id: str, persona_text: str):
 def get_api_keys():
     """Get all configured API keys (masked for security)."""
     keys = _runtime_config.get("api_keys", {})
+    # Add OpenRouter from env if not in config
+    if not keys.get("openrouter") and _OPENROUTER_API_KEY_ENV:
+        keys["openrouter"] = _OPENROUTER_API_KEY_ENV
+    # Add Perplexity from env if not in config
+    if not keys.get("perplexity") and _PERPLEXITY_API_KEY_ENV:
+        keys["perplexity"] = _PERPLEXITY_API_KEY_ENV
+
     # Return masked versions for display
     masked = {}
     for provider, key in keys.items():
@@ -449,17 +475,31 @@ def set_api_key(provider: str, api_key: str):
 
 def get_openrouter_api_key() -> str:
     """
-    Get OpenRouter API key - checks Settings first.
-    
-    NOTE: Environment variable fallback removed. 
-    Users must set their own keys or admin must set system key via admin panel.
+    Get OpenRouter API key - checks Settings first, then environment variable.
     """
-    # Check if set via Settings UI (legacy support)
+    # Check if set via Settings UI
     settings_key = _runtime_config.get("api_keys", {}).get("openrouter", "")
     if settings_key:
         return settings_key
-    # No longer fallback to environment - return empty
-    return ""
+    
+    # Fallback to environment variable
+    return _OPENROUTER_API_KEY_ENV
+
+
+def get_perplexity_api_key() -> str:
+    """Get Perplexity API key - checks Settings first, then env."""
+    settings_key = _runtime_config.get("api_keys", {}).get("perplexity", "")
+    if settings_key:
+        return settings_key
+    return _PERPLEXITY_API_KEY_ENV
+
+
+def get_perplexity_models() -> dict:
+    """Get configured Perplexity models for search and deep search."""
+    return {
+        "search": DEFAULT_PERPLEXITY_SEARCH_MODEL,
+        "deep_search": DEFAULT_PERPLEXITY_DEEP_SEARCH_MODEL
+    }
 
 
 def get_provider_from_model(model_id: str) -> str:

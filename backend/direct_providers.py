@@ -39,7 +39,11 @@ async def query_openai_direct(
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            choices = data.get('choices', [])
+            if not choices:
+                print(f"OpenAI API returned no choices: {data}")
+                return None
+            message = choices[0].get('message', {})
             usage = data.get('usage', {})
 
             return {
@@ -193,11 +197,15 @@ async def query_google_direct(
 
             data = response.json()
 
+            candidates = data.get('candidates', [])
+            if not candidates:
+                print(f"Google API returned no candidates: {data}")
+                return None
+
             content = ""
-            if data.get('candidates'):
-                candidate = data['candidates'][0]
-                if candidate.get('content', {}).get('parts'):
-                    content = candidate['content']['parts'][0].get('text', '')
+            candidate = candidates[0]
+            if candidate.get('content', {}).get('parts'):
+                content = candidate['content']['parts'][0].get('text', '')
 
             usage = data.get('usageMetadata', {})
 
@@ -251,7 +259,11 @@ async def query_deepseek_direct(
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            choices = data.get('choices', [])
+            if not choices:
+                print(f"DeepSeek API returned no choices: {data}")
+                return None
+            message = choices[0].get('message', {})
             usage = data.get('usage', {})
 
             result = {
@@ -311,7 +323,11 @@ async def query_xai_direct(
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            choices = data.get('choices', [])
+            if not choices:
+                print(f"xAI API returned no choices: {data}")
+                return None
+            message = choices[0].get('message', {})
             usage = data.get('usage', {})
 
             return {
@@ -356,7 +372,11 @@ async def query_mistral_direct(
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            choices = data.get('choices', [])
+            if not choices:
+                print(f"Mistral API returned no choices: {data}")
+                return None
+            message = choices[0].get('message', {})
             usage = data.get('usage', {})
 
             return {
@@ -472,7 +492,11 @@ async def query_qwen_direct(
             response.raise_for_status()
 
             data = response.json()
-            message = data['choices'][0]['message']
+            choices = data.get('choices', [])
+            if not choices:
+                print(f"Qwen API returned no choices: {data}")
+                return None
+            message = choices[0].get('message', {})
             usage = data.get('usage', {})
 
             result = {
@@ -494,6 +518,70 @@ async def query_qwen_direct(
         return None
 
 
+async def query_perplexity_direct(
+    model_id: str,
+    messages: List[Dict[str, str]],
+    api_key: str,
+    timeout: float = 120.0
+) -> Optional[Dict[str, Any]]:
+    """Query Perplexity API directly (OpenAI-compatible with search)."""
+    model_name = model_id.split('/')[-1] if '/' in model_id else model_id
+
+    # Map to Perplexity API model names
+    model_mapping = {
+        "sonar-pro": "sonar-pro",
+        "sonar": "sonar",
+        "sonar-deep-research": "sonar-deep-research",
+        "sonar-reasoning-pro": "sonar-reasoning-pro",
+    }
+    api_model = model_mapping.get(model_name, model_name)
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "model": api_model,
+        "messages": messages,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                PROVIDER_API_ENDPOINTS["perplexity"],
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            choices = data.get('choices', [])
+            if not choices:
+                print(f"Perplexity API returned no choices: {data}")
+                return None
+            message = choices[0].get('message', {})
+            usage = data.get('usage', {})
+
+            result = {
+                'content': message.get('content'),
+                'usage': {
+                    'input_tokens': usage.get('prompt_tokens', 0),
+                    'output_tokens': usage.get('completion_tokens', 0),
+                },
+                'provider': 'perplexity_direct'
+            }
+
+            # Extract citations if available (Perplexity-specific)
+            if data.get('citations'):
+                result['citations'] = data['citations']
+
+            return result
+    except Exception as e:
+        print(f"Error querying Perplexity directly: {e}")
+        return None
+
+
 # Provider query function mapping
 PROVIDER_QUERY_FUNCTIONS = {
     "openai": query_openai_direct,
@@ -504,6 +592,7 @@ PROVIDER_QUERY_FUNCTIONS = {
     "mistralai": query_mistral_direct,
     "cohere": query_cohere_direct,
     "qwen": query_qwen_direct,
+    "perplexity": query_perplexity_direct,
 }
 
 

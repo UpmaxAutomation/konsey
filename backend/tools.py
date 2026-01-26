@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from .config import PERPLEXITY_API_URL
 
 # ============ WEB SEARCH ============
 
@@ -101,6 +102,100 @@ async def fetch_url(url: str) -> str:
 
     except Exception as e:
         return f"Error fetching URL: {e}"
+
+
+def _extract_json_payload(text: str) -> Optional[Dict[str, Any]]:
+    """Extract JSON object from model output."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            return None
+
+
+async def perplexity_search(
+    query: str,
+    api_key: str,
+    model: str,
+    num_results: int = 5,
+    deep_search: bool = False,
+    timeout: float = 30.0
+) -> Dict[str, Any]:
+    """
+    Query Perplexity for web search or deep search results.
+
+    Args:
+        query: Search query
+        api_key: Perplexity API key
+        model: Perplexity model ID
+        num_results: Number of results to request
+        deep_search: Whether to request a deep search summary
+        timeout: Request timeout in seconds
+
+    Returns:
+        Dict with keys: results (list), summary (optional), citations (list)
+    """
+    if not api_key:
+        raise ValueError("Perplexity API key is required.")
+
+    system_prompt = (
+        "You are a web research assistant. Return ONLY valid JSON with keys: "
+        '"results" (array of {title, url, snippet}), and optional "summary". '
+        f"Include {num_results} results. Keep snippets concise."
+    )
+    if deep_search:
+        system_prompt += (
+            " Provide a brief 1-2 paragraph summary grounded in the sources."
+        )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query}
+        ],
+        "temperature": 0.2
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(PERPLEXITY_API_URL, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+    content = (
+        data.get("choices", [{}])[0]
+        .get("message", {})
+        .get("content", "")
+    )
+    citations = data.get("citations") or []
+
+    parsed = _extract_json_payload(content) or {}
+    results = parsed.get("results") if isinstance(parsed.get("results"), list) else []
+    summary = parsed.get("summary") if isinstance(parsed.get("summary"), str) else ""
+
+    if not results and citations:
+        results = [{
+            "title": "Source",
+            "url": url,
+            "snippet": ""
+        } for url in citations[:num_results]]
+
+    return {
+        "results": results[:num_results],
+        "summary": summary,
+        "citations": citations
+    }
 
 
 # ============ CODE EXECUTION ============

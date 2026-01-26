@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from database.models import Base
+from backend.database.models import Base
 
 # Alembic Config object
 config = context.config
@@ -23,7 +23,10 @@ database_url = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://council:council@localhost:5432/llm_council"
 )
-config.set_main_option("sqlalchemy.url", database_url)
+connect_args = {}
+if "pooler.supabase.com" in database_url or "pooler" in database_url.lower():
+    connect_args["statement_cache_size"] = 0
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 # Logging configuration
 if config.config_file_name is not None:
@@ -61,6 +64,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:

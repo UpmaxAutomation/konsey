@@ -30,9 +30,6 @@ export async function listConversations() {
  * Create a new conversation.
  */
 export async function createConversation() {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H52',location:'conversations.js:32',message:'createConversation:request',data:{url:`${API_BASE}/conversations`,apiBase:API_BASE},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   try {
     const response = await authFetch(`${API_BASE}/conversations`, {
       method: 'POST',
@@ -41,9 +38,6 @@ export async function createConversation() {
       },
       body: JSON.stringify({}),
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H53',location:'conversations.js:40',message:'createConversation:response_received',data:{status:response.status,ok:response.ok,statusText:response.statusText},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (!response.ok) {
       let errorMessage = 'Failed to create conversation';
       let errorData = null;
@@ -54,22 +48,13 @@ export async function createConversation() {
         // If response is not JSON, use status text
         errorMessage = response.statusText || errorMessage;
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H54',location:'conversations.js:50',message:'createConversation:error_response',data:{status:response.status,errorMessage,errorData},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const error = new Error(errorMessage);
       error.status = response.status;
       throw error;
     }
     const data = await response.json();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H55',location:'conversations.js:58',message:'createConversation:success',data:{conversation_id:data?.id,has_id:!!data?.id,has_messages:!!data?.messages},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return data;
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'create-conversation-frontend','hypothesisId':'H56',location:'conversations.js:62',message:'createConversation:exception',data:{error_name:error?.name,error_message:error?.message,error_status:error?.status,error_stack:error?.stack?.substring(0,500)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     throw error;
   }
 }
@@ -148,13 +133,29 @@ export async function sendMessage(conversationId, content, attachedFiles = [], r
  * @param {AbortSignal} signal - Optional abort signal for cancellation
  * @param {Array<string>} attachedFiles - Optional list of filenames
  * @param {Object} retryOptions - Optional retry configuration for initial connection
+ * @param {Object} features - Optional feature overrides (web_search, deep_search)
+ * @param {Object} features - Optional feature overrides (web_search, deep_search)
  * @returns {Promise<void>}
  * @throws {APIError} On unrecoverable connection errors
  */
-export async function sendMessageStream(conversationId, content, onEvent, signal = null, attachedFiles = [], retryOptions = {}) {
+export async function sendMessageStream(
+  conversationId,
+  content,
+  onEvent,
+  signal = null,
+  attachedFiles = [],
+  retryOptions = {},
+  features = null
+) {
   const body = { content };
   if (attachedFiles && attachedFiles.length > 0) {
     body.attached_files = attachedFiles;
+  }
+  if (features?.web_search !== undefined) {
+    body.web_search = features.web_search;
+  }
+  if (features?.deep_search !== undefined) {
+    body.deep_search = features.deep_search;
   }
 
   // Retry only the initial connection, not the streaming itself
@@ -243,10 +244,25 @@ export async function sendMessageStream(conversationId, content, onEvent, signal
  * @returns {Promise<void>}
  * @throws {APIError} On unrecoverable connection errors
  */
-export async function sendQuickMessageStream(conversationId, content, model, onEvent, signal, attachedFiles = [], retryOptions = {}) {
+export async function sendQuickMessageStream(
+  conversationId,
+  content,
+  model,
+  onEvent,
+  signal,
+  attachedFiles = [],
+  retryOptions = {},
+  features = null
+) {
   const body = { content, model };
   if (attachedFiles && attachedFiles.length > 0) {
     body.attached_files = attachedFiles;
+  }
+  if (features?.web_search !== undefined) {
+    body.web_search = features.web_search;
+  }
+  if (features?.deep_search !== undefined) {
+    body.deep_search = features.deep_search;
   }
 
   // Retry only the initial connection, not the streaming itself
@@ -458,4 +474,30 @@ export async function forkConversation(conversationId, messageIndex) {
     throw new Error(error.detail || 'Failed to fork conversation');
   }
   return response.json();
+}
+
+/**
+ * Cancel an in-progress streaming request for a conversation.
+ * This sends a signal to the backend to stop processing and close the stream.
+ * @param {string} conversationId - The conversation ID
+ * @returns {Promise<Object>} Status of the cancellation
+ */
+export async function cancelStream(conversationId) {
+  try {
+    const response = await authFetch(`${API_BASE}/conversations/${conversationId}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      // Silently fail for cancel requests - the stream may have already ended
+      return { cancelled: false, reason: 'Stream already ended or not found' };
+    }
+    return response.json();
+  } catch (error) {
+    // Cancel errors are not critical - the stream may have already completed
+    console.debug('Cancel stream error (non-critical):', error.message);
+    return { cancelled: false, reason: error.message };
+  }
 }

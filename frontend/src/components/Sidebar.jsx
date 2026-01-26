@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import './Sidebar.css';
 import Settings from './Settings';
 import Analytics from './Analytics';
@@ -6,6 +6,11 @@ import Projects from './Projects';
 import BatchProcessor from './BatchProcessor';
 import SearchModal from './SearchModal';
 import AdminPanel from './AdminPanel';
+import StarredSection from './Sidebar/StarredSection';
+import RecentsSection from './Sidebar/RecentsSection';
+import ProjectsSection from './Sidebar/ProjectsSection';
+import UserProfile from './Sidebar/UserProfile';
+import './Sidebar/Sidebar.css';
 import { api } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -46,9 +51,48 @@ export default function Sidebar({
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [starredIds, setStarredIds] = useState(() => {
+    return JSON.parse(localStorage.getItem('starredConversations') || '[]');
+  });
+  const [starredCollapsed, setStarredCollapsed] = useState(false);
+  const [recentsCollapsed, setRecentsCollapsed] = useState(false);
+  const [projects, setProjects] = useState([]);
+  const [collapsedProjects, setCollapsedProjects] = useState({});
   const importFileRef = useRef(null);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Derived state: Starred conversations
+  const starredConversations = useMemo(() => {
+    return conversations.filter(conv => starredIds.includes(conv.id));
+  }, [conversations, starredIds]);
+
+  // Derived state: Recent conversations (last 15, sorted by updated_at)
+  const recentConversations = useMemo(() => {
+    return [...conversations]
+      .sort((a, b) => {
+        const dateA = new Date(a.updated_at || a.created_at);
+        const dateB = new Date(b.updated_at || b.created_at);
+        return dateB - dateA;
+      })
+      .slice(0, 15);
+  }, [conversations]);
+
+  // Check if conversation is starred
+  const isStarred = useCallback((id) => {
+    return starredIds.includes(id);
+  }, [starredIds]);
+
+  // Toggle starred status
+  const handleToggleStar = useCallback((id) => {
+    setStarredIds(prev => {
+      const updated = prev.includes(id)
+        ? prev.filter(x => x !== id)
+        : [...prev, id];
+      localStorage.setItem('starredConversations', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
 
   // Handle file import
   const handleImportClick = () => {
@@ -101,6 +145,27 @@ export default function Sidebar({
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Load projects on mount
+  useEffect(() => {
+    const loadProjects = async () => {
+      try {
+        const projectsList = await api.listProjects();
+        setProjects(projectsList);
+      } catch (error) {
+        console.error('Failed to load projects:', error);
+      }
+    };
+    loadProjects();
+  }, []);
+
+  // Toggle project collapsed state
+  const handleToggleProject = useCallback((projectId) => {
+    setCollapsedProjects(prev => ({
+      ...prev,
+      [projectId]: !prev[projectId]
+    }));
+  }, []);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -484,11 +549,11 @@ export default function Sidebar({
                 </svg>
               </button>
 
-              {/* Settings - always visible */}
+              {/* Settings - prominent button */}
               <button
-                className="header-btn"
+                className="header-btn settings-btn-prominent"
                 onClick={() => setShowSettings(true)}
-                title="Settings"
+                title="Settings & API Keys"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="3"></circle>
@@ -617,6 +682,44 @@ export default function Sidebar({
         )}
 
         <div className="conversation-list">
+          {/* Claude-like Starred Section */}
+          <StarredSection
+            conversations={starredConversations}
+            currentId={currentConversationId}
+            isCollapsed={starredCollapsed}
+            onToggle={() => setStarredCollapsed(!starredCollapsed)}
+            onSelect={handleSelectConversation}
+            onUnstar={handleToggleStar}
+          />
+
+          {/* Claude-like Recents Section */}
+          <RecentsSection
+            conversations={recentConversations}
+            currentId={currentConversationId}
+            isCollapsed={recentsCollapsed}
+            onToggle={() => setRecentsCollapsed(!recentsCollapsed)}
+            onSelect={handleSelectConversation}
+            onStar={handleToggleStar}
+            onDelete={onDeleteConversation}
+            isStarred={isStarred}
+          />
+
+          {/* Projects Section */}
+          <ProjectsSection
+            projects={projects}
+            conversations={conversations}
+            currentId={currentConversationId}
+            currentProjectId={currentProjectId}
+            collapsedProjects={collapsedProjects}
+            onToggleProject={handleToggleProject}
+            onSelectProject={setCurrentProjectId}
+            onSelectConversation={handleSelectConversation}
+            onOpenProjectSettings={(project) => {
+              setCurrentProjectId(project.id);
+              setShowProjects(true);
+            }}
+          />
+
           {/* New folder input */}
           {showNewFolder && (
             <div className="new-folder-container">
@@ -760,40 +863,19 @@ export default function Sidebar({
           )}
         </div>
         
-        {/* Sidebar Footer with User Info */}
-        <div className="sidebar-footer">
-          {user && (
-            <div className="user-info">
-              <div className="user-avatar">
-                {user.avatar_url ? (
-                  <img src={user.avatar_url} alt={user.name || user.email} />
-                ) : (
-                  <span className="avatar-initial">
-                    {(user.name || user.email || 'U').charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <div className="user-details">
-                <div className="user-name">{user.name || 'User'}</div>
-                <div className="user-email">{user.email}</div>
-              </div>
-            </div>
-          )}
-          <button
-            className="logout-btn"
-            onClick={() => {
-              logout();
-              navigate('/login');
-            }}
-            title="Logout"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-              <polyline points="16 17 21 12 16 7"></polyline>
-              <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-          </button>
-        </div>
+        {/* Claude-like User Profile Footer */}
+        <UserProfile
+          user={user}
+          onLogout={() => {
+            logout();
+            navigate('/login');
+          }}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenAPIKeys={() => setShowSettings(true)}
+          onOpenTeam={() => setShowAdminPanel(true)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
       </div>
 
       <SearchModal

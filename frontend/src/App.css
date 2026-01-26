@@ -16,35 +16,44 @@
   position: relative;
 }
 
-/* Mobile hamburger menu button */
+/* Mobile hamburger menu button - Claude style */
 .mobile-menu-button {
   display: none;
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: 12px;
+  left: 12px;
   z-index: 1001;
-  width: 48px;
-  height: 48px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  color: var(--text-primary);
+  width: 40px;
+  height: 40px;
+  background: #1a1a1a;
+  border: none;
+  border-radius: 8px;
+  color: #e5e5e5;
   cursor: pointer;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-md);
-  transition: all var(--transition-base);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: all 0.15s ease;
   padding: 0;
 }
 
 .mobile-menu-button:hover {
-  background: var(--bg-hover);
-  transform: scale(1.05);
-  box-shadow: var(--shadow-lg);
+  background: #2a2a2a;
 }
 
 .mobile-menu-button:active {
   transform: scale(0.95);
+}
+
+[data-theme="light"] .mobile-menu-button {
+  background: #ffffff;
+  color: #1a1a1a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e5e5;
+}
+
+[data-theme="light"] .mobile-menu-button:hover {
+  background: #f5f5f5;
 }
 
 @media (max-width: 768px) {

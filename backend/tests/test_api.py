@@ -1,6 +1,8 @@
 """Integration tests for API endpoints."""
 
 import pytest
+import uuid
+from types import SimpleNamespace
 from unittest.mock import patch, AsyncMock, MagicMock
 from fastapi.testclient import TestClient
 import json
@@ -126,6 +128,36 @@ class TestConversationsEndpoint:
         """GET non-existent conversation returns 404."""
         response = client.get("/api/conversations/nonexistent-conv-xyz")
         assert response.status_code == 404
+
+    def test_delete_conversation_passes_user_context(self, client):
+        """DELETE conversation passes user context to storage layer."""
+        from backend.main import app
+        from backend.auth.dependencies import get_current_user_optional
+        from backend.database.connection import get_db
+
+        conversation_id = "3c3bdc84-2afc-4cd8-8620-5f2af9eab2c5"
+        user_id = uuid.uuid4()
+        db_session = MagicMock()
+
+        def override_current_user():
+            return SimpleNamespace(id=user_id)
+
+        async def override_get_db():
+            yield db_session
+
+        app.dependency_overrides[get_current_user_optional] = override_current_user
+        app.dependency_overrides[get_db] = override_get_db
+
+        with patch("backend.main.storage.delete_conversation", new=AsyncMock(return_value=True)) as mock_delete:
+            response = client.delete(f"/api/conversations/{conversation_id}")
+            assert response.status_code == 200
+            mock_delete.assert_awaited_once_with(
+                conversation_id,
+                user_id=user_id,
+                db=db_session,
+            )
+
+        app.dependency_overrides = {}
 
 
 class TestSessionUsageEndpoint:

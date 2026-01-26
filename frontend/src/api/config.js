@@ -11,22 +11,11 @@ import { API_BASE, authFetch } from './client.js';
  * @returns {Promise<Object>} API keys status and providers list
  */
 export async function getApiKeys() {
-  // #region agent log
-  const startTime = Date.now();
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'get-api-keys-frontend','hypothesisId':'H79',location:'config.js:13',message:'getApiKeys:request',data:{url:`${API_BASE}/keys`},timestamp:startTime})}).catch(()=>{});
-  // #endregion
   const response = await authFetch(`${API_BASE}/keys`);
-  // #region agent log
-  const duration = Date.now() - startTime;
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'get-api-keys-frontend','hypothesisId':'H80',location:'config.js:16',message:'getApiKeys:response',data:{status:response.status,ok:response.ok,duration_ms:duration},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (!response.ok) {
     throw new Error('Failed to get API keys');
   }
   const data = await response.json();
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'get-api-keys-frontend','hypothesisId':'H81',location:'config.js:22',message:'getApiKeys:parsed',data:{providers_count:Object.keys(data.api_keys || {}).length,has_openrouter:!!(data.api_keys?.openrouter)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return data;
 }
 

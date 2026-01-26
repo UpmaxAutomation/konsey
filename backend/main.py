@@ -12,7 +12,17 @@ import json
 import asyncio
 
 from . import storage_adapter as storage, analytics, projects, files, templates, search, budgets, ratings, batch
-from .council import run_full_council, generate_conversation_title, stage1_collect_responses, stage2_collect_rankings, stage3_synthesize_final, calculate_aggregate_rankings, run_full_council_stream
+from .council import (
+    run_full_council,
+    generate_conversation_title,
+    stage1_collect_responses,
+    stage2_collect_rankings,
+    stage3_synthesize_final,
+    calculate_aggregate_rankings,
+    run_full_council_stream,
+    gather_context,
+    format_web_context,
+)
 from .debate import run_debate
 from .voting import run_vote
 from .openrouter import query_model_stream
@@ -297,6 +307,8 @@ def get_all_models():
 DEFAULT_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
     "http://localhost:5176",
     "http://127.0.0.1:5176",
     "http://localhost:3000",
@@ -316,43 +328,8 @@ else:
     CORS_ORIGINS = DEFAULT_ORIGINS
 
 logger.info("cors_config", origins=CORS_ORIGINS)
-# #region agent log
-# Debug logging - only write if file exists (local dev only)
-import json
-import os
-debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-if os.path.exists(os.path.dirname(debug_log_path)):
-    try:
-        with open(debug_log_path, 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"cors-debug","hypothesisId":"H2","location":"main.py:262","message":"cors_config","data":{"origins":CORS_ORIGINS,"env_origins":env_origins},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-    except (FileNotFoundError, PermissionError, OSError):
-        pass  # Ignore file errors in production
-# #endregion
-
-# #region agent log
-# Log CORS configuration at startup
-import os
-debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-if os.path.exists(os.path.dirname(debug_log_path)):
-    try:
-        with open(debug_log_path, 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"cors-investigation","hypothesisId":"H3","location":"main.py:276","message":"cors_middleware:config","data":{"cors_origins":CORS_ORIGINS,"env_origins":env_origins,"allow_credentials":True},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-    except (FileNotFoundError, PermissionError, OSError):
-        pass
-# #endregion
 
 # CORS middleware - MUST be first to handle preflight requests
-# #region agent log
-import os
-debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-if os.path.exists(os.path.dirname(debug_log_path)):
-    try:
-        with open(debug_log_path, 'a') as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"cors-investigation","hypothesisId":"H4","location":"main.py:288","message":"cors_middleware:adding","data":{"cors_origins":CORS_ORIGINS,"allow_credentials":True,"allow_methods":"*","allow_headers":"*"},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-    except (FileNotFoundError, PermissionError, OSError):
-        pass
-# #endregion
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -391,12 +368,16 @@ class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
     content: str
     attached_files: Optional[List[str]] = None
+    web_search: Optional[bool] = None
+    deep_search: Optional[bool] = None
 
 
 class QuickMessageRequest(BaseModel):
     """Request to send a message in Quick Mode (single model, no deliberation)."""
     content: str
     model: Optional[str] = None  # If None, uses chairman model
+    web_search: Optional[bool] = None
+    deep_search: Optional[bool] = None
 
 
 class QuickModeRequest(BaseModel):
@@ -491,6 +472,11 @@ class MoveFolderRequest(BaseModel):
     folder_id: Optional[str] = None
 
 
+class MoveProjectRequest(BaseModel):
+    """Request to move a conversation to a project."""
+    project_id: Optional[str] = None
+
+
 class UpdateTagsRequest(BaseModel):
     """Request to update conversation tags."""
     tags: List[str]
@@ -503,23 +489,38 @@ class CostEstimateRequest(BaseModel):
     chairman_model: Optional[str] = None
 
 
-@app.get("/", tags=["health"], summary="Health Check", response_description="Service status")
+@app.get("/", tags=["health"], summary="Root Health Check", response_description="Service status")
 async def root():
     """
-    Health check endpoint.
-
-    Returns the current service status. Use this to verify the API is running
-    and responding to requests.
+    Root endpoint - redirects to /health for status.
 
     Returns:
         dict: Status object with service name
+    """
+    return {"status": "ok", "service": "LLM Council API"}
+
+
+@app.get("/health", tags=["health"], summary="Health Check", response_description="Service health status")
+async def health_check():
+    """
+    Deterministic health check endpoint for load balancers and monitoring.
+
+    Returns the current service status and version. This endpoint is designed
+    for health monitoring systems (k8s, Railway, Render, etc.).
+
+    Returns:
+        dict: Health status object
 
     Example Response:
         ```json
-        {"status": "ok", "service": "LLM Council API"}
+        {"status": "healthy", "service": "llm-council", "version": "1.0.0"}
         ```
     """
-    return {"status": "ok", "service": "LLM Council API"}
+    return {
+        "status": "healthy",
+        "service": "llm-council",
+        "version": "1.0.0"
+    }
 
 
 # ============ CONFIG ENDPOINTS ============
@@ -571,7 +572,18 @@ async def get_config(
             chairman_model = settings.chairman_model
         
         # Get user API keys (masked) - optimized single query
-        all_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+        all_providers = [
+            "openrouter",
+            "openai",
+            "anthropic",
+            "google",
+            "x-ai",
+            "deepseek",
+            "mistralai",
+            "cohere",
+            "qwen",
+            "perplexity"
+        ]
         api_keys = {}
         
         # Fetch all user keys in one query
@@ -593,14 +605,6 @@ async def get_config(
         for provider in all_providers:
             if provider in key_map:
                 key_record = key_map[provider]
-                # #region agent log
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H83","location":"main.py:885","message":"get_api_keys:processing_key","data":{"user_id":str(current_user.id),"provider":provider,"key_id":str(key_record.id),"is_active":key_record.is_active},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
                 # Only include active keys
                 if not key_record.is_active:
                     api_keys[provider] = ""
@@ -613,17 +617,17 @@ async def get_config(
                     else:
                         api_keys[provider] = "***"
                 except Exception as e:
-                    # #region agent log
-                    if os.path.exists(os.path.dirname(debug_log_path)):
-                        try:
-                            with open(debug_log_path, 'a') as f:
-                                f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H84","location":"main.py:895","message":"get_api_keys:decrypt_error","data":{"user_id":str(current_user.id),"provider":provider,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                        except Exception:
-                            pass
-                    # #endregion
                     api_keys[provider] = ""
             else:
-                api_keys[provider] = ""
+                # Fallback to environment variable for OpenRouter
+                if provider == "openrouter" and os.getenv("OPENROUTER_API_KEY"):
+                    env_key = os.getenv("OPENROUTER_API_KEY")
+                    if len(env_key) > 8:
+                        api_keys[provider] = env_key[:4] + "..." + env_key[-4:]
+                    else:
+                        api_keys[provider] = "***"
+                else:
+                    api_keys[provider] = ""
     else:
         # Fallback to global config
         council_models = get_council_models()
@@ -693,8 +697,12 @@ async def update_config(
                 raise HTTPException(status_code=400, detail=f"Invalid chairman model: {request.chairman_model}")
         
         # Update user settings
-        await db_crud.settings.set_council_config(db, current_user.id, council_models, chairman_model)
-        await db.commit()
+        await db_crud.settings.set_council_config(
+            db,
+            current_user.id,
+            council_models,
+            chairman_model,
+        )
         
         return {
             "council_models": council_models,
@@ -894,77 +902,98 @@ async def get_api_keys_endpoint(
             - api_keys: Dict of provider -> masked key (or empty if not set)
             - providers: List of all supported provider names
     """
+    keys = {}
     if current_user:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H70","location":"main.py:855","message":"get_api_keys:entry","data":{"user_id":str(current_user.id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         # Get user-specific keys from database - optimized single query
-        all_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
-        keys = {}
+        all_providers = [
+            "openrouter",
+            "openai",
+            "anthropic",
+            "google",
+            "x-ai",
+            "deepseek",
+            "mistralai",
+            "cohere",
+            "qwen",
+            "perplexity"
+        ]
         
-        # Fetch all user keys in one query
-        from sqlalchemy import select
-        from ..database.models import UserAPIKey
-        result = await db.execute(
-            select(UserAPIKey).where(
-                UserAPIKey.user_id == current_user.id,
-                UserAPIKey.is_active == True,
-                UserAPIKey.provider.in_(all_providers)
+        try:
+            # Fetch all user keys in one query
+            from sqlalchemy import select
+            from .database.models import UserAPIKey
+            result = await db.execute(
+                select(UserAPIKey).where(
+                    UserAPIKey.user_id == current_user.id,
+                    UserAPIKey.is_active == True,
+                    UserAPIKey.provider.in_(all_providers)
+                )
             )
-        )
-        user_keys = result.scalars().all()
-        
-        # Create a map of provider -> key
-        key_map = {key.provider: key for key in user_keys}
-        
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H71","location":"main.py:870","message":"get_api_keys:query_result","data":{"user_id":str(current_user.id),"keys_found":len(user_keys),"providers":list(key_map.keys())},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-        
-        # Decrypt and mask keys
-        for provider in all_providers:
-            if provider in key_map:
-                try:
-                    from ..database.crud.api_keys import _decrypt
-                    decrypted = _decrypt(key_map[provider].encrypted_key)
-                    # Mask the key
-                    if len(decrypted) > 8:
-                        keys[provider] = decrypted[:4] + "..." + decrypted[-4:]
+            user_keys = result.scalars().all()
+            
+            # Create a map of provider -> key
+            key_map = {key.provider: key for key in user_keys}
+
+            # Decrypt and mask keys
+            for provider in all_providers:
+                if provider in key_map:
+                    try:
+                        from .database.crud.api_keys import _decrypt
+                        decrypted = _decrypt(key_map[provider].encrypted_key)
+                        # Mask the key
+                        if len(decrypted) > 8:
+                            keys[provider] = decrypted[:4] + "..." + decrypted[-4:]
+                        else:
+                            keys[provider] = "***"
+                    except Exception as e:
+                        keys[provider] = ""
+                else:
+                    # Fallback to environment variable for OpenRouter if not in DB
+                    # ONLY allow this for Admins (BYOK policy for others)
+                    if current_user.is_admin and provider == "openrouter" and os.getenv("OPENROUTER_API_KEY"):
+                        env_key = os.getenv("OPENROUTER_API_KEY")
+                        if len(env_key) > 8:
+                            keys[provider] = env_key[:4] + "..." + env_key[-4:]
+                        else:
+                            keys[provider] = "***"
+                    else:
+                        keys[provider] = ""
+        except Exception as e:
+            logger.error(f"Error fetching API keys from DB: {e}. Falling back to environment variables.")
+            # Fallback for all providers if DB fails
+            # In crash scenario, we might allow env var for everyone or just admin?
+            # Safer to allow only admin or fail safe?
+            # If DB is down, we can't check is_admin easily unless we trust the token scopes (if any).
+            # For now, let's strictly enforce BYOK: If DB fails, non-admins get nothing.
+            is_admin = current_user.is_admin # This might be cached on object
+            
+            for provider in all_providers:
+                if is_admin and provider == "openrouter" and os.getenv("OPENROUTER_API_KEY"):
+                    env_key = os.getenv("OPENROUTER_API_KEY")
+                    if len(env_key) > 8:
+                        keys[provider] = env_key[:4] + "..." + env_key[-4:]
                     else:
                         keys[provider] = "***"
-                except Exception as e:
-                    # #region agent log
-                    if os.path.exists(os.path.dirname(debug_log_path)):
-                        try:
-                            with open(debug_log_path, 'a') as f:
-                                f.write(json.dumps({"sessionId":"debug-session","runId":"get-api-keys","hypothesisId":"H72","location":"main.py:885","message":"get_api_keys:decrypt_error","data":{"user_id":str(current_user.id),"provider":provider,"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                        except Exception:
-                            pass
-                    # #endregion
+                else:
                     keys[provider] = ""
-            else:
-                keys[provider] = ""
     else:
         # Fallback to global config
         keys = get_api_keys()
     
     return {
         "api_keys": keys,
-        "providers": ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+        "providers": [
+            "openrouter",
+            "openai",
+            "anthropic",
+            "google",
+            "x-ai",
+            "deepseek",
+            "mistralai",
+            "cohere",
+            "qwen",
+            "perplexity"
+        ]
     }
 
 
@@ -1006,7 +1035,18 @@ async def set_api_key_endpoint(
     Raises:
         HTTPException 400: If provider name is invalid
     """
-    valid_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+    valid_providers = [
+        "openrouter",
+        "openai",
+        "anthropic",
+        "google",
+        "x-ai",
+        "deepseek",
+        "mistralai",
+        "cohere",
+        "qwen",
+        "perplexity"
+    ]
     if request.provider not in valid_providers:
         raise HTTPException(
             status_code=400,
@@ -1015,68 +1055,20 @@ async def set_api_key_endpoint(
 
     # If user is authenticated, store in database (user-specific)
     if current_user:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H73","location":"main.py:925","message":"set_api_key:entry","data":{"user_id":str(current_user.id),"provider":request.provider,"has_key":bool(request.api_key),"key_length":len(request.api_key) if request.api_key else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         try:
-            key_record = await db_crud.api_keys.set_user_key(db, current_user.id, request.provider, request.api_key or "")
-            await db.commit()
+            key_record = await db_crud.api_keys.set_user_key(
+                db,
+                current_user.id,
+                request.provider,
+                request.api_key or "",
+            )
             # Verify the key was actually saved by querying it back
             verify_key = await db_crud.api_keys.get_user_key(db, current_user.id, request.provider)
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H74","location":"main.py:1011","message":"set_api_key:committed","data":{"user_id":str(current_user.id),"provider":request.provider,"key_id":str(key_record.id) if key_record else None,"is_active":key_record.is_active if key_record else None,"verify_found":bool(verify_key),"verify_length":len(verify_key) if verify_key else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             if not verify_key and request.api_key:
                 # Key was saved but can't be retrieved - this is a problem
-                # #region agent log
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save-endpoint","hypothesisId":"H89","location":"main.py:1018","message":"set_api_key:verification_failed","data":{"user_id":str(current_user.id),"provider":request.provider,"key_id":str(key_record.id) if key_record else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
                 logger.warning(f"API key saved but verification failed for user {current_user.id}, provider {request.provider}")
-            # #region agent log
-            import os
-            import json
-            from datetime import datetime
-            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save","hypothesisId":"H1","location":"main.py:924","message":"api_key_saved","data":{"user_id":str(current_user.id),"provider":request.provider,"has_key":bool(request.api_key)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
         except Exception as e:
             await db.rollback()
-            # #region agent log
-            import os
-            import json
-            from datetime import datetime
-            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"api-key-save","hypothesisId":"H2","location":"main.py:930","message":"api_key_save_error","data":{"user_id":str(current_user.id),"provider":request.provider,"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to save API key: {str(e)}"
@@ -1121,14 +1113,24 @@ async def delete_api_key_endpoint(
     Raises:
         HTTPException 400: If provider name is invalid
     """
-    valid_providers = ["openrouter", "openai", "anthropic", "google", "x-ai", "deepseek", "mistralai", "cohere", "qwen"]
+    valid_providers = [
+        "openrouter",
+        "openai",
+        "anthropic",
+        "google",
+        "x-ai",
+        "deepseek",
+        "mistralai",
+        "cohere",
+        "qwen",
+        "perplexity"
+    ]
     if provider not in valid_providers:
         raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")
 
     if current_user:
         # Delete user-specific key
         await db_crud.api_keys.delete_user_key(db, current_user.id, provider)
-        await db.commit()
     else:
         # Fallback to global config
         set_api_key(provider, "")
@@ -1657,6 +1659,7 @@ class MemoryRequest(BaseModel):
 
 class FeaturesRequest(BaseModel):
     web_search: Optional[bool] = None
+    deep_search: Optional[bool] = None
     code_execution: Optional[bool] = None
     memory: Optional[bool] = None
 
@@ -1704,6 +1707,8 @@ async def update_features(request: FeaturesRequest):
     updates = {}
     if request.web_search is not None:
         updates["web_search"] = request.web_search
+    if request.deep_search is not None:
+        updates["deep_search"] = request.deep_search
     if request.code_execution is not None:
         updates["code_execution"] = request.code_execution
     if request.memory is not None:
@@ -3438,43 +3443,10 @@ async def list_conversations(
         List[ConversationMetadata]: List of conversation summaries
     """
     try:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations","hypothesisId":"H39","location":"main.py:3296","message":"list_conversations:entry","data":{"has_user":bool(current_user),"user_id":str(current_user.id) if current_user else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         user_id = current_user.id if current_user else None
         result = await storage.list_conversations(user_id=user_id, db=db)
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations","hypothesisId":"H40","location":"main.py:3314","message":"list_conversations:success","data":{"count":len(result) if result else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         return result
     except Exception as e:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        import traceback
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations","hypothesisId":"H41","location":"main.py:3316","message":"list_conversations:exception","data":{"error_type":type(e).__name__,"error":str(e),"traceback":traceback.format_exc()[:500]},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         logger.exception("list_conversations_error", error=str(e))
         raise
 
@@ -3507,74 +3479,14 @@ async def create_conversation(
     """
     conversation_id = str(uuid.uuid4())
     user_id = current_user.id if current_user else None
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation","hypothesisId":"H47","location":"main.py:3381","message":"create_conversation:entry","data":{"has_user":bool(current_user),"user_id":str(user_id) if user_id else None,"conversation_id":conversation_id},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
     try:
         conversation = await storage.create_conversation(
-            conversation_id, user_id=user_id, db=db
+            conversation_id,
+            user_id=user_id,
+            db=db,
         )
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation","hypothesisId":"H48","location":"main.py:3406","message":"create_conversation:storage_success","data":{"conversation_id":conversation_id,"has_conversation":bool(conversation)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H1","location":"main.py:3368","message":"conversation_created","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"has_user":bool(user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-        await db.commit()  # Commit the conversation creation
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H2","location":"main.py:3421","message":"conversation_committed","data":{"conversation_id":conversation_id,"has_conversation":bool(conversation),"conversation_keys":list(conversation.keys()) if conversation else []},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"conversation-create","hypothesisId":"H57","location":"main.py:3430","message":"conversation_returning","data":{"conversation_id":conversation_id,"conversation_id_in_response":conversation.get("id") if conversation else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         return conversation
     except Exception as exc:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        import traceback
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation","hypothesisId":"H58","location":"main.py:3437","message":"create_conversation:exception","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"error_type":type(exc).__name__,"error":str(exc),"traceback":traceback.format_exc()[:1000]},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         logger.exception("create_conversation_error", conversation_id=conversation_id, user_id=str(user_id) if user_id else None, error=str(exc))
         raise
 
@@ -3621,7 +3533,11 @@ async def get_conversation(
     summary="Delete Conversation",
     response_description="Confirmation of deletion"
 )
-async def delete_conversation(conversation_id: str):
+async def delete_conversation(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Delete a conversation.
 
@@ -3637,7 +3553,12 @@ async def delete_conversation(conversation_id: str):
     Raises:
         HTTPException 404: If conversation not found
     """
-    deleted = await storage.delete_conversation(conversation_id)
+    user_id = current_user.id if current_user else None
+    deleted = await storage.delete_conversation(
+        conversation_id,
+        user_id=user_id,
+        db=db,
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"status": "success", "message": f"Conversation {conversation_id} deleted"}
@@ -3822,6 +3743,8 @@ async def send_message(
         conversation_context=conversation_context,
         conversation_id=conversation_id,
         attached_files=request.attached_files,
+        web_search=request.web_search,
+        deep_search=request.deep_search,
         user_id=user_id,
         db=db
     )
@@ -3835,21 +3758,6 @@ async def send_message(
         db=db
     )
     
-    # Commit all changes (conversation, messages, title update)
-    await db.commit()
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"message-save","hypothesisId":"H3","location":"main.py:3660","message":"messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
-
     # Return the complete response with metadata
     return {
         "stage1": stage1_results,
@@ -3932,7 +3840,14 @@ async def send_message_stream(
             metadata = None
 
             # Stream the council process with real-time token updates (using user-specific API keys)
-            async for event in run_full_council_stream(request.content, conversation_context, user_id=user_id, db=db):
+            async for event in run_full_council_stream(
+                request.content,
+                conversation_context,
+                web_search=request.web_search,
+                deep_search=request.deep_search,
+                user_id=user_id,
+                db=db
+            ):
                 # Check for cancellation
                 if cancel_event.is_set():
                     cancelled = True
@@ -3977,25 +3892,11 @@ async def send_message_stream(
                     db=db
                 )
             
-            # Commit all changes (messages, title) if not cancelled
-            if not cancelled:
-                await db.commit()
-                # #region agent log
-                import os
-                import json
-                from datetime import datetime
-                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"message-stream-save","hypothesisId":"H4","location":"main.py:3820","message":"stream_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
-
         except Exception as e:
+            await db.rollback()
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            raise
         finally:
             # Always clean up the stream registration
             _active_streams.pop(conversation_id, None)
@@ -4173,21 +4074,6 @@ async def send_quick_mode(
                     usage=usage_info,
                     db=db
                 )
-                # Commit all changes (messages, title)
-                await db.commit()
-                # #region agent log
-                import os
-                import json
-                from datetime import datetime
-                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"quick-stream-save","hypothesisId":"H5","location":"main.py:3998","message":"quick_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
-
                 # Send completion event with full response
                 completion_data = {
                     "type": "complete",
@@ -4204,8 +4090,10 @@ async def send_quick_mode(
                 yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
+            await db.rollback()
             # Send error event
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            raise
         finally:
             # Always clean up the stream registration
             _active_streams.pop(conversation_id, None)
@@ -4295,54 +4183,51 @@ async def send_quick_message(
         cancelled = False
 
         try:
-            # #region agent log
-            import os
-            import json
-            from datetime import datetime
-            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-start","hypothesisId":"H31","location":"main.py:4128","message":"quick_message_start","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"model":model_to_use,"is_first":is_first_message},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             # Add user message
             await storage.add_user_message(conversation_id, request.content, db=db)
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-start","hypothesisId":"H32","location":"main.py:4136","message":"user_message_added","data":{"conversation_id":conversation_id},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
 
             # Start title generation in parallel if first message
             title_task = None
             if is_first_message:
                 title_task = asyncio.create_task(generate_conversation_title(request.content, user_id=user_id, db=db))
 
-            # Prepare messages for the model
-            messages = [{"role": "user", "content": request.content}]
+            # Gather web/deep search context if requested
+            context = await gather_context(
+                request.content,
+                web_search=request.web_search,
+                deep_search=request.deep_search
+            )
+            context_sections = []
 
-            # Add conversation context if available
             if conversation_context:
-                messages.insert(0, {"role": "system", "content": conversation_context})
+                context_sections.append(conversation_context)
+
+            if context.get("web_search") or context.get("web_search_summary"):
+                web_context_text = format_web_context(
+                    context.get("web_search", []),
+                    context.get("web_search_summary")
+                )
+                if web_context_text:
+                    context_sections.append(web_context_text)
+
+            if context.get("memory"):
+                context_sections.append(
+                    f"**Relevant Memory Context:**\n{context['memory']}"
+                )
+
+            enhanced_content = request.content
+            if context_sections:
+                all_context = "\n\n".join(context_sections)
+                enhanced_content = f"{all_context}\n\n---\n\n{request.content}"
+
+            # Prepare messages for the model
+            messages = [{"role": "user", "content": enhanced_content}]
 
             # Stream the response (with user-specific API keys)
             full_content = ""
             thinking = None
             usage_info = None
 
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-start","hypothesisId":"H33","location":"main.py:4150","message":"starting_query_stream","data":{"model":model_to_use,"user_id":str(user_id) if user_id else None,"has_context":bool(conversation_context)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             async for chunk in query_model_stream(model_to_use, messages, user_id=user_id, db=db):
                 # Check for cancellation
                 if cancel_event.is_set():
@@ -4384,21 +4269,6 @@ async def send_quick_message(
                     usage=usage_info,
                     db=db
                 )
-                # Commit all changes (messages, title)
-                await db.commit()
-                # #region agent log
-                import os
-                import json
-                from datetime import datetime
-                debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-stream-save","hypothesisId":"H6","location":"main.py:4165","message":"quick_message_stream_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
-
                 # Send completion event
                 completion_data = {
                     "type": "complete",
@@ -4415,25 +4285,14 @@ async def send_quick_message(
                 yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
-            # #region agent log
-            import os
-            import json
-            from datetime import datetime
-            import traceback
-            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"quick-message-exception","hypothesisId":"H35","location":"main.py:4254","message":"quick_message_exception","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None,"error_type":type(e).__name__,"error":str(e),"traceback":traceback.format_exc()[:500]},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
+            await db.rollback()
             logger.exception("quick_message_stream_error", conversation_id=conversation_id, error=str(e))
             error_message = str(e)
             # In development, include more details
             if os.getenv("ENVIRONMENT", "development").lower() != "production":
                 error_message = f"{type(e).__name__}: {error_message}"
             yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
+            raise
         finally:
             # Always clean up the stream registration
             _active_streams.pop(conversation_id, None)
@@ -4551,21 +4410,6 @@ async def run_debate_mode(
         db=db
     )
     
-    # Commit all changes (messages, title)
-    await db.commit()
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"debate-save","hypothesisId":"H7","location":"main.py:4295","message":"debate_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
-
     # Return the complete debate
     return debate_result
 
@@ -4644,21 +4488,6 @@ async def run_conversation_vote(
         db=db
     )
     
-    # Commit all changes (messages)
-    await db.commit()
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"vote-save","hypothesisId":"H8","location":"main.py:4445","message":"vote_messages_committed","data":{"conversation_id":conversation_id,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
-
     return vote_results
 
 
@@ -5345,7 +5174,10 @@ async def clear_budget_alerts():
     summary="List All Folders",
     response_description="All folder definitions"
 )
-async def get_folders():
+async def get_folders(
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     List all folders for organizing conversations.
 
@@ -5355,7 +5187,12 @@ async def get_folders():
         dict: Folder list containing:
             - folders: List of folder objects with id, name, color, icon
     """
-    return {"folders": await storage.list_folders()}
+    return {
+        "folders": await storage.list_folders(
+            user_id=current_user.id if current_user else None,
+            db=db,
+        )
+    }
 
 
 @app.post(
@@ -5364,7 +5201,11 @@ async def get_folders():
     summary="Create Folder",
     response_description="Created folder details"
 )
-async def create_new_folder(request: CreateFolderRequest):
+async def create_new_folder(
+    request: CreateFolderRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Create a new folder for organizing conversations.
 
@@ -5387,7 +5228,9 @@ async def create_new_folder(request: CreateFolderRequest):
     folder = await storage.create_folder(
         name=request.name,
         color=request.color or "#4a90e2",
-        icon=request.icon or "folder"
+        icon=request.icon or "folder",
+        user_id=current_user.id if current_user else None,
+        db=db,
     )
     return folder
 
@@ -5398,7 +5241,11 @@ async def create_new_folder(request: CreateFolderRequest):
     summary="Delete Folder",
     response_description="Deletion confirmation"
 )
-async def delete_existing_folder(folder_id: str):
+async def delete_existing_folder(
+    folder_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Delete a folder.
 
@@ -5416,7 +5263,11 @@ async def delete_existing_folder(folder_id: str):
     Raises:
         HTTPException 404: If folder not found
     """
-    deleted = await storage.delete_folder(folder_id)
+    deleted = await storage.delete_folder(
+        folder_id,
+        user_id=current_user.id if current_user else None,
+        db=db,
+    )
     if not deleted:
         raise HTTPException(status_code=404, detail="Folder not found")
     return {"status": "success", "message": f"Folder {folder_id} deleted"}
@@ -5428,7 +5279,12 @@ async def delete_existing_folder(folder_id: str):
     summary="Move Conversation to Folder",
     response_description="Updated folder assignment"
 )
-async def move_to_folder(conversation_id: str, request: MoveFolderRequest):
+async def move_to_folder(
+    conversation_id: str,
+    request: MoveFolderRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Move a conversation to a folder.
 
@@ -5448,10 +5304,57 @@ async def move_to_folder(conversation_id: str, request: MoveFolderRequest):
     Raises:
         HTTPException 404: If conversation not found
     """
-    success = await storage.move_conversation_to_folder(conversation_id, request.folder_id)
+    success = await storage.move_conversation_to_folder(
+        conversation_id,
+        request.folder_id,
+        user_id=current_user.id if current_user else None,
+        db=db,
+    )
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"status": "success", "folder_id": request.folder_id}
+
+
+@app.put(
+    "/api/conversations/{conversation_id}/project",
+    tags=["projects"],
+    summary="Move Conversation to Project",
+    response_description="Updated project assignment"
+)
+async def move_to_project(
+    conversation_id: str,
+    request: MoveProjectRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Move a conversation to a project.
+
+    Assigns a conversation to a specific project, or removes it
+    from its current project if project_id is null.
+
+    Args:
+        conversation_id: The conversation to move
+        request: MoveProjectRequest containing:
+            - project_id: Target project ID (or null to remove from project)
+
+    Returns:
+        dict: Update confirmation containing:
+            - status: "success"
+            - project_id: The new project ID
+
+    Raises:
+        HTTPException 404: If conversation not found
+    """
+    success = await storage.move_conversation_to_project(
+        conversation_id,
+        request.project_id,
+        user_id=current_user.id if current_user else None,
+        db=db,
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return {"status": "success", "project_id": request.project_id}
 
 
 # ============ TAG ENDPOINTS ============
@@ -5462,7 +5365,10 @@ async def move_to_folder(conversation_id: str, request: MoveFolderRequest):
     summary="List All Tags",
     response_description="All unique tags in use"
 )
-async def get_all_tags():
+async def get_all_tags(
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     List all unique tags across all conversations.
 
@@ -5473,7 +5379,12 @@ async def get_all_tags():
         dict: Tag list containing:
             - tags: List of unique tag strings
     """
-    return {"tags": await storage.list_all_tags()}
+    return {
+        "tags": await storage.list_all_tags(
+            user_id=current_user.id if current_user else None,
+            db=db,
+        )
+    }
 
 
 @app.put(
@@ -5482,7 +5393,12 @@ async def get_all_tags():
     summary="Update Conversation Tags",
     response_description="Updated tag assignment"
 )
-async def update_conversation_tags(conversation_id: str, request: UpdateTagsRequest):
+async def update_conversation_tags(
+    conversation_id: str,
+    request: UpdateTagsRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Update tags for a conversation.
 
@@ -5502,7 +5418,12 @@ async def update_conversation_tags(conversation_id: str, request: UpdateTagsRequ
     Raises:
         HTTPException 404: If conversation not found
     """
-    success = await storage.update_tags(conversation_id, request.tags)
+    success = await storage.update_tags(
+        conversation_id,
+        request.tags,
+        user_id=current_user.id if current_user else None,
+        db=db,
+    )
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"status": "success", "tags": request.tags}
@@ -6180,7 +6101,10 @@ async def list_teams():
     summary="Create Team",
     response_description="Newly created team workspace"
 )
-async def create_team(request: CreateTeamRequest):
+async def create_team(
+    request: CreateTeamRequest,
+    current_user: User = Depends(get_current_user_optional),
+):
     """
     Create a new team workspace.
 
@@ -6210,7 +6134,8 @@ async def create_team(request: CreateTeamRequest):
         "member_count": 1
     }
     _teams[team_id] = team
-    _team_memberships[team_id] = [{"user_id": "current_user", "role": "owner"}]
+    owner_id = str(current_user.id) if current_user else "anonymous"
+    _team_memberships[team_id] = [{"user_id": owner_id, "role": "owner"}]
     _team_conversations[team_id] = []
     return team
 
@@ -6403,7 +6328,11 @@ async def remove_member(team_id: str, member_id: str):
     summary="Share Conversation to Team",
     response_description="Shared conversation details"
 )
-async def share_conversation_to_team(team_id: str, request: ShareToTeamRequest):
+async def share_conversation_to_team(
+    team_id: str,
+    request: ShareToTeamRequest,
+    current_user: User = Depends(get_current_user_optional),
+):
     """
     Share a conversation with the team.
 
@@ -6434,11 +6363,12 @@ async def share_conversation_to_team(team_id: str, request: ShareToTeamRequest):
     if team_id not in _team_conversations:
         _team_conversations[team_id] = []
 
+    shared_by = str(current_user.id) if current_user else "anonymous"
     shared = {
         "conversation_id": request.conversation_id,
         "title": conversation.get("title", "Untitled"),
         "shared_at": datetime.now().isoformat(),
-        "shared_by": "current_user"
+        "shared_by": shared_by
     }
     _team_conversations[team_id].append(shared)
     return shared

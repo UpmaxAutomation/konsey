@@ -113,6 +113,20 @@
   transform: scale(0.95);
 }
 
+/* Prominent Settings Button */
+.settings-btn-prominent {
+  background: rgba(212, 163, 115, 0.15) !important;
+  border-color: rgba(212, 163, 115, 0.4) !important;
+  color: #d4a373 !important;
+}
+
+.settings-btn-prominent:hover {
+  background: rgba(212, 163, 115, 0.25) !important;
+  border-color: rgba(212, 163, 115, 0.6) !important;
+  color: #e9c46a !important;
+  box-shadow: 0 2px 8px rgba(212, 163, 115, 0.3) !important;
+}
+
 /* More menu dropdown */
 .more-menu-container {
   position: relative;

@@ -14,10 +14,14 @@ import {
   logError,
 } from '../utils/errors.js';
 
-// Get API base URL - Vite env vars are available at build time
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+// Use relative URL in production (Vercel proxies /api/* to Railway)
+// Use absolute URL in development (direct to local backend)
+const isProduction = import.meta.env.PROD;
+const DEV_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001';
+const BASE_URL = isProduction ? '' : DEV_URL;
 // Remove trailing slash and add /api if not present
 export const API_BASE = BASE_URL.replace(/\/$/, '') + (BASE_URL.includes('/api') ? '' : '/api');
+
 
 // Debug logging in production
 if (import.meta.env.PROD) {
@@ -68,30 +72,20 @@ export async function handleResponse(response, context = 'API call') {
  * @throws {NetworkError|AbortError} On network or abort errors
  */
 export async function safeFetch(url, options = {}, context = 'fetch') {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:70',message:'safeFetch:entry',data:{url,method:options.method || 'GET',origin:window.location.origin,apiBase:API_BASE},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000); // 30s default timeout
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:81',message:'safeFetch:beforeFetch',data:{url,headers:Object.keys(options.headers || {})},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+
+
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
     });
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:87',message:'safeFetch:response',data:{url,status:response.status,ok:response.ok,headers:Object.fromEntries(response.headers.entries())},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+
     clearTimeout(timeoutId);
     return response;
   } catch (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'cors-debug',hypothesisId:'H1',location:'client.js:92',message:'safeFetch:error',data:{url,name:error?.name,message:error?.message,stack:error?.stack?.substring(0,200),isCORS:error?.message?.includes('CORS') || error?.message?.includes('Access-Control')},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+
     // Handle abort (timeout or manual)
     if (error.name === 'AbortError') {
       if (error.message?.includes('timeout') || !error.message) {
@@ -193,29 +187,17 @@ export async function refreshAccessToken() {
 export async function authFetch(url, options = {}, context = 'authFetch') {
   const headers = { ...getAuthHeaders(), ...options.headers };
   let response = await safeFetch(url, { ...options, headers }, context);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4',location:'client.js:171',message:'authFetch:response',data:{url,status:response.status,hasToken:Boolean(localStorage.getItem('access_token'))},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   // If unauthorized, try refreshing the token
   if (response.status === 401) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'auth-401','hypothesisId':'H44',location:'client.js:200',message:'auth_401_detected',data:{url,hasToken:Boolean(localStorage.getItem('access_token'))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       await refreshAccessToken();
       // Retry with new token
       const newHeaders = { ...getAuthHeaders(), ...options.headers };
       response = await safeFetch(url, { ...options, headers: newHeaders }, context);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4',location:'client.js:179',message:'authFetch:retryAfterRefresh',data:{url,status:response.status},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      
+
       // If still 401 after refresh, only redirect if not a streaming request
       if (response.status === 401) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'auth-401-failed','hypothesisId':'H45',location:'client.js:212',message:'auth_401_after_refresh',data:{url,isStream:url.includes('/stream')},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         // Don't redirect for streaming requests - let the error handler deal with it
@@ -225,9 +207,6 @@ export async function authFetch(url, options = {}, context = 'authFetch') {
         throw new Error('Session expired. Please log in again.');
       }
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'auth-refresh-error','hypothesisId':'H46',location:'client.js:218',message:'auth_refresh_exception',data:{url,error:err.message,isStream:url.includes('/stream')},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       // If refresh failed, only redirect if not a streaming request
       if (err.message.includes('Token refresh failed') || err.message.includes('No refresh token')) {
         localStorage.removeItem('access_token');

@@ -31,6 +31,7 @@ export {
   deleteFile,
   importConversation,
   forkConversation,
+  cancelStream,
 } from './conversations.js';
 
 // Re-export all config functions
@@ -156,6 +157,7 @@ export {
   removeKnowledgeFromProject,
   getKnowledgeContent,
   createConversationInProject,
+  moveConversationToProject,
   getProjectMemory,
   getProjectMemoryStats,
   clearProjectMemory,
@@ -236,6 +238,7 @@ export const api = {
   deleteFile: conversations.deleteFile,
   importConversation: conversations.importConversation,
   forkConversation: conversations.forkConversation,
+  cancelStream: conversations.cancelStream,
 
   // Config
   getApiKeys: config.getApiKeys,
@@ -343,6 +346,7 @@ export const api = {
   removeKnowledgeFromProject: projects.removeKnowledgeFromProject,
   getKnowledgeContent: projects.getKnowledgeContent,
   createConversationInProject: projects.createConversationInProject,
+  moveConversationToProject: projects.moveConversationToProject,
   getProjectMemory: projects.getProjectMemory,
   getProjectMemoryStats: projects.getProjectMemoryStats,
   clearProjectMemory: projects.clearProjectMemory,

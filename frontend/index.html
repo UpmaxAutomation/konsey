@@ -24,14 +24,25 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-    <!-- Service Worker Registration -->
+    <!-- Service Worker Registration - Disabled for debugging -->
     <script>
+      // Unregister any existing service workers to fix caching issues
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('SW registered:', reg.scope))
-            .catch(err => console.log('SW registration failed:', err));
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          registrations.forEach(registration => {
+            registration.unregister();
+            console.log('SW unregistered:', registration.scope);
+          });
         });
+        // Clear all caches
+        if ('caches' in window) {
+          caches.keys().then(names => {
+            names.forEach(name => {
+              caches.delete(name);
+              console.log('Cache cleared:', name);
+            });
+          });
+        }
       }
     </script>
   </body>

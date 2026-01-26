@@ -4,8 +4,52 @@ from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 import uuid
 from .openrouter import query_models_parallel, query_model, query_model_stream
-from .config import get_council_models, get_chairman_model, AVAILABLE_MODELS, get_enhanced_features, get_model_persona
-from .tools import web_search, execute_python, get_memory_context, remember_decision
+from .config import (
+    get_council_models,
+    get_chairman_model,
+    AVAILABLE_MODELS,
+    get_enhanced_features,
+    get_model_persona,
+    get_perplexity_api_key,
+    get_perplexity_models
+)
+from .tools import (
+    web_search,
+    perplexity_search,
+    execute_python,
+    get_memory_context,
+    remember_decision
+)
+
+
+def format_web_context(
+    results: List[Dict[str, Any]],
+    summary: Optional[str] = None
+) -> str:
+    """Format web search results and summary for prompt context."""
+    if not results and not summary:
+        return ""
+
+    lines = ["**Web Context (Citations):**"]
+    for result in results:
+        title = result.get("title", "").strip()
+        url = result.get("url", "").strip()
+        snippet = result.get("snippet", "").strip()
+        if title and url:
+            lines.append(f"- {title} ({url}): {snippet}")
+        elif url:
+            lines.append(f"- {url}: {snippet}")
+        elif title:
+            lines.append(f"- {title}: {snippet}")
+        else:
+            lines.append(f"- {snippet}")
+
+    if summary:
+        lines.append("")
+        lines.append("**Deep Search Summary:**")
+        lines.append(summary.strip())
+
+    return "\n".join(lines)
 
 
 async def stage1_collect_responses(user_query: str, context: Optional[str] = None, user_id: Optional[uuid.UUID] = None, db: Optional[Any] = None) -> List[Dict[str, Any]]:
@@ -55,21 +99,6 @@ async def stage1_collect_responses(user_query: str, context: Optional[str] = Non
     # Query all models in parallel (with user-specific API keys)
     responses = await query_models_parallel(council_models, messages_by_model, user_id=user_id, db=db)
 
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            successful = sum(1 for r in responses.values() if r is not None)
-            failed = len(responses) - successful
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"stage1-collect","hypothesisId":"H2","location":"council.py:56","message":"stage1_responses_collected","data":{"total_models":len(council_models),"successful":successful,"failed":failed,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
-
     # Format results
     stage1_results = []
     for model, response in responses.items():
@@ -82,15 +111,6 @@ async def stage1_collect_responses(user_query: str, context: Optional[str] = Non
             if 'thinking' in response:
                 result['thinking'] = response.get('thinking')
             stage1_results.append(result)
-        else:
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"stage1-collect","hypothesisId":"H3","location":"council.py:69","message":"stage1_model_failed","data":{"model":model,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
 
     return stage1_results
 
@@ -98,6 +118,7 @@ async def stage1_collect_responses(user_query: str, context: Optional[str] = Non
 async def stage2_collect_rankings(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
+    web_context: Optional[str] = None,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
@@ -157,6 +178,9 @@ FINAL RANKING:
 
 Now provide your evaluation and ranking:"""
 
+    if web_context:
+        ranking_prompt = f"{web_context}\n\n---\n\n{ranking_prompt}"
+
     messages = [{"role": "user", "content": ranking_prompt}]
 
     # Get user-specific council models if available
@@ -192,6 +216,7 @@ async def stage3_synthesize_final(
     user_query: str,
     stage1_results: List[Dict[str, Any]],
     stage2_results: List[Dict[str, Any]],
+    web_context: Optional[str] = None,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None
 ) -> Dict[str, Any]:
@@ -233,6 +258,9 @@ Your task as Chairman is to synthesize all of this information into a single, co
 - Any patterns of agreement or disagreement
 
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
+
+    if web_context:
+        chairman_prompt = f"{web_context}\n\n---\n\n{chairman_prompt}"
 
     messages = [{"role": "user", "content": chairman_prompt}]
 
@@ -385,7 +413,11 @@ Title:"""
     return title
 
 
-async def gather_context(user_query: str) -> Dict[str, Any]:
+async def gather_context(
+    user_query: str,
+    web_search: Optional[bool] = None,
+    deep_search: Optional[bool] = None
+) -> Dict[str, Any]:
     """
     Gather additional context using enhanced features (web search, memory, etc.)
 
@@ -396,14 +428,38 @@ async def gather_context(user_query: str) -> Dict[str, Any]:
         Dict with context from various sources
     """
     features = get_enhanced_features()
+    if web_search is not None:
+        features["web_search"] = web_search
+    if deep_search is not None:
+        features["deep_search"] = deep_search
     context = {}
 
     # Web search for current information
-    if features.get("web_search"):
+    use_web_search = bool(features.get("web_search"))
+    use_deep_search = bool(features.get("deep_search"))
+    if use_web_search or use_deep_search:
         try:
-            search_results = await web_search(user_query, num_results=3)
-            if search_results and search_results[0].get("url"):
-                context["web_search"] = search_results
+            perplexity_key = get_perplexity_api_key()
+            if perplexity_key:
+                models = get_perplexity_models()
+                model = models["deep_search"] if use_deep_search else models["search"]
+                search_payload = await perplexity_search(
+                    user_query,
+                    api_key=perplexity_key,
+                    model=model,
+                    num_results=3,
+                    deep_search=use_deep_search
+                )
+                if search_payload.get("results"):
+                    context["web_search"] = search_payload["results"]
+                if search_payload.get("summary"):
+                    context["web_search_summary"] = search_payload["summary"]
+                if search_payload.get("citations"):
+                    context["web_search_citations"] = search_payload["citations"]
+            elif use_web_search:
+                search_results = await web_search(user_query, num_results=3)
+                if search_results and search_results[0].get("url"):
+                    context["web_search"] = search_results
         except Exception as e:
             print(f"Web search failed: {e}")
 
@@ -425,6 +481,8 @@ async def run_full_council(
     conversation_id: Optional[str] = None,
     attached_files: Optional[List[str]] = None,
     project_id: Optional[str] = None,
+    web_search: Optional[bool] = None,
+    deep_search: Optional[bool] = None,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None
 ) -> Tuple[List, List, Dict, Dict]:
@@ -448,7 +506,11 @@ async def run_full_council(
         project_context = projects.get_project_context(project_id)
 
     # Gather additional context
-    context = await gather_context(user_query)
+    context = await gather_context(
+        user_query,
+        web_search=web_search,
+        deep_search=deep_search
+    )
 
     # Enhance the query with context if available
     enhanced_query = user_query
@@ -470,12 +532,15 @@ async def run_full_council(
         context_sections.append(conversation_context)
 
     # Add other enhanced features
+    web_context_text = ""
     if context:
-        if context.get("web_search"):
-            web_context = "**Recent Web Search Results:**\n"
-            for result in context["web_search"]:
-                web_context += f"- {result['title']}: {result['snippet']}\n"
-            context_sections.append(web_context)
+        if context.get("web_search") or context.get("web_search_summary"):
+            web_context_text = format_web_context(
+                context.get("web_search", []),
+                context.get("web_search_summary")
+            )
+            if web_context_text:
+                context_sections.append(web_context_text)
 
         if context.get("memory"):
             context_sections.append(f"**Relevant Memory Context:**\n{context['memory']}")
@@ -490,25 +555,19 @@ async def run_full_council(
 
     # If no models responded successfully, return error
     if not stage1_results:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"council-error","hypothesisId":"H5","location":"council.py:468","message":"all_models_failed","data":{"user_query":user_query[:100],"user_id":str(user_id) if user_id else None,"council_models_count":len(council_models) if 'council_models' in locals() else 0},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         return [], [], {
             "model": "error",
             "response": "All models failed to respond. Please check your API key in Settings → API Keys and ensure OpenRouter API key is set."
         }, {}
 
     # Stage 2: Collect rankings (use original query for ranking, not enhanced)
-    stage2_results, label_to_model = await stage2_collect_rankings(user_query, stage1_results, user_id=user_id, db=db)
+    stage2_results, label_to_model = await stage2_collect_rankings(
+        user_query,
+        stage1_results,
+        web_context=web_context_text or None,
+        user_id=user_id,
+        db=db
+    )
 
     # Calculate aggregate rankings
     aggregate_rankings = calculate_aggregate_rankings(stage2_results, label_to_model)
@@ -518,6 +577,7 @@ async def run_full_council(
         user_query,
         stage1_results,
         stage2_results,
+        web_context=web_context_text or None,
         user_id=user_id,
         db=db
     )
@@ -540,6 +600,7 @@ async def run_full_council(
         "aggregate_rankings": aggregate_rankings,
         "context_used": {
             "web_search": bool(context.get("web_search")),
+            "deep_search": bool(context.get("web_search_summary")),
             "memory": bool(context.get("memory"))
         }
     }
@@ -563,6 +624,8 @@ async def run_full_council(
 async def run_full_council_stream(
     user_query: str,
     conversation_context: Optional[str] = None,
+    web_search: Optional[bool] = None,
+    deep_search: Optional[bool] = None,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None
 ):
@@ -590,7 +653,11 @@ async def run_full_council_stream(
         - {type: 'complete', stage1: List, stage2: List, stage3: Dict, metadata: Dict}
     """
     # Gather additional context
-    context = await gather_context(user_query)
+    context = await gather_context(
+        user_query,
+        web_search=web_search,
+        deep_search=deep_search
+    )
 
     # Build enhanced query with context
     enhanced_query = user_query
@@ -599,12 +666,15 @@ async def run_full_council_stream(
     if conversation_context:
         context_sections.append(conversation_context)
 
+    web_context_text = ""
     if context:
-        if context.get("web_search"):
-            web_context = "**Recent Web Search Results:**\n"
-            for result in context["web_search"]:
-                web_context += f"- {result['title']}: {result['snippet']}\n"
-            context_sections.append(web_context)
+        if context.get("web_search") or context.get("web_search_summary"):
+            web_context_text = format_web_context(
+                context.get("web_search", []),
+                context.get("web_search_summary")
+            )
+            if web_context_text:
+                context_sections.append(web_context_text)
 
         if context.get("memory"):
             context_sections.append(f"**Relevant Memory Context:**\n{context['memory']}")
@@ -701,18 +771,6 @@ async def run_full_council_stream(
     yield {"type": "stage1_complete", "data": stage1_results}
 
     if not stage1_results:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"council-stream-error","hypothesisId":"H6","location":"council.py:667","message":"all_models_failed_stream","data":{"user_query":user_query[:100],"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         yield {
             "type": "error",
             "message": "All models failed to respond. Please check your API key in Settings → API Keys and ensure OpenRouter API key is set."
@@ -763,6 +821,9 @@ FINAL RANKING:
 3. Response B
 
 Now provide your evaluation and ranking:"""
+
+    if web_context_text:
+        ranking_prompt = f"{web_context_text}\n\n---\n\n{ranking_prompt}"
 
     messages_stage2 = [{"role": "user", "content": ranking_prompt}]
 
@@ -883,6 +944,9 @@ Your task as Chairman is to synthesize all of this information into a single, co
 
 Provide a clear, well-reasoned final answer that represents the council's collective wisdom:"""
 
+    if web_context_text:
+        chairman_prompt = f"{web_context_text}\n\n---\n\n{chairman_prompt}"
+
     messages_stage3 = [{"role": "user", "content": chairman_prompt}]
     
     # Get user-specific chairman model if available
@@ -937,6 +1001,7 @@ Provide a clear, well-reasoned final answer that represents the council's collec
         "aggregate_rankings": aggregate_rankings,
         "context_used": {
             "web_search": bool(context.get("web_search")),
+            "deep_search": bool(context.get("web_search_summary")),
             "memory": bool(context.get("memory"))
         }
     }

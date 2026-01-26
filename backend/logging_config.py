@@ -97,3 +97,33 @@ def bind_request_context(
 def clear_request_context() -> None:
     """Clear the current request context."""
     structlog.contextvars.clear_contextvars()
+
+
+def redact_sensitive(data: dict, keys: list = None) -> dict:
+    """
+    Redact sensitive values from a dictionary for safe logging.
+
+    Args:
+        data: Dictionary to redact
+        keys: List of key patterns to redact (case-insensitive partial match)
+
+    Returns:
+        Dictionary with sensitive values replaced by [REDACTED:key]
+    """
+    if keys is None:
+        keys = ['api_key', 'apikey', 'password', 'token', 'secret', 'authorization', 'key']
+
+    if not isinstance(data, dict):
+        return data
+
+    result = {}
+    for k, v in data.items():
+        if any(sensitive in k.lower() for sensitive in keys):
+            result[k] = f"[REDACTED:{k}]"
+        elif isinstance(v, dict):
+            result[k] = redact_sensitive(v, keys)
+        elif isinstance(v, list):
+            result[k] = [redact_sensitive(item, keys) if isinstance(item, dict) else item for item in v]
+        else:
+            result[k] = v
+    return result

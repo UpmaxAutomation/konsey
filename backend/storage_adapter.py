@@ -17,7 +17,8 @@ from . import storage as json_storage
 
 if USE_DATABASE:
     from .database.connection import get_db_context
-    from .database.crud import conversations as db_conversations
+from .database.crud import conversations as db_conversations
+from .database.crud import folders as db_folders
 
 
 def _get_user_id() -> uuid.UUID:
@@ -30,30 +31,10 @@ def _get_user_id() -> uuid.UUID:
 
 async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID] = None, db: Optional[AsyncSession] = None) -> Dict[str, Any]:
     """Create a new conversation."""
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H49","location":"storage_adapter.py:31","message":"create_conversation:entry","data":{"conversation_id":conversation_id,"has_user_id":bool(user_id),"user_id":str(user_id) if user_id else None,"has_db":bool(db)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
     if USE_DATABASE:
         if db:
             # Use provided database session
             actual_user_id = user_id or _get_user_id()
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H50","location":"storage_adapter.py:40","message":"create_conversation:before_create","data":{"conversation_id":conversation_id,"user_id_provided":str(user_id) if user_id else None,"actual_user_id":str(actual_user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             conv = await db_conversations.create(
                 db,
                 conversation_id=uuid.UUID(conversation_id),
@@ -61,14 +42,6 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                 title="New Conversation"
             )
             await db.flush()
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H51","location":"storage_adapter.py:50","message":"create_conversation:db_created","data":{"conversation_id":conversation_id,"conv_id":str(conv.id) if conv else None,"conv_user_id":str(conv.user_id) if conv else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             result = {
                 "id": conversation_id,  # Keep string ID for compatibility
                 "created_at": conv.created_at.isoformat(),
@@ -77,27 +50,11 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                 "folder_id": conv.folder_id,
                 "tags": conv.tags or []
             }
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H59","location":"storage_adapter.py:72","message":"create_conversation:returning","data":{"conversation_id":conversation_id,"result_id":result.get("id"),"result_keys":list(result.keys())},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             return result
         else:
             # Create new session
             async with get_db_context() as db_session:
                 actual_user_id = user_id or _get_user_id()
-                # #region agent log
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H60","location":"storage_adapter.py:54","message":"create_conversation:new_session","data":{"conversation_id":conversation_id,"actual_user_id":str(actual_user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
                 conv = await db_conversations.create(
                     db_session,
                     conversation_id=uuid.UUID(conversation_id),
@@ -113,14 +70,6 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
                     "folder_id": conv.folder_id,
                     "tags": conv.tags or []
                 }
-                # #region agent log
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"create-conversation-storage","hypothesisId":"H61","location":"storage_adapter.py:70","message":"create_conversation:new_session_created","data":{"conversation_id":conversation_id,"result_id":result.get("id")},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
                 return result
     else:
         return json_storage.create_conversation(conversation_id)
@@ -205,30 +154,10 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
         if db:
             # Use provided database session
             actual_user_id = user_id or _get_user_id()
-            # #region agent log
-            import os
-            import json
-            from datetime import datetime
-            debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations-storage","hypothesisId":"H42","location":"storage_adapter.py:147","message":"list_conversations:entry","data":{"has_user_id":bool(actual_user_id),"user_id":str(actual_user_id) if actual_user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             if actual_user_id is None:
                 # Return empty list for anonymous users in database mode
                 return []
             convs = await db_conversations.list_by_user(db, actual_user_id)
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"list-conversations-storage","hypothesisId":"H43","location":"storage_adapter.py:163","message":"list_conversations:query_result","data":{"conversation_count":len(convs)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             return [
                 {
                     "id": str(conv.id),
@@ -435,17 +364,28 @@ async def update_conversation_title(conversation_id: str, title: str, user_id: O
         json_storage.update_conversation_title(conversation_id, title)
 
 
-async def delete_conversation(conversation_id: str) -> bool:
-    """Delete a conversation."""
+async def delete_conversation(
+    conversation_id: str,
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> bool:
+    """Delete a conversation (user-scoped if user_id provided)."""
     if USE_DATABASE:
-        async with get_db_context() as db:
-            user_id = _get_user_id()
-            try:
-                conv_uuid = uuid.UUID(conversation_id)
-            except ValueError:
-                return False
+        actual_user_id = user_id or _get_user_id()
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+        except ValueError:
+            return False
 
-            return await db_conversations.delete_conversation(db, conv_uuid, user_id)
+        if db:
+            return await db_conversations.delete_conversation(
+                db, conv_uuid, actual_user_id
+            )
+
+        async with get_db_context() as db_session:
+            return await db_conversations.delete_conversation(
+                db_session, conv_uuid, actual_user_id
+            )
     else:
         return json_storage.delete_conversation(conversation_id)
 
@@ -548,12 +488,31 @@ async def get_conversation_context(
 
 # ============ FOLDER OPERATIONS ============
 
-async def list_folders() -> List[Dict[str, Any]]:
+async def list_folders(
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> List[Dict[str, Any]]:
     """List all folders."""
     if USE_DATABASE:
-        # TODO: Implement database folder operations
-        # For now, fall back to JSON storage for folders
-        return json_storage.list_folders()
+        actual_user_id = user_id or _get_user_id()
+        if db:
+            folders = await db_folders.list_by_user(db, actual_user_id)
+        else:
+            async with get_db_context() as db_session:
+                folders = await db_folders.list_by_user(
+                    db_session,
+                    actual_user_id,
+                )
+        return [
+            {
+                "id": folder.id,
+                "name": folder.name,
+                "color": folder.color,
+                "icon": folder.icon,
+                "created_at": folder.created_at.isoformat(),
+            }
+            for folder in folders
+        ]
     else:
         return json_storage.list_folders()
 
@@ -561,102 +520,217 @@ async def list_folders() -> List[Dict[str, Any]]:
 async def create_folder(
     name: str,
     color: str = "#4a90e2",
-    icon: str = "folder"
+    icon: str = "folder",
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
 ) -> Dict[str, Any]:
     """Create a new folder."""
     if USE_DATABASE:
-        # TODO: Implement database folder operations
-        return json_storage.create_folder(name, color, icon)
+        actual_user_id = user_id or _get_user_id()
+        folder_id = str(uuid.uuid4())
+        if db:
+            folder = await db_folders.create(
+                db,
+                folder_id=folder_id,
+                user_id=actual_user_id,
+                name=name,
+                color=color,
+                icon=icon,
+            )
+        else:
+            async with get_db_context() as db_session:
+                folder = await db_folders.create(
+                    db_session,
+                    folder_id=folder_id,
+                    user_id=actual_user_id,
+                    name=name,
+                    color=color,
+                    icon=icon,
+                )
+        return {
+            "id": folder.id,
+            "name": folder.name,
+            "color": folder.color,
+            "icon": folder.icon,
+            "created_at": folder.created_at.isoformat(),
+        }
     else:
         return json_storage.create_folder(name, color, icon)
 
 
-async def delete_folder(folder_id: str) -> bool:
+async def delete_folder(
+    folder_id: str,
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> bool:
     """Delete a folder."""
     if USE_DATABASE:
-        # TODO: Implement database folder operations
-        return json_storage.delete_folder(folder_id)
+        actual_user_id = user_id or _get_user_id()
+        if db:
+            return await db_folders.delete_by_id(
+                db,
+                folder_id=folder_id,
+                user_id=actual_user_id,
+            )
+        async with get_db_context() as db_session:
+            return await db_folders.delete_by_id(
+                db_session,
+                folder_id=folder_id,
+                user_id=actual_user_id,
+            )
     else:
         return json_storage.delete_folder(folder_id)
 
 
 async def move_conversation_to_folder(
     conversation_id: str,
-    folder_id: Optional[str]
+    folder_id: Optional[str],
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
 ) -> bool:
     """Move a conversation to a folder."""
     if USE_DATABASE:
-        async with get_db_context() as db:
-            user_id = _get_user_id()
-            try:
-                conv_uuid = uuid.UUID(conversation_id)
-            except ValueError:
-                return False
+        actual_user_id = user_id or _get_user_id()
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+        except ValueError:
+            return False
 
+        if db:
             result = await db_conversations.move_to_folder(
-                db, conv_uuid, user_id, folder_id
+                db, conv_uuid, actual_user_id, folder_id
+            )
+            return result is not None
+
+        async with get_db_context() as db_session:
+            result = await db_conversations.move_to_folder(
+                db_session, conv_uuid, actual_user_id, folder_id
             )
             return result is not None
     else:
         return json_storage.move_conversation_to_folder(conversation_id, folder_id)
 
 
+async def move_conversation_to_project(
+    conversation_id: str,
+    project_id: Optional[str],
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> bool:
+    """Move a conversation to a project."""
+    if USE_DATABASE:
+        actual_user_id = user_id or _get_user_id()
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+            proj_uuid = uuid.UUID(project_id) if project_id else None
+        except ValueError:
+            return False
+
+        if db:
+            result = await db_conversations.move_to_project(
+                db, conv_uuid, actual_user_id, proj_uuid
+            )
+            return result is not None
+
+        async with get_db_context() as db_session:
+            result = await db_conversations.move_to_project(
+                db_session, conv_uuid, actual_user_id, proj_uuid
+            )
+            return result is not None
+    else:
+        # For JSON storage, we need to update the conversation's project_id
+        conv = json_storage.get_conversation(conversation_id)
+        if not conv:
+            return False
+        conv["project_id"] = project_id
+        return json_storage.save_conversation(conv)
+
+
 # ============ TAG OPERATIONS ============
 
-async def add_tag(conversation_id: str, tag: str) -> bool:
+async def add_tag(
+    conversation_id: str,
+    tag: str,
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> bool:
     """Add a tag to a conversation."""
     if USE_DATABASE:
-        conv = await get_conversation(conversation_id)
+        conv = await get_conversation(conversation_id, user_id=user_id, db=db)
         if not conv:
             return False
         tags = conv.get("tags", [])
         if tag not in tags:
             tags.append(tag)
-            await update_tags(conversation_id, tags)
+            await update_tags(conversation_id, tags, user_id=user_id, db=db)
         return True
     else:
         return json_storage.add_tag(conversation_id, tag)
 
 
-async def remove_tag(conversation_id: str, tag: str) -> bool:
+async def remove_tag(
+    conversation_id: str,
+    tag: str,
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> bool:
     """Remove a tag from a conversation."""
     if USE_DATABASE:
-        conv = await get_conversation(conversation_id)
+        conv = await get_conversation(conversation_id, user_id=user_id, db=db)
         if not conv:
             return False
         tags = conv.get("tags", [])
         if tag in tags:
             tags.remove(tag)
-            await update_tags(conversation_id, tags)
+            await update_tags(conversation_id, tags, user_id=user_id, db=db)
         return True
     else:
         return json_storage.remove_tag(conversation_id, tag)
 
 
-async def update_tags(conversation_id: str, tags: List[str]) -> bool:
+async def update_tags(
+    conversation_id: str,
+    tags: List[str],
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> bool:
     """Update all tags for a conversation."""
     if USE_DATABASE:
-        async with get_db_context() as db:
-            user_id = _get_user_id()
-            try:
-                conv_uuid = uuid.UUID(conversation_id)
-            except ValueError:
-                return False
+        actual_user_id = user_id or _get_user_id()
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+        except ValueError:
+            return False
 
+        if db:
             result = await db_conversations.update_tags(
-                db, conv_uuid, user_id, tags
+                db, conv_uuid, actual_user_id, tags
+            )
+            return result is not None
+
+        async with get_db_context() as db_session:
+            result = await db_conversations.update_tags(
+                db_session, conv_uuid, actual_user_id, tags
             )
             return result is not None
     else:
         return json_storage.update_tags(conversation_id, tags)
 
 
-async def list_all_tags() -> List[str]:
+async def list_all_tags(
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[AsyncSession] = None,
+) -> List[str]:
     """List all unique tags across all conversations."""
     if USE_DATABASE:
-        async with get_db_context() as db:
-            user_id = _get_user_id()
-            return await db_conversations.get_all_tags(db, user_id)
+        actual_user_id = user_id or _get_user_id()
+        if db:
+            return await db_conversations.get_all_tags(db, actual_user_id)
+        async with get_db_context() as db_session:
+            return await db_conversations.get_all_tags(
+                db_session,
+                actual_user_id,
+            )
     else:
         return json_storage.list_all_tags()
 

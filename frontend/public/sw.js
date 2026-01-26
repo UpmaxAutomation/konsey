@@ -35,17 +35,28 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
+  // Skip non-http/https requests (chrome-extension, etc.)
+  const url = new URL(event.request.url);
+  if (!url.protocol.startsWith('http')) return;
+
   // Skip API calls - always go to network
   if (event.request.url.includes('/api/')) return;
+
+  // Skip WebSocket and HMR requests in development
+  if (event.request.url.includes('/@vite') ||
+      event.request.url.includes('/@react-refresh') ||
+      event.request.url.includes('?token=')) return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone and cache successful responses
-        if (response.status === 200) {
+        // Clone and cache successful responses (only http/https)
+        if (response.status === 200 && url.protocol.startsWith('http')) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
+            cache.put(event.request, responseClone).catch(() => {
+              // Silently fail if caching fails (e.g., opaque responses)
+            });
           });
         }
         return response;

@@ -136,41 +136,13 @@ async def query_model(
     # Check if we have a direct API key for this provider (user-specific or system)
     provider = get_provider_from_model(model)
     direct_api_key = None
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H1","location":"openrouter.py:136","message":"query_model:entry","data":{"model":model,"provider":provider,"has_user_id":bool(user_id),"has_db":bool(db)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
     if user_id and db:
         # Try user-specific key first, allow system fallback for admin-set keys
         direct_api_key = await db_crud.api_keys.resolve_api_key(db, user_id, provider, allow_system_fallback=True)
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H2","location":"openrouter.py:142","message":"direct_key_resolved","data":{"provider":provider,"has_direct_key":bool(direct_api_key),"user_id":str(user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
     if not direct_api_key and db:
         # Try system key (admin-set) as fallback
         direct_api_key = await db_crud.api_keys.get_system_key(db, provider)
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H3","location":"openrouter.py:147","message":"system_key_checked","data":{"provider":provider,"has_system_key":bool(direct_api_key)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-    
+
     if direct_api_key:
         result = await query_model_direct(model, messages, timeout, api_key=direct_api_key)
         if result:
@@ -206,61 +178,16 @@ async def query_model(
 
     # Get OpenRouter API key (user-specific or system admin-set)
     openrouter_key = None
-    # #region agent log
-    import os
-    import json
-    from datetime import datetime
-    debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-key-resolution","hypothesisId":"H4","location":"openrouter.py:179","message":"resolving_openrouter_key","data":{"model":model,"has_user_id":bool(user_id),"has_db":bool(db)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
     if user_id and db:
         # Try user-specific OpenRouter key first, allow system fallback
         openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=True)
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-key-resolution","hypothesisId":"H5","location":"openrouter.py:185","message":"user_key_resolved","data":{"has_key":bool(openrouter_key),"user_id":str(user_id)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
     if not openrouter_key and db:
         # Try system key (admin-set) as fallback
         openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-key-resolution","hypothesisId":"H6","location":"openrouter.py:190","message":"system_key_checked","data":{"has_system_key":bool(openrouter_key)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
-    
+
     if not openrouter_key:
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-key-resolution","hypothesisId":"H7","location":"openrouter.py:196","message":"no_openrouter_key_found","data":{"model":model,"user_id":str(user_id) if user_id else None,"provider":provider},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         print(f"No OpenRouter API key available for model {model}. User must set their own key or admin must set system key.")
         return None
-    
-    # #region agent log
-    if os.path.exists(os.path.dirname(debug_log_path)):
-        try:
-            with open(debug_log_path, 'a') as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H8","location":"openrouter.py:202","message":"openrouter_key_found","data":{"model":model,"key_length":len(openrouter_key) if openrouter_key else 0,"key_prefix":openrouter_key[:10] + "..." if openrouter_key else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-        except Exception:
-            pass
-    # #endregion
 
     headers = {
         "Authorization": f"Bearer {openrouter_key}",
@@ -273,28 +200,12 @@ async def query_model(
     }
 
     try:
-        # #region agent log
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H9","location":"openrouter.py:203","message":"making_openrouter_request","data":{"model":model,"url":OPENROUTER_API_URL,"has_key":bool(openrouter_key)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 OPENROUTER_API_URL,
                 headers=headers,
                 json=payload
             )
-            # #region agent log
-            if os.path.exists(os.path.dirname(debug_log_path)):
-                try:
-                    with open(debug_log_path, 'a') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H10","location":"openrouter.py:210","message":"openrouter_response_received","data":{"model":model,"status_code":response.status_code,"has_content":bool(response.content)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                except Exception:
-                    pass
-            # #endregion
             response.raise_for_status()
 
             data = response.json()
@@ -356,39 +267,9 @@ async def query_model(
             return result
 
     except httpx.HTTPStatusError as e:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                error_body = None
-                try:
-                    error_body = e.response.text[:500] if e.response else None
-                except:
-                    pass
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H12","location":"openrouter.py:269","message":"http_status_error","data":{"model":model,"status_code":e.response.status_code if e.response else None,"error":str(e),"error_body":error_body,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         print(f"HTTP error querying model {model}: {e.response.status_code} - {e}")
         return None
     except Exception as e:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        import traceback
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-query","hypothesisId":"H13","location":"openrouter.py:280","message":"query_model_exception","data":{"model":model,"error_type":type(e).__name__,"error":str(e),"traceback":traceback.format_exc()[:500],"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         print(f"Error querying model {model}: {e}")
         return None
 
@@ -417,25 +298,22 @@ async def query_model_stream(
     # Get OpenRouter API key (user-specific or system admin-set)
     openrouter_key = None
     if user_id and db:
-        # Try user-specific OpenRouter key first, allow system fallback
-        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=True)
+        # Check if user is admin to allow system fallback
+        is_admin = False
+        try:
+            user = await db_crud.users.get_by_id(db, user_id)
+            if user:
+                is_admin = user.is_admin
+        except Exception:
+            pass # Default to False if user fetch fails
+
+        # Try user-specific OpenRouter key first, allow system fallback only if admin
+        openrouter_key = await db_crud.api_keys.resolve_api_key(db, user_id, "openrouter", allow_system_fallback=is_admin)
     if not openrouter_key and db:
         # Try system key (admin-set) as fallback
         openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
     
     if not openrouter_key:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-stream","hypothesisId":"H14","location":"openrouter.py:304","message":"no_key_stream","data":{"model":model,"user_id":str(user_id) if user_id else None},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         yield {
             "error": True,
             "message": f"No OpenRouter API key available for model {model}. Please set your API key in Settings or contact admin."
@@ -454,18 +332,6 @@ async def query_model_stream(
     }
 
     try:
-        # #region agent log
-        import os
-        import json
-        from datetime import datetime
-        debug_log_path = os.getenv("DEBUG_LOG_PATH", "/Users/sezars/llm-council/.cursor/debug.log")
-        if os.path.exists(os.path.dirname(debug_log_path)):
-            try:
-                with open(debug_log_path, 'a') as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-stream","hypothesisId":"H15","location":"openrouter.py:322","message":"making_stream_request","data":{"model":model,"url":OPENROUTER_API_URL,"has_key":bool(openrouter_key)},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-            except Exception:
-                pass
-        # #endregion
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(
                 "POST",
@@ -473,14 +339,6 @@ async def query_model_stream(
                 headers=headers,
                 json=payload
             ) as response:
-                # #region agent log
-                if os.path.exists(os.path.dirname(debug_log_path)):
-                    try:
-                        with open(debug_log_path, 'a') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"openrouter-stream","hypothesisId":"H16","location":"openrouter.py:332","message":"stream_response_received","data":{"model":model,"status_code":response.status_code},"timestamp":int(datetime.now().timestamp()*1000)}) + '\n')
-                    except Exception:
-                        pass
-                # #endregion
                 response.raise_for_status()
 
                 full_content = ""

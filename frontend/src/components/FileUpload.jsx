@@ -157,7 +157,7 @@ export default function FileUpload({ conversationId, onFileUploaded, onClose }) 
                 {isImage(file.name || file.filename) && (
                   <div className="file-preview">
                     <img
-                      src={`/api/files/${conversationId}/${file.filename}/content`}
+                      src={`/api/conversations/${conversationId}/files/${file.filename}`}
                       alt="Preview"
                     />
                   </div>

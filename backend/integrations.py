@@ -126,7 +126,7 @@ async def gdrive_get_file_content(
                 if metadata.get("mimeType", "").startswith("text/"):
                     try:
                         content = content.decode("utf-8")
-                    except:
+                    except (UnicodeDecodeError, AttributeError):
                         content = content.decode("latin-1")
                 else:
                     import base64

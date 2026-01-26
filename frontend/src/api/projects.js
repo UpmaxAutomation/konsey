@@ -139,6 +139,23 @@ export async function createConversationInProject(projectId) {
   return response.json();
 }
 
+/**
+ * Move a conversation to a project.
+ * @param {string} conversationId - Conversation ID
+ * @param {string|null} projectId - Project ID (or null to remove from project)
+ */
+export async function moveConversationToProject(conversationId, projectId) {
+  const response = await authFetch(`${API_BASE}/conversations/${conversationId}/project`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to move conversation to project');
+  }
+  return response.json();
+}
+
 // ============ PROJECT MEMORY API ============
 
 /**
