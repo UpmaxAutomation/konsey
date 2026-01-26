@@ -3,55 +3,97 @@
    Premium UI with glassmorphism, animations, and micro-interactions
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Main container - SIMPLIFIED FOR READABILITY */
+/* Main container - Mobile-first design */
 .chat {
   flex: 1;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for mobile */
   background: var(--bg-primary);
   overflow: hidden;
+  /* Account for safe areas on notched devices */
+  padding-top: env(safe-area-inset-top, 0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    HEADER - Glassmorphism style
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Header - Mobile-first: stacked on small screens */
 .chat-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 24px;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  padding-left: calc(var(--touch-target) + var(--space-lg)); /* Room for hamburger */
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
+  min-height: var(--header-height);
 }
 
-/* Mode Toggle Tabs - Premium pill design */
+/* Tablet and up: standard header layout */
+@media (min-width: 768px) {
+  .chat-header {
+    flex-wrap: nowrap;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    padding-left: var(--space-lg); /* No hamburger needed */
+  }
+}
+
+/* Mode Toggle Tabs - Mobile-first: compact on small screens */
 .mode-tabs {
   display: flex;
+  flex: 1;
+  min-width: 0;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
-  border-radius: var(--radius-xl);
-  padding: 4px;
-  gap: 4px;
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  gap: 2px;
   box-shadow: var(--shadow-inner);
 }
 
 .mode-tab {
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  min-height: var(--touch-target);
   background: transparent;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all var(--transition-base);
   position: relative;
   overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Tablet and up: standard tab sizing */
+@media (min-width: 768px) {
+  .mode-tabs {
+    flex: none;
+    border-radius: var(--radius-xl);
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .mode-tab {
+    flex: none;
+    justify-content: flex-start;
+    padding: 10px 20px;
+    min-height: auto;
+    font-size: 14px;
+    border-radius: var(--radius-lg);
+  }
 }
 
 .mode-tab:hover {
@@ -486,14 +528,24 @@
    MESSAGES AREA
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Messages Area - Mobile-first */
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: var(--space-md);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-md);
   scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+}
+
+/* Tablet and up: more spacious layout */
+@media (min-width: 768px) {
+  .chat-messages {
+    padding: var(--space-lg);
+    gap: var(--space-lg);
+  }
 }
 
 /* Custom scrollbar */
@@ -997,14 +1049,24 @@
    INPUT AREA - Premium glassmorphism
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Input Area - Mobile-first */
 .chat-input {
   display: flex;
-  gap: 12px;
-  padding: 24px 32px 40px;
-  max-width: 900px;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom, 0));
+  max-width: var(--content-max-width);
   margin: 0 auto;
   width: 100%;
   position: relative;
+}
+
+/* Tablet and up: more spacious input */
+@media (min-width: 768px) {
+  .chat-input {
+    gap: var(--space-md);
+    padding: var(--space-lg) var(--space-xl) calc(var(--space-xl) + 8px);
+  }
 }
 
 .chat-input::before {
@@ -1548,59 +1610,86 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   RESPONSIVE DESIGN
+   MOBILE-FIRST RESPONSIVE DESIGN
+   Base styles are mobile, use min-width queries for larger screens
    ═══════════════════════════════════════════════════════════════════════════ */
 
-@media (max-width: 768px) {
-  .chat-header {
-    padding: 12px 16px;
-    flex-wrap: wrap;
-    gap: 12px;
-  }
+/* Mobile: Council badge full width */
+.council-badge {
+  width: 100%;
+  text-align: center;
+  order: 10; /* Push to end on mobile */
+}
 
-  .mode-tabs {
-    flex: 1;
-    min-width: 200px;
-  }
+/* Mobile: Welcome text smaller */
+.chat-welcome h2 {
+  font-size: 28px;
+}
 
-  .mode-tab {
-    flex: 1;
-    justify-content: center;
-    padding: 10px 16px;
-  }
+/* Mobile: Single column prompts */
+.prompts-grid {
+  grid-template-columns: 1fr;
+}
 
+/* Mobile: Compact prompt buttons */
+.prompt-btn {
+  padding: var(--space-md);
+}
+
+/* Mobile: Compact input area */
+.chat-input {
+  padding: var(--space-md);
+}
+
+/* Mobile: Hide keyboard hints */
+.keyboard-hint {
+  display: none;
+}
+
+/* Mobile: Messages take more width */
+.message.user .message-content,
+.message.assistant .message-content {
+  max-width: 92%;
+}
+
+/* Tablet and up: Standard sizing */
+@media (min-width: 768px) {
   .council-badge {
-    width: 100%;
-    text-align: center;
-  }
-
-  .chat-messages {
-    padding: 16px;
+    width: auto;
+    order: 0;
   }
 
   .chat-welcome h2 {
-    font-size: 32px;
+    font-size: 36px;
   }
 
   .prompts-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .prompt-btn {
-    padding: 16px;
+    padding: var(--space-lg);
   }
 
   .chat-input {
-    padding: 16px;
+    padding: var(--space-lg);
   }
 
   .keyboard-hint {
-    display: none;
+    display: flex;
   }
 
   .message.user .message-content,
   .message.assistant .message-content {
-    max-width: 90%;
+    max-width: 85%;
+  }
+}
+
+/* Desktop: Even wider messages area */
+@media (min-width: 1024px) {
+  .message.user .message-content,
+  .message.assistant .message-content {
+    max-width: 75%;
   }
 }
 

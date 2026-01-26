@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from '../components/SafeMarkdown';
 import { api } from '../api';
 import './SharedConversation.css';
 
@@ -72,9 +72,9 @@ export default function SharedConversation() {
                   {/* Show final synthesis if available */}
                   {msg.stage3 && (
                     <div className="final-response">
-                      <ReactMarkdown>
+                      <SafeMarkdown>
                         {typeof msg.stage3 === 'object' ? msg.stage3.response : msg.stage3}
-                      </ReactMarkdown>
+                      </SafeMarkdown>
                     </div>
                   )}
 
@@ -86,7 +86,7 @@ export default function SharedConversation() {
                         {msg.stage1.map((resp, i) => (
                           <div key={i} className="model-response">
                             <div className="model-name">{resp.model}</div>
-                            <ReactMarkdown>{resp.response}</ReactMarkdown>
+                            <SafeMarkdown>{resp.response}</SafeMarkdown>
                           </div>
                         ))}
                       </div>
@@ -94,7 +94,7 @@ export default function SharedConversation() {
                   )}
                 </>
               ) : (
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <SafeMarkdown>{msg.content}</SafeMarkdown>
               )}
             </div>
           </div>

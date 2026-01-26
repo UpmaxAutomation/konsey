@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, PlainTextResponse, HTMLResponse, FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Dict, Any, Optional
 import uuid
 import json
@@ -96,8 +96,13 @@ async def lifespan(app: FastAPI):
 
     yield  # Application runs here
 
-    # Shutdown: cleanup if needed
+    # Shutdown: cleanup
     logger.info("shutdown", message="Shutting down LLM Council API")
+
+    # Close shared HTTP client
+    from .http_client import close_client
+    await close_client()
+    logger.info("http_client_closed", message="Closed shared HTTP client")
 
 
 # OpenAPI Tags for endpoint grouping
@@ -346,16 +351,21 @@ app.add_middleware(RequestLoggingMiddleware)
 
 
 # Debug endpoint to check CORS configuration (only in non-production)
-@app.get("/api/debug/cors", tags=["debug"])
+@app.get("/api/debug/cors", tags=["debug"], include_in_schema=False)
 async def debug_cors():
-    """Debug endpoint to check CORS configuration."""
+    """Debug endpoint to check CORS configuration. Disabled in production."""
     import os
+    environment = os.getenv("ENVIRONMENT", "development").lower()
+    if environment == "production":
+        raise HTTPException(status_code=404, detail="Not found")
+
     env_origins = os.getenv("CORS_ORIGINS") or os.getenv("ALLOWED_ORIGINS", "")
     return {
         "cors_origins": CORS_ORIGINS,
         "env_origins": env_origins,
         "default_origins": DEFAULT_ORIGINS,
         "allow_credentials": True,
+        "environment": environment,
     }
 
 
@@ -366,36 +376,36 @@ class CreateConversationRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation."""
-    content: str
-    attached_files: Optional[List[str]] = None
+    content: str = Field(..., min_length=1, max_length=100000, description="Message content (max 100k chars)")
+    attached_files: Optional[List[str]] = Field(default=None, max_length=20)
     web_search: Optional[bool] = None
     deep_search: Optional[bool] = None
 
 
 class QuickMessageRequest(BaseModel):
     """Request to send a message in Quick Mode (single model, no deliberation)."""
-    content: str
-    model: Optional[str] = None  # If None, uses chairman model
+    content: str = Field(..., min_length=1, max_length=100000, description="Message content (max 100k chars)")
+    model: Optional[str] = Field(default=None, max_length=100)
     web_search: Optional[bool] = None
     deep_search: Optional[bool] = None
 
 
 class QuickModeRequest(BaseModel):
     """Request for Quick Mode streaming endpoint."""
-    message: str
-    model: Optional[str] = None  # If None, uses chairman model
+    message: str = Field(..., min_length=1, max_length=100000, description="Message content (max 100k chars)")
+    model: Optional[str] = Field(default=None, max_length=100)
 
 
 class DebateRequest(BaseModel):
     """Request to run a debate."""
-    topic: str
-    rounds: int = 2
+    topic: str = Field(..., min_length=1, max_length=10000, description="Debate topic (max 10k chars)")
+    rounds: int = Field(default=2, ge=1, le=10, description="Number of debate rounds (1-10)")
 
 
 class VoteRequest(BaseModel):
     """Request to run a vote."""
-    question: str
-    options: List[str]
+    question: str = Field(..., min_length=1, max_length=10000, description="Vote question (max 10k chars)")
+    options: List[str] = Field(..., min_length=2, max_length=26, description="Vote options (2-26)")
 
 
 class ImportConversationRequest(BaseModel):
@@ -438,10 +448,10 @@ class Conversation(BaseModel):
 
 class CreateProjectRequest(BaseModel):
     """Request to create a new project."""
-    name: str
-    description: Optional[str] = ""
-    system_prompt: Optional[str] = ""
-    council_models: Optional[List[str]] = None
+    name: str = Field(..., min_length=1, max_length=200, description="Project name (max 200 chars)")
+    description: Optional[str] = Field(default="", max_length=2000)
+    system_prompt: Optional[str] = Field(default="", max_length=50000)
+    council_models: Optional[List[str]] = Field(default=None, max_length=20)
     chairman_model: Optional[str] = None
 
 
@@ -462,9 +472,9 @@ class AddKnowledgeRequest(BaseModel):
 
 class CreateFolderRequest(BaseModel):
     """Request to create a new folder."""
-    name: str
-    color: Optional[str] = "#4a90e2"
-    icon: Optional[str] = "folder"
+    name: str = Field(..., min_length=1, max_length=100, description="Folder name (max 100 chars)")
+    color: Optional[str] = Field(default="#4a90e2", max_length=20)
+    icon: Optional[str] = Field(default="folder", max_length=50)
 
 
 class MoveFolderRequest(BaseModel):
@@ -873,8 +883,8 @@ async def estimate_cost(request: CostEstimateRequest):
 
 class SetApiKeyRequest(BaseModel):
     """Request to set an API key for a provider."""
-    provider: str
-    api_key: str
+    provider: str = Field(..., min_length=1, max_length=50, pattern=r'^[a-zA-Z0-9_-]+$', description="Provider name (alphanumeric, max 50 chars)")
+    api_key: str = Field(..., min_length=10, max_length=500, description="API key (10-500 chars)")
 
 
 @app.get(
@@ -1069,9 +1079,12 @@ async def set_api_key_endpoint(
                 logger.warning(f"API key saved but verification failed for user {current_user.id}, provider {request.provider}")
         except Exception as e:
             await db.rollback()
+            # Log the actual error for debugging (without sensitive data)
+            logger.error(f"Failed to save API key for user {current_user.id}, provider {request.provider}: {type(e).__name__}")
+            # Return generic error to client (don't expose internal details)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to save API key: {str(e)}"
+                detail="Failed to save API key. Please try again."
             )
     else:
         # Fallback to global config for anonymous users
@@ -1639,13 +1652,13 @@ async def clear_all_ratings():
 # ============ TOOLS ENDPOINTS ============
 
 class SearchRequest(BaseModel):
-    query: str
-    num_results: Optional[int] = 5
+    query: str = Field(..., min_length=1, max_length=1000, description="Search query (max 1k chars)")
+    num_results: Optional[int] = Field(default=5, ge=1, le=50)
 
 class CodeRequest(BaseModel):
-    code: str
-    language: str = "python"
-    timeout: Optional[int] = 30
+    code: str = Field(..., min_length=1, max_length=50000, description="Code to execute (max 50k chars)")
+    language: str = Field(default="python", max_length=20)
+    timeout: Optional[int] = Field(default=30, ge=1, le=120)
 
 class MemoryRequest(BaseModel):
     action: str  # remember_fact, remember_decision, set_preference, get_context, clear, stats
@@ -1842,8 +1855,8 @@ async def route_council(query: str, max_models: int = 5):
 
 class CreateAgentRequest(BaseModel):
     """Request to create an AI agent task."""
-    query: str
-    model: Optional[str] = "anthropic/claude-sonnet-4"
+    query: str = Field(..., min_length=1, max_length=50000, description="Agent query (max 50k chars)")
+    model: Optional[str] = Field(default="anthropic/claude-sonnet-4", max_length=100)
     context: Optional[Dict[str, Any]] = None
 
 
@@ -2142,10 +2155,10 @@ async def delete_agent_task(task_id: str):
 
 class ImageGenerationRequest(BaseModel):
     """Request to generate an image."""
-    prompt: str
-    provider: str = "dalle-3"
-    size: str = "1024x1024"
-    quality: str = "standard"
+    prompt: str = Field(..., min_length=1, max_length=4000, description="Image prompt (max 4k chars)")
+    provider: str = Field(default="dalle-3", max_length=50)
+    size: str = Field(default="1024x1024", max_length=20)
+    quality: str = Field(default="standard", max_length=20)
     style: Optional[str] = "vivid"
 
 
@@ -2312,10 +2325,10 @@ async def delete_generated_image(image_id: str):
 
 class TTSRequest(BaseModel):
     """Request to convert text to speech."""
-    text: str
-    provider: str = "openai"
-    voice: str = "alloy"
-    model: Optional[str] = "tts-1"
+    text: str = Field(..., min_length=1, max_length=4096, description="Text to convert (max 4k chars)")
+    provider: str = Field(default="openai", max_length=50)
+    voice: str = Field(default="alloy", max_length=50)
+    model: Optional[str] = Field(default="tts-1", max_length=50)
     speed: Optional[float] = 1.0
 
 
@@ -3523,7 +3536,17 @@ async def get_conversation(
     user_id = current_user.id if current_user else None
     conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        # If conversation is missing, attempt to create it to avoid upload race
+        try:
+            conversation = await storage.create_conversation(
+                conversation_id,
+                user_id=user_id,
+                db=db
+            )
+        except Exception:
+            conversation = None
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
     return conversation
 
 
@@ -4491,6 +4514,181 @@ async def run_conversation_vote(
     return vote_results
 
 
+# ============ ADMIN ENDPOINTS ============
+
+@app.get(
+    "/api/admin/conversations",
+    tags=["admin"],
+    summary="List All Conversations (Admin)",
+    response_description="Paginated list of all conversations"
+)
+async def admin_list_conversations(
+    skip: int = 0,
+    limit: int = 100,
+    user_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all conversations in the system (admin only).
+
+    Allows admins to view and manage all user conversations for
+    support, moderation, or debugging purposes.
+
+    Args:
+        skip: Number of records to skip (pagination)
+        limit: Maximum number of records to return
+        user_id: Optional filter by specific user
+        current_user: Must be an admin user
+
+    Returns:
+        List of conversations with user info
+
+    Raises:
+        HTTPException 403: If user is not an admin
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from .database.crud import conversations as db_conversations
+
+    user_filter = uuid.UUID(user_id) if user_id else None
+    convs = await db_conversations.list_all(db, skip=skip, limit=limit, user_filter=user_filter)
+    total = await db_conversations.count_all(db, user_filter=user_filter)
+
+    return {
+        "conversations": [
+            {
+                "id": str(conv.id),
+                "user_id": str(conv.user_id) if conv.user_id else None,
+                "title": conv.title,
+                "created_at": conv.created_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
+                "message_count": len(conv.messages) if hasattr(conv, 'messages') else 0,
+                "project_id": str(conv.project_id) if conv.project_id else None,
+            }
+            for conv in convs
+        ],
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
+
+
+@app.get(
+    "/api/admin/conversations/{conversation_id}",
+    tags=["admin"],
+    summary="Get Any Conversation (Admin)",
+    response_description="Full conversation with messages"
+)
+async def admin_get_conversation(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get any conversation by ID (admin only).
+
+    Allows admins to view full conversation content regardless
+    of ownership, for support or moderation purposes.
+
+    Args:
+        conversation_id: ID of the conversation
+        current_user: Must be an admin user
+
+    Returns:
+        Full conversation with messages
+
+    Raises:
+        HTTPException 403: If user is not an admin
+        HTTPException 404: If conversation not found
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from .database.crud import conversations as db_conversations
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID format")
+
+    conv = await db_conversations.admin_get_by_id(db, conv_uuid)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return {
+        "id": str(conv.id),
+        "user_id": str(conv.user_id) if conv.user_id else None,
+        "title": conv.title,
+        "created_at": conv.created_at.isoformat(),
+        "updated_at": conv.updated_at.isoformat() if conv.updated_at else None,
+        "project_id": str(conv.project_id) if conv.project_id else None,
+        "messages": [
+            {
+                "id": str(msg.id),
+                "role": msg.role,
+                "content": msg.content,
+                "message_type": msg.message_type,
+                "created_at": msg.created_at.isoformat(),
+                "stage1": msg.stage1,
+                "stage2": msg.stage2,
+                "stage3": msg.stage3,
+            }
+            for msg in sorted(conv.messages, key=lambda m: m.message_index)
+        ] if hasattr(conv, 'messages') else []
+    }
+
+
+@app.get(
+    "/api/admin/users",
+    tags=["admin"],
+    summary="List All Users (Admin)",
+    response_description="List of all users"
+)
+async def admin_list_users(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List all users in the system (admin only).
+
+    Provides user list for filtering conversations by user.
+
+    Args:
+        current_user: Must be an admin user
+
+    Returns:
+        List of users with basic info
+
+    Raises:
+        HTTPException 403: If user is not an admin
+    """
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    from sqlalchemy import select
+    from .database.models import User as UserModel
+
+    result = await db.execute(
+        select(UserModel).order_by(UserModel.created_at.desc())
+    )
+    users = result.scalars().all()
+
+    return {
+        "users": [
+            {
+                "id": str(user.id),
+                "email": user.email,
+                "is_admin": user.is_admin,
+                "created_at": user.created_at.isoformat(),
+                "conversation_count": len(user.conversations) if hasattr(user, 'conversations') else 0
+            }
+            for user in users
+        ]
+    }
+
+
 # ============ FILE UPLOAD ENDPOINTS ============
 
 @app.post(
@@ -4499,7 +4697,12 @@ async def run_conversation_vote(
     summary="Upload File to Conversation",
     response_description="Upload confirmation with file metadata"
 )
-async def upload_file(conversation_id: str, file: UploadFile = File(...)):
+async def upload_file(
+    conversation_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Upload a file to a conversation.
 
@@ -4518,7 +4721,8 @@ async def upload_file(conversation_id: str, file: UploadFile = File(...)):
         HTTPException 400: If file type not supported
         HTTPException 500: If upload fails
     """
-    conversation = await storage.get_conversation(conversation_id)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -4538,7 +4742,11 @@ async def upload_file(conversation_id: str, file: UploadFile = File(...)):
     summary="List Conversation Files",
     response_description="List of uploaded files"
 )
-async def list_conversation_files(conversation_id: str):
+async def list_conversation_files(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
     """
     List all files uploaded to a conversation.
 
@@ -4553,7 +4761,8 @@ async def list_conversation_files(conversation_id: str):
     Raises:
         HTTPException 404: If conversation not found
     """
-    conversation = await storage.get_conversation(conversation_id)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -4567,7 +4776,12 @@ async def list_conversation_files(conversation_id: str):
     summary="Download File",
     response_description="File content as download"
 )
-async def download_file(conversation_id: str, filename: str):
+async def download_file(
+    conversation_id: str,
+    filename: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Download a file from a conversation.
 
@@ -4584,7 +4798,8 @@ async def download_file(conversation_id: str, filename: str):
         HTTPException 404: If conversation or file not found
         HTTPException 500: If download fails
     """
-    conversation = await storage.get_conversation(conversation_id)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -4607,7 +4822,12 @@ async def download_file(conversation_id: str, filename: str):
     summary="Delete Conversation File",
     response_description="Deletion confirmation"
 )
-async def delete_conversation_file(conversation_id: str, filename: str):
+async def delete_conversation_file(
+    conversation_id: str,
+    filename: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Delete a file from a conversation's file storage.
 
@@ -4626,7 +4846,8 @@ async def delete_conversation_file(conversation_id: str, filename: str):
     Raises:
         HTTPException 404: If conversation or file not found
     """
-    conversation = await storage.get_conversation(conversation_id)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -5442,10 +5663,10 @@ async def update_conversation_tags(
 
 class CreateTemplateRequest(BaseModel):
     """Request to create a new template."""
-    name: str
-    category: str
-    prompt_text: str
-    variables: List[str]
+    name: str = Field(..., min_length=1, max_length=100, description="Template name (max 100 chars)")
+    category: str = Field(..., min_length=1, max_length=50)
+    prompt_text: str = Field(..., min_length=1, max_length=50000)
+    variables: List[str] = Field(..., max_length=50)
 
 
 class UpdateTemplateRequest(BaseModel):
@@ -5905,8 +6126,8 @@ async def get_shared_conversation(token: str):
 from .code_interpreter import execute_code, format_execution_result
 
 class CodeInterpreterRequest(BaseModel):
-    code: str
-    timeout: int = 30
+    code: str = Field(..., min_length=1, max_length=50000, description="Code to execute (max 50k chars)")
+    timeout: int = Field(default=30, ge=1, le=120)
 
 
 @app.post(
@@ -6057,19 +6278,19 @@ async def export_html(conversation_id: str):
 # ============ TEAM WORKSPACES ENDPOINTS ============
 
 class CreateTeamRequest(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=100, description="Team name (max 100 chars)")
+    description: Optional[str] = Field(default=None, max_length=1000)
 
 
 class UpdateTeamRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=100)
+    description: Optional[str] = Field(default=None, max_length=1000)
     settings: Optional[Dict[str, Any]] = None
 
 
 class InviteMemberRequest(BaseModel):
-    email: str
-    role: str = "member"  # owner, admin, member
+    email: str = Field(..., min_length=5, max_length=255, description="Member email")
+    role: str = Field(default="member", pattern=r'^(owner|admin|member)$')
 
 
 class ShareToTeamRequest(BaseModel):
@@ -6422,9 +6643,9 @@ _api_keys = {}
 
 
 class CreateAPIKeyRequest(BaseModel):
-    name: str
-    scopes: List[str] = ["chat", "read"]
-    rate_limit: int = 100
+    name: str = Field(..., min_length=1, max_length=100, description="API key name (max 100 chars)")
+    scopes: List[str] = Field(default=["chat", "read"], max_length=20)
+    rate_limit: int = Field(default=100, ge=1, le=10000)
 
 
 @app.get(

@@ -5,10 +5,14 @@ import json
 import hashlib
 import time
 import uuid
+import logging
 from typing import List, Dict, Any, Optional
 from .config import get_openrouter_api_key, OPENROUTER_API_URL, AVAILABLE_MODELS, is_reasoning_model, REASONING_MODEL_CONFIG, has_direct_api_key, get_provider_from_model, get_api_key
 from .direct_providers import query_model_direct
 from .database import crud as db_crud
+from .http_client import get_client
+
+logger = logging.getLogger(__name__)
 
 # Global token tracking for current session
 _session_usage = {
@@ -170,7 +174,7 @@ async def query_model(
 
             return result
         # If direct API fails, fall back to OpenRouter
-        print(f"Direct API failed for {model}, falling back to OpenRouter")
+        logger.warning(f"Direct API failed for {model}, falling back to OpenRouter")
 
     # Use extended timeout for reasoning models
     if is_reasoning_model(model):
@@ -186,7 +190,7 @@ async def query_model(
         openrouter_key = await db_crud.api_keys.get_system_key(db, "openrouter")
 
     if not openrouter_key:
-        print(f"No OpenRouter API key available for model {model}. User must set their own key or admin must set system key.")
+        logger.warning(f"No OpenRouter API key available for model {model}. User must set their own key or admin must set system key.")
         return None
 
     headers = {
@@ -200,77 +204,79 @@ async def query_model(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                OPENROUTER_API_URL,
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
+        # Use shared HTTP client for connection reuse
+        client = get_client()
+        response = await client.post(
+            OPENROUTER_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=timeout
+        )
+        response.raise_for_status()
 
-            data = response.json()
-            message = data['choices'][0]['message']
+        data = response.json()
+        message = data['choices'][0]['message']
 
-            # Extract usage info
-            usage = data.get('usage', {})
-            input_tokens = usage.get('prompt_tokens', 0)
-            output_tokens = usage.get('completion_tokens', 0)
+        # Extract usage info
+        usage = data.get('usage', {})
+        input_tokens = usage.get('prompt_tokens', 0)
+        output_tokens = usage.get('completion_tokens', 0)
 
-            # Calculate cost
-            cost = calculate_cost(model, input_tokens, output_tokens)
+        # Calculate cost
+        cost = calculate_cost(model, input_tokens, output_tokens)
 
-            # Update session tracking
-            _session_usage["total_input_tokens"] += input_tokens
-            _session_usage["total_output_tokens"] += output_tokens
-            _session_usage["total_cost"] += cost
-            _session_usage["requests"].append({
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cost": cost
-            })
+        # Update session tracking
+        _session_usage["total_input_tokens"] += input_tokens
+        _session_usage["total_output_tokens"] += output_tokens
+        _session_usage["total_cost"] += cost
+        _session_usage["requests"].append({
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cost": cost
+        })
 
-            # Extract thinking tokens for reasoning models
-            thinking = None
-            if is_reasoning_model(model) and REASONING_MODEL_CONFIG["show_thinking"]:
-                # Check for thinking in various possible locations
-                # DeepSeek R1 and similar models may include thinking in different fields
-                if 'reasoning_content' in message:
-                    thinking = message.get('reasoning_content')
-                elif 'thinking' in message:
-                    thinking = message.get('thinking')
-                elif usage.get('reasoning_tokens', 0) > 0:
-                    # Some models report thinking token count but may not expose content
-                    thinking = f"[Reasoning performed: {usage.get('reasoning_tokens')} tokens]"
+        # Extract thinking tokens for reasoning models
+        thinking = None
+        if is_reasoning_model(model) and REASONING_MODEL_CONFIG["show_thinking"]:
+            # Check for thinking in various possible locations
+            # DeepSeek R1 and similar models may include thinking in different fields
+            if 'reasoning_content' in message:
+                thinking = message.get('reasoning_content')
+            elif 'thinking' in message:
+                thinking = message.get('thinking')
+            elif usage.get('reasoning_tokens', 0) > 0:
+                # Some models report thinking token count but may not expose content
+                thinking = f"[Reasoning performed: {usage.get('reasoning_tokens')} tokens]"
 
-            result = {
-                'content': message.get('content'),
-                'usage': {
-                    'input_tokens': input_tokens,
-                    'output_tokens': output_tokens,
-                    'cost': cost
-                }
+        result = {
+            'content': message.get('content'),
+            'usage': {
+                'input_tokens': input_tokens,
+                'output_tokens': output_tokens,
+                'cost': cost
             }
+        }
 
-            # Add thinking if available
-            if thinking:
-                result['thinking'] = thinking
+        # Add thinking if available
+        if thinking:
+            result['thinking'] = thinking
 
-            # Keep reasoning_details for backward compatibility
-            if 'reasoning_details' in message:
-                result['reasoning_details'] = message.get('reasoning_details')
+        # Keep reasoning_details for backward compatibility
+        if 'reasoning_details' in message:
+            result['reasoning_details'] = message.get('reasoning_details')
 
-            # Cache successful response
-            if use_cache:
-                _cache_response(model, messages, result)
+        # Cache successful response
+        if use_cache:
+            _cache_response(model, messages, result)
 
-            return result
+        return result
 
     except httpx.HTTPStatusError as e:
-        print(f"HTTP error querying model {model}: {e.response.status_code} - {e}")
+        logger.error(f"HTTP error querying model {model}: {e.response.status_code} - {e}")
         return None
     except Exception as e:
-        print(f"Error querying model {model}: {e}")
+        logger.error(f"Error querying model {model}: {e}")
         return None
 
 
@@ -332,77 +338,79 @@ async def query_model_stream(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream(
-                "POST",
-                OPENROUTER_API_URL,
-                headers=headers,
-                json=payload
-            ) as response:
-                response.raise_for_status()
+        # Use shared HTTP client for connection reuse
+        client = get_client()
+        async with client.stream(
+            "POST",
+            OPENROUTER_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=timeout
+        ) as response:
+            response.raise_for_status()
 
-                full_content = ""
-                input_tokens = 0
-                output_tokens = 0
+            full_content = ""
+            input_tokens = 0
+            output_tokens = 0
 
-                async for line in response.aiter_lines():
-                    if not line.strip() or line.startswith(":"):
+            async for line in response.aiter_lines():
+                if not line.strip() or line.startswith(":"):
+                    continue
+
+                if line.startswith("data: "):
+                    data_str = line[6:]
+
+                    if data_str == "[DONE]":
+                        break
+
+                    try:
+                        data = json.loads(data_str)
+
+                        # Extract chunk content
+                        if "choices" in data and len(data["choices"]) > 0:
+                            delta = data["choices"][0].get("delta", {})
+                            chunk = delta.get("content", "")
+
+                            if chunk:
+                                full_content += chunk
+                                yield {"chunk": chunk}
+
+                        # Extract usage info if present
+                        if "usage" in data:
+                            usage = data["usage"]
+                            input_tokens = usage.get("prompt_tokens", 0)
+                            output_tokens = usage.get("completion_tokens", 0)
+
+                    except json.JSONDecodeError:
                         continue
 
-                    if line.startswith("data: "):
-                        data_str = line[6:]
+            # Calculate cost
+            cost = calculate_cost(model, input_tokens, output_tokens)
 
-                        if data_str == "[DONE]":
-                            break
+            # Update session tracking
+            _session_usage["total_input_tokens"] += input_tokens
+            _session_usage["total_output_tokens"] += output_tokens
+            _session_usage["total_cost"] += cost
+            _session_usage["requests"].append({
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost": cost
+            })
 
-                        try:
-                            data = json.loads(data_str)
-
-                            # Extract chunk content
-                            if "choices" in data and len(data["choices"]) > 0:
-                                delta = data["choices"][0].get("delta", {})
-                                chunk = delta.get("content", "")
-
-                                if chunk:
-                                    full_content += chunk
-                                    yield {"chunk": chunk}
-
-                            # Extract usage info if present
-                            if "usage" in data:
-                                usage = data["usage"]
-                                input_tokens = usage.get("prompt_tokens", 0)
-                                output_tokens = usage.get("completion_tokens", 0)
-
-                        except json.JSONDecodeError:
-                            continue
-
-                # Calculate cost
-                cost = calculate_cost(model, input_tokens, output_tokens)
-
-                # Update session tracking
-                _session_usage["total_input_tokens"] += input_tokens
-                _session_usage["total_output_tokens"] += output_tokens
-                _session_usage["total_cost"] += cost
-                _session_usage["requests"].append({
-                    "model": model,
+            # Yield final metadata
+            yield {
+                "done": True,
+                "content": full_content,
+                "usage": {
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "cost": cost
-                })
-
-                # Yield final metadata
-                yield {
-                    "done": True,
-                    "content": full_content,
-                    "usage": {
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens,
-                        "cost": cost
-                    }
                 }
+            }
 
     except Exception as e:
-        print(f"Error streaming model {model}: {e}")
+        logger.error(f"Error streaming model {model}: {e}")
         yield {
             "error": True,
             "message": str(e)

@@ -1,9 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { safeFetch, NetworkError } from '../api/client';
 
 import { API_BASE } from '../api/client';
 
 const AuthContext = createContext(null);
+
+// Mutex for preventing concurrent token refresh attempts
+let refreshPromise = null;
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -169,33 +172,46 @@ export function AuthProvider({ children }) {
   };
 
   const refreshToken = async () => {
+    // If a refresh is already in progress, wait for it instead of starting another
+    if (refreshPromise) {
+      return refreshPromise;
+    }
+
     const storedRefresh = localStorage.getItem('refresh_token');
     if (!storedRefresh) {
       throw new Error('No refresh token');
     }
 
-    try {
-      const response = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: storedRefresh }),
-      });
+    // Create the refresh promise and store it to prevent concurrent refreshes
+    refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: storedRefresh }),
+        });
 
-      if (!response.ok) {
+        if (!response.ok) {
+          clearTokens();
+          setUser(null);
+          throw new Error('Token refresh failed');
+        }
+
+        const data = await response.json();
+        setTokens(data.access_token, data.refresh_token);
+        setUser(data.user);
+        return data.access_token;
+      } catch (err) {
         clearTokens();
         setUser(null);
-        throw new Error('Token refresh failed');
+        throw err;
+      } finally {
+        // Clear the promise so future refresh attempts can proceed
+        refreshPromise = null;
       }
+    })();
 
-      const data = await response.json();
-      setTokens(data.access_token, data.refresh_token);
-      setUser(data.user);
-      return data.access_token;
-    } catch (err) {
-      clearTokens();
-      setUser(null);
-      throw err;
-    }
+    return refreshPromise;
   };
 
   const logout = async () => {

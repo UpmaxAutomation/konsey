@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown';
 import './CompareView.css';
 
 export default function CompareView({ responses, isOpen, onClose }) {
@@ -135,14 +135,14 @@ export default function CompareView({ responses, isOpen, onClose }) {
                       <details>
                         <summary>🧠 Reasoning Process</summary>
                         <div className="thinking-content-compare">
-                          <ReactMarkdown>{response.thinking}</ReactMarkdown>
+                          <SafeMarkdown>{response.thinking}</SafeMarkdown>
                         </div>
                       </details>
                     </div>
                   )}
 
                   <div className="response-content markdown-content">
-                    <ReactMarkdown>{response.response}</ReactMarkdown>
+                    <SafeMarkdown>{response.response}</SafeMarkdown>
                   </div>
                 </div>
               </div>

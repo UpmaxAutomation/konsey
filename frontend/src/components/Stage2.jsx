@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { useState, memo, useMemo } from 'react';
+import SafeMarkdown from './SafeMarkdown';
 import './Stage2.css';
 
 function deAnonymizeText(text, labelToModel) {
@@ -16,7 +16,7 @@ function deAnonymizeText(text, labelToModel) {
   return result;
 }
 
-export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
+const Stage2 = memo(function Stage2({ rankings, labelToModel, aggregateRankings }) {
   const [activeTab, setActiveTab] = useState(0);
 
   if (!rankings || rankings.length === 0) {
@@ -50,9 +50,9 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
           {rankings[activeTab].model}
         </div>
         <div className="ranking-content markdown-content">
-          <ReactMarkdown>
+          <SafeMarkdown>
             {deAnonymizeText(rankings[activeTab].ranking, labelToModel)}
-          </ReactMarkdown>
+          </SafeMarkdown>
         </div>
 
         {rankings[activeTab].parsed_ranking &&
@@ -98,4 +98,6 @@ export default function Stage2({ rankings, labelToModel, aggregateRankings }) {
       )}
     </div>
   );
-}
+});
+
+export default Stage2;

@@ -17,15 +17,31 @@
   --transition-spring: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
   --transition-bounce: 600ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
-  /* Layout */
-  --sidebar-width: 300px;
-  --sidebar-mobile-width: 320px;
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
-  --radius-2xl: 32px;
+  /* Mobile-first Layout - base values for mobile */
+  --sidebar-width: 280px;
+  --sidebar-mobile-width: 85vw;
+  --header-height: 56px;
+  --input-area-height: auto;
+  --content-max-width: 900px;
+  --content-padding: 16px;
+  --message-padding: 12px;
+  --touch-target: 44px;
+
+  /* Responsive spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Border radius - slightly smaller on mobile */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
 
   /* ========== LIGHT MODE (Default) ========== */
   --bg-primary: #ffffff;
@@ -283,9 +299,61 @@ button {
   cursor: pointer;
 }
 
-/* Mobile tap targets */
-@media (max-width: 768px) {
-  button, a, [role="button"] {
-    min-height: 44px;
+/* ========== RESPONSIVE BREAKPOINTS (Mobile-first) ========== */
+
+/* Tablet and up */
+@media (min-width: 768px) {
+  :root {
+    --sidebar-width: 280px;
+    --header-height: 64px;
+    --content-padding: 24px;
+    --message-padding: 16px;
+    --radius-xs: 6px;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --radius-xl: 24px;
+    --radius-2xl: 32px;
+  }
+}
+
+/* Desktop and up */
+@media (min-width: 1024px) {
+  :root {
+    --sidebar-width: 300px;
+    --content-padding: 32px;
+    --content-max-width: 1000px;
+  }
+}
+
+/* Large desktop */
+@media (min-width: 1440px) {
+  :root {
+    --sidebar-width: 320px;
+    --content-max-width: 1100px;
+  }
+}
+
+/* ========== TOUCH TARGETS ========== */
+/* Mobile: ensure 44px min touch targets */
+button, a, [role="button"], .clickable {
+  min-height: var(--touch-target);
+}
+
+/* Tablet+: can relax touch target requirements */
+@media (min-width: 768px) {
+  button, a, [role="button"], .clickable {
+    min-height: auto;
+  }
+}
+
+/* ========== SAFE AREAS (for notched devices) ========== */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
   }
 }

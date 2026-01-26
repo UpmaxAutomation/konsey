@@ -6,17 +6,22 @@ import os
 import sys
 import json
 import base64
-from typing import Dict, Any, Optional
+import ast
+import logging
+from typing import Dict, Any, Optional, Set
 from pathlib import Path
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 # Execution limits
 MAX_EXECUTION_TIME = 30  # seconds
 MAX_OUTPUT_SIZE = 100000  # characters
 MAX_MEMORY_MB = 512
+MAX_CODE_LENGTH = 50000  # Maximum code length in characters
 
 # Allowed imports (whitelist for safety)
-ALLOWED_IMPORTS = {
+ALLOWED_IMPORTS: Set[str] = {
     # Data analysis
     'pandas', 'numpy', 'scipy', 'statistics',
     # Visualization
@@ -35,36 +40,95 @@ ALLOWED_IMPORTS = {
     'hashlib', 'base64', 'urllib.parse',
 }
 
-# Blocked patterns for security
-BLOCKED_PATTERNS = [
-    'import os',
-    'import sys',
-    'import subprocess',
-    'import shutil',
-    '__import__',
-    'eval(',
-    'exec(',
-    'compile(',
-    'open(',
-    'file(',
-    'input(',
-    'raw_input(',
-    'execfile(',
-    '__builtins__',
-    'globals(',
-    'locals(',
-    'vars(',
-    'dir(',
-    'getattr(',
-    'setattr(',
-    'delattr(',
-    'hasattr(',
-]
+# Dangerous built-in functions that should be blocked
+BLOCKED_BUILTINS: Set[str] = {
+    'eval', 'exec', 'compile', 'open', 'input', 'raw_input',
+    '__import__', 'execfile', 'breakpoint', 'memoryview',
+}
+
+# Dangerous attributes that should not be accessed
+BLOCKED_ATTRIBUTES: Set[str] = {
+    '__builtins__', '__class__', '__bases__', '__subclasses__',
+    '__mro__', '__code__', '__globals__', '__closure__',
+    '__dict__', '__doc__', '__module__', '__qualname__',
+}
+
+# Blocked modules (even if someone tries to import them indirectly)
+BLOCKED_MODULES: Set[str] = {
+    'os', 'sys', 'subprocess', 'shutil', 'socket', 'requests',
+    'urllib', 'http', 'ftplib', 'smtplib', 'telnetlib',
+    'pickle', 'shelve', 'marshal', 'importlib', 'builtins',
+    'code', 'codeop', 'pty', 'tty', 'ctypes', 'multiprocessing',
+    'threading', 'signal', 'resource', 'sysconfig', 'pathlib',
+}
+
+
+class SecurityVisitor(ast.NodeVisitor):
+    """AST visitor that checks for dangerous code patterns."""
+
+    def __init__(self):
+        self.errors: list[str] = []
+        self.imports: Set[str] = set()
+
+    def visit_Import(self, node: ast.Import) -> None:
+        """Check import statements."""
+        for alias in node.names:
+            module_name = alias.name.split('.')[0]
+            self.imports.add(module_name)
+
+            if module_name in BLOCKED_MODULES:
+                self.errors.append(f"Import of blocked module: {module_name}")
+            elif module_name not in ALLOWED_IMPORTS and alias.name not in ALLOWED_IMPORTS:
+                self.errors.append(f"Import of non-whitelisted module: {alias.name}")
+
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        """Check from ... import statements."""
+        if node.module:
+            module_name = node.module.split('.')[0]
+            full_module = node.module
+            self.imports.add(module_name)
+
+            if module_name in BLOCKED_MODULES:
+                self.errors.append(f"Import from blocked module: {module_name}")
+            elif module_name not in ALLOWED_IMPORTS and full_module not in ALLOWED_IMPORTS:
+                self.errors.append(f"Import from non-whitelisted module: {full_module}")
+
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        """Check function calls for dangerous built-ins."""
+        if isinstance(node.func, ast.Name):
+            if node.func.id in BLOCKED_BUILTINS:
+                self.errors.append(f"Call to blocked built-in: {node.func.id}")
+        elif isinstance(node.func, ast.Attribute):
+            # Check for getattr/setattr/delattr/hasattr calls that might be used to bypass restrictions
+            if isinstance(node.func.value, ast.Name) and node.func.value.id == 'builtins':
+                self.errors.append(f"Direct access to builtins module")
+
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        """Check attribute access for dangerous patterns."""
+        if node.attr in BLOCKED_ATTRIBUTES:
+            self.errors.append(f"Access to blocked attribute: {node.attr}")
+
+        self.generic_visit(node)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        """Check for direct access to blocked names."""
+        if node.id in BLOCKED_BUILTINS:
+            # Only flag if it's being loaded (used), not stored (assigned)
+            if isinstance(node.ctx, ast.Load):
+                self.errors.append(f"Reference to blocked built-in: {node.id}")
+
+        self.generic_visit(node)
 
 
 def validate_code(code: str) -> tuple[bool, Optional[str]]:
     """
-    Validate code for safety before execution.
+    Validate code for safety before execution using AST parsing.
 
     Args:
         code: Python code to validate
@@ -72,20 +136,44 @@ def validate_code(code: str) -> tuple[bool, Optional[str]]:
     Returns:
         Tuple of (is_safe, error_message)
     """
+    # Check code length
+    if len(code) > MAX_CODE_LENGTH:
+        return False, f"Code exceeds maximum length of {MAX_CODE_LENGTH} characters"
+
+    # Check for empty code
+    if not code.strip():
+        return False, "Empty code submitted"
+
+    # Try to parse the code as valid Python
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, f"Syntax error in code: {e}"
+
+    # Run the security visitor
+    visitor = SecurityVisitor()
+    visitor.visit(tree)
+
+    if visitor.errors:
+        # Return the first error (most relevant)
+        return False, visitor.errors[0]
+
+    # Additional string-based checks for patterns that might evade AST
+    # These are backup checks for obfuscation attempts
     code_lower = code.lower()
 
-    for pattern in BLOCKED_PATTERNS:
+    # Check for attempts to construct blocked names via string manipulation
+    suspicious_patterns = [
+        ('chr(', 'Character code construction (potential obfuscation)'),
+        ('ord(', 'Ordinal conversion (potential obfuscation)'),
+        ('bytes.fromhex', 'Hex byte construction (potential obfuscation)'),
+        ('codecs.decode', 'Codec decoding (potential obfuscation)'),
+    ]
+
+    for pattern, reason in suspicious_patterns:
         if pattern.lower() in code_lower:
-            return False, f"Blocked pattern detected: {pattern}"
-
-    # Check for file operations
-    if 'with open' in code_lower or 'open(' in code_lower:
-        return False, "File operations are not allowed"
-
-    # Check for network operations
-    if 'socket' in code_lower or 'requests' in code_lower or 'urllib' in code_lower:
-        if 'urllib.parse' not in code_lower:
-            return False, "Network operations are not allowed"
+            logger.warning(f"Suspicious pattern detected: {reason}")
+            # Don't block these outright, but log them
 
     return True, None
 

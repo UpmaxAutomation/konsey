@@ -1,8 +1,9 @@
-import ReactMarkdown from 'react-markdown';
+import { memo } from 'react';
+import SafeMarkdown from './SafeMarkdown';
 import CopyButton from './CopyButton';
 import './Stage3.css';
 
-export default function Stage3({ finalResponse }) {
+const Stage3 = memo(function Stage3({ finalResponse }) {
   if (!finalResponse) {
     return null;
   }
@@ -18,9 +19,11 @@ export default function Stage3({ finalResponse }) {
           Chairman: {finalResponse.model.split('/')[1] || finalResponse.model}
         </div>
         <div className="final-text markdown-content">
-          <ReactMarkdown>{finalResponse.response}</ReactMarkdown>
+          <SafeMarkdown>{finalResponse.response}</SafeMarkdown>
         </div>
       </div>
     </div>
   );
-}
+});
+
+export default Stage3;

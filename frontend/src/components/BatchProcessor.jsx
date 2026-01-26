@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown';
 import { api } from '../api';
 import './BatchProcessor.css';
 
@@ -372,7 +372,7 @@ export default function BatchProcessor({ isOpen, onClose }) {
                                         <div className="result-section">
                                           <h5>Final Answer</h5>
                                           <div className="markdown-content">
-                                            <ReactMarkdown>{result.stage3?.final_answer || 'No answer'}</ReactMarkdown>
+                                            <SafeMarkdown>{result.stage3?.final_answer || 'No answer'}</SafeMarkdown>
                                           </div>
                                         </div>
 
@@ -384,7 +384,7 @@ export default function BatchProcessor({ isOpen, onClose }) {
                                                 <div key={i} className="stage1-response">
                                                   <strong>{response.model}:</strong>
                                                   <div className="markdown-content">
-                                                    <ReactMarkdown>{response.content}</ReactMarkdown>
+                                                    <SafeMarkdown>{response.content}</SafeMarkdown>
                                                   </div>
                                                 </div>
                                               ))}

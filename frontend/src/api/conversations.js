@@ -393,10 +393,15 @@ export async function uploadFile(conversationId, file) {
   const formData = new FormData();
   formData.append('file', file);
 
+  // For FormData, we need to NOT set Content-Type header - browser sets it with boundary
+  // We pass empty Content-Type to override the default 'application/json' from authFetch
   const response = await authFetch(`${API_BASE}/conversations/${conversationId}/upload`, {
     method: 'POST',
     body: formData,
-    // Note: Don't set Content-Type header, let browser set it with boundary for FormData
+    headers: {
+      // Explicitly unset Content-Type so browser can set multipart/form-data with boundary
+      'Content-Type': null,
+    },
   });
 
   if (!response.ok) {

@@ -163,7 +163,9 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
                     "id": str(conv.id),
                     "created_at": conv.created_at.isoformat(),
                     "title": conv.title,
-                    "message_count": len(conv.messages) if hasattr(conv, 'messages') else 0,
+                    # Note: message_count not available in list view for performance
+                    # Messages are not eagerly loaded to avoid N+1 queries
+                    "message_count": 0,
                     "folder_id": conv.folder_id,
                     "tags": conv.tags or []
                 }
@@ -182,7 +184,8 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
                         "id": str(conv.id),
                         "created_at": conv.created_at.isoformat(),
                         "title": conv.title,
-                        "message_count": len(conv.messages) if hasattr(conv, 'messages') else 0,
+                        # Note: message_count not available in list view for performance
+                        "message_count": 0,
                         "folder_id": conv.folder_id,
                         "tags": conv.tags or []
                     }

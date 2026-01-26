@@ -1,12 +1,31 @@
-"""CRUD operations for API keys."""
+"""CRUD operations for API keys.
 
+Security Notes:
+---------------
+This module uses Fernet symmetric encryption (AES-128-CBC) to encrypt API keys at rest.
+The encryption key is derived from the application's SECRET_KEY using PBKDF2-HMAC-SHA256.
+
+Key Derivation:
+- PBKDF2 with 100,000 iterations provides strong key derivation
+- The salt is static but application-specific ("llm-council-api-keys-v1")
+- A static salt is acceptable here because:
+  1. This is key derivation, not password hashing
+  2. Each SECRET_KEY produces a unique encryption key
+  3. The derived key is never stored (only cached in memory)
+  4. Rainbow table attacks are impractical against 32-byte keys
+
+For password hashing (user passwords), use bcrypt/argon2 with random salts instead.
+"""
+
+import logging
 import os
 import uuid
+import hashlib
 from base64 import b64encode, b64decode
 from datetime import datetime
 from typing import Optional, List
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from sqlalchemy import select, update, delete
@@ -14,33 +33,108 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import UserAPIKey, SystemConfig
 
+logger = logging.getLogger(__name__)
 
-# Encryption key derivation
+
+# Encryption key cache - avoids 100k PBKDF2 iterations on every call
+_encryption_key_cache: Optional[bytes] = None
+_encryption_secret_hash: Optional[str] = None
+
+# Salt version allows rotating salts without breaking existing data
+# Increment this and add migration logic if you need to re-encrypt all keys
+SALT_VERSION = "v1"
+SALT = f"llm-council-api-keys-{SALT_VERSION}".encode()
+
+# PBKDF2 iterations - balance between security and performance
+# 100k is OWASP recommended minimum for 2023+
+PBKDF2_ITERATIONS = 100000
+
+
 def _get_encryption_key() -> bytes:
-    """Get or derive encryption key from SECRET_KEY."""
-    secret_key = os.getenv("SECRET_KEY", "default-secret-key-change-in-production")
-    salt = b"llm-council-api-keys"  # Static salt for deterministic key derivation
+    """
+    Get or derive encryption key from SECRET_KEY (cached for performance).
 
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-    )
-    key = kdf.derive(secret_key.encode())
-    return b64encode(key)
+    The key is derived using PBKDF2-HMAC-SHA256 with a static application salt.
+    This is secure for key derivation (not password hashing) because:
+    - The SECRET_KEY should already have sufficient entropy
+    - The derived key is 256 bits (32 bytes)
+    - 100k iterations provide computational resistance
+
+    Returns:
+        Base64-encoded 32-byte key suitable for Fernet
+    """
+    global _encryption_key_cache, _encryption_secret_hash
+
+    secret_key = os.getenv("SECRET_KEY", "")
+
+    # Validate SECRET_KEY exists
+    if not secret_key:
+        logger.warning(
+            "SECRET_KEY not set - using fallback key. "
+            "API key encryption will not persist across configuration changes."
+        )
+        secret_key = "insecure-development-key-do-not-use-in-production"
+
+    # Create a hash of the secret for cache invalidation check
+    secret_hash = hashlib.sha256(secret_key.encode()).hexdigest()
+
+    # Check if we need to derive (first call or secret changed)
+    if _encryption_key_cache is None or _encryption_secret_hash != secret_hash:
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=SALT,
+            iterations=PBKDF2_ITERATIONS,
+        )
+        _encryption_key_cache = b64encode(kdf.derive(secret_key.encode()))
+        _encryption_secret_hash = secret_hash
+        logger.debug("Derived new encryption key from SECRET_KEY")
+
+    return _encryption_key_cache
 
 
 def _encrypt(plaintext: str) -> str:
-    """Encrypt a string."""
+    """
+    Encrypt a string using Fernet (AES-128-CBC with HMAC).
+
+    Args:
+        plaintext: The string to encrypt
+
+    Returns:
+        Base64-encoded ciphertext
+    """
+    if not plaintext:
+        raise ValueError("Cannot encrypt empty string")
+
     f = Fernet(_get_encryption_key())
     return f.encrypt(plaintext.encode()).decode()
 
 
 def _decrypt(ciphertext: str) -> str:
-    """Decrypt a string."""
+    """
+    Decrypt a Fernet-encrypted string.
+
+    Args:
+        ciphertext: Base64-encoded ciphertext from _encrypt()
+
+    Returns:
+        Decrypted plaintext string
+
+    Raises:
+        InvalidToken: If decryption fails (wrong key, corrupted data, or tampered)
+    """
+    if not ciphertext:
+        raise ValueError("Cannot decrypt empty string")
+
     f = Fernet(_get_encryption_key())
-    return f.decrypt(ciphertext.encode()).decode()
+    try:
+        return f.decrypt(ciphertext.encode()).decode()
+    except InvalidToken:
+        logger.error(
+            "Failed to decrypt data - possible SECRET_KEY mismatch or data corruption. "
+            "If SECRET_KEY was changed, encrypted data will need to be re-encrypted."
+        )
+        raise
 
 
 # User API Key operations
@@ -64,6 +158,8 @@ async def get_user_key(
             decrypted = _decrypt(key_record.encrypted_key)
             return decrypted
         except Exception as e:
+            # Log decryption failure without exposing key data
+            logger.warning(f"Failed to decrypt API key for user {user_id}, provider {provider}: {type(e).__name__}")
             return None
     return None
 
@@ -170,6 +266,8 @@ async def get_system_key(db: AsyncSession, provider: str) -> Optional[str]:
                 decrypted = _decrypt(config.value)
                 return decrypted
             except Exception as e:
+                # Log decryption failure without exposing key data
+                logger.warning(f"Failed to decrypt system key for provider {provider}: {type(e).__name__}")
                 return None
         return config.value
     return None

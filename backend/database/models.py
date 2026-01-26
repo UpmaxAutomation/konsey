@@ -82,6 +82,7 @@ class UserAPIKey(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "provider", name="uq_user_provider"),
+        Index("idx_user_provider_active", "user_id", "provider", "is_active"),  # Performance: API key lookups
     )
 
 

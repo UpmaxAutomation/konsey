@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { useState, useEffect, memo, useMemo } from 'react';
+import SafeMarkdown from './SafeMarkdown';
 import CompareView from './CompareView';
 import CopyButton from './CopyButton';
 import './Stage1.css';
 
 import { API_BASE } from '../api/client';
 
-export default function Stage1({ responses, conversationId, messageIndex }) {
+const Stage1 = memo(function Stage1({ responses, conversationId, messageIndex }) {
   const [activeTab, setActiveTab] = useState(0);
   const [showThinking, setShowThinking] = useState({});
   const [showCompare, setShowCompare] = useState(false);
@@ -22,12 +22,15 @@ export default function Stage1({ responses, conversationId, messageIndex }) {
   const currentResponse = responses[activeTab];
   const hasThinking = currentResponse.thinking && currentResponse.thinking.trim().length > 0;
 
-  // Load existing ratings when component mounts or responses change
+  // Memoize response count to avoid reloading ratings when response content changes
+  const responseCount = responses?.length || 0;
+
+  // Load existing ratings when component mounts or conversation changes
   useEffect(() => {
-    if (conversationId && messageIndex !== undefined) {
+    if (conversationId && messageIndex !== undefined && responseCount > 0) {
       loadExistingRatings();
     }
-  }, [conversationId, messageIndex, responses]);
+  }, [conversationId, messageIndex, responseCount]);
 
   const loadExistingRatings = async () => {
     if (!responses || responses.length === 0) return;
@@ -158,13 +161,13 @@ export default function Stage1({ responses, conversationId, messageIndex }) {
           <div className="thinking-block">
             <div className="thinking-header">Reasoning Process:</div>
             <div className="thinking-content">
-              <ReactMarkdown>{currentResponse.thinking}</ReactMarkdown>
+              <SafeMarkdown>{currentResponse.thinking}</SafeMarkdown>
             </div>
           </div>
         )}
 
         <div className="response-text markdown-content">
-          <ReactMarkdown>{currentResponse.response}</ReactMarkdown>
+          <SafeMarkdown>{currentResponse.response}</SafeMarkdown>
         </div>
 
         {conversationId && messageIndex !== undefined && (
@@ -234,4 +237,6 @@ export default function Stage1({ responses, conversationId, messageIndex }) {
       />
     </div>
   );
-}
+});
+
+export default Stage1;

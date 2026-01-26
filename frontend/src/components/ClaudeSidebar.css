@@ -1,17 +1,54 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   CLAUDE AI STYLE SIDEBAR
-   Clean, minimal, dark sidebar inspired by Claude's design with projects
+   CLAUDE AI STYLE SIDEBAR - Mobile-First Design
+   Clean, minimal sidebar with slide-out drawer for mobile
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Mobile-first: Sidebar is a slide-out drawer by default */
 .claude-sidebar {
-  width: 260px;
-  min-width: 260px;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--sidebar-mobile-width);
+  max-width: 320px;
   background: #1a1a1a;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   color: #e5e5e5;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  z-index: 1000;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: none;
+  will-change: transform;
+  /* Safe area for notched devices */
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Sidebar open state on mobile */
+.claude-sidebar.open {
+  transform: translateX(0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+}
+
+/* Tablet and up: Sidebar is always visible and static */
+@media (min-width: 768px) {
+  .claude-sidebar {
+    position: relative;
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    max-width: none;
+    transform: none;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .claude-sidebar.open {
+    box-shadow: none;
+  }
 }
 
 /* Top section with project selector */
@@ -517,20 +554,59 @@
   color: #1a1a1a;
 }
 
+/* Settings button in footer */
+.claude-settings-btn {
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #888;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.claude-settings-btn:hover {
+  background: rgba(212, 163, 115, 0.15);
+  color: #d4a373;
+}
+
+.claude-settings-btn:active {
+  transform: scale(0.95);
+}
+
+[data-theme="light"] .claude-settings-btn:hover {
+  background: rgba(212, 163, 115, 0.2);
+  color: #c69c6d;
+}
+
 /* Logout button in footer */
 .claude-logout-btn {
-  padding: 6px;
+  padding: 8px;
   background: transparent;
   border: none;
   border-radius: 6px;
   color: #666;
   cursor: pointer;
   transition: all 0.15s ease;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .claude-logout-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #e5e5e5;
+}
+
+.claude-logout-btn:active {
+  transform: scale(0.95);
 }
 
 /* Light mode projects */
@@ -842,7 +918,7 @@
 .claude-user-section {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 8px;
   border-radius: 8px;
   transition: background 0.15s ease;
@@ -912,46 +988,77 @@
   color: #666;
 }
 
-/* Mobile styles */
-@media (max-width: 768px) {
-  .claude-sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    z-index: 1000;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
-  }
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE OVERLAY - Shows behind sidebar when open
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-  .claude-sidebar.open {
-    transform: translateX(0);
-  }
-}
-
-/* Sidebar overlay for mobile */
+/* Mobile-first: overlay is visible when sidebar is open */
 .claude-sidebar-overlay {
-  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 999;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-@media (max-width: 768px) {
+.claude-sidebar-overlay.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* Tablet and up: hide overlay completely */
+@media (min-width: 768px) {
   .claude-sidebar-overlay {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s ease;
+    display: none !important;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE TOUCH OPTIMIZATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Larger touch targets on mobile */
+.claude-conv-item {
+  padding: 12px 14px;
+  min-height: var(--touch-target);
+}
+
+.claude-conv-action-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.claude-new-chat-btn {
+  min-height: var(--touch-target);
+  padding: 14px;
+}
+
+.claude-project-btn {
+  min-height: var(--touch-target);
+}
+
+/* Tablet and up: standard sizing */
+@media (min-width: 768px) {
+  .claude-conv-item {
+    padding: 10px 12px;
+    min-height: auto;
   }
 
-  .claude-sidebar-overlay.visible {
-    opacity: 1;
-    pointer-events: all;
+  .claude-conv-action-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .claude-new-chat-btn {
+    min-height: auto;
+    padding: 12px 14px;
+  }
+
+  .claude-project-btn {
+    min-height: auto;
   }
 }
 

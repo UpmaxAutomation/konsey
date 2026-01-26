@@ -221,6 +221,7 @@ export default function ProjectView({
       <div className="project-view-main">
         <ChatInterface
           conversation={currentConversation}
+          currentConversationId={currentConversationId}
           onSendMessage={onSendMessage}
           isLoading={isLoading}
           onStopCouncil={onStopCouncil}

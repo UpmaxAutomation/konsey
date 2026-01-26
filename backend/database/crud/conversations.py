@@ -44,17 +44,27 @@ async def list_by_user(
     folder_id: Optional[str] = None,
     tags: Optional[List[str]] = None,
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    include_messages: bool = False
 ) -> List[Conversation]:
-    """List conversations for a user with optional filters."""
+    """List conversations for a user with optional filters.
+
+    Args:
+        include_messages: If True, eagerly load messages (expensive for lists).
+                         Default False for performance - use get_by_id_with_messages
+                         when you need the full conversation.
+    """
     query = (
         select(Conversation)
-        .options(selectinload(Conversation.messages))
         .where(Conversation.user_id == user_id)
         .order_by(Conversation.updated_at.desc())
         .offset(skip)
         .limit(limit)
     )
+
+    # Only load messages if explicitly requested (for detail views)
+    if include_messages:
+        query = query.options(selectinload(Conversation.messages))
 
     if folder_id is not None:
         query = query.where(Conversation.folder_id == folder_id)
@@ -192,6 +202,59 @@ async def get_all_tags(db: AsyncSession, user_id: uuid.UUID) -> List[str]:
         .distinct()
     )
     return [row[0] for row in result.fetchall()]
+
+
+# Admin operations
+
+async def list_all(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    user_filter: Optional[uuid.UUID] = None,
+    include_messages: bool = False
+) -> List[Conversation]:
+    """List all conversations (admin only). Optionally filter by user.
+
+    Args:
+        include_messages: If True, eagerly load messages. Default False for performance.
+    """
+    query = (
+        select(Conversation)
+        .order_by(Conversation.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+
+    if include_messages:
+        query = query.options(selectinload(Conversation.messages))
+
+    if user_filter:
+        query = query.where(Conversation.user_id == user_filter)
+
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def count_all(db: AsyncSession, user_filter: Optional[uuid.UUID] = None) -> int:
+    """Count all conversations (admin only)."""
+    query = select(func.count(Conversation.id))
+    if user_filter:
+        query = query.where(Conversation.user_id == user_filter)
+    result = await db.execute(query)
+    return result.scalar() or 0
+
+
+async def admin_get_by_id(
+    db: AsyncSession,
+    conversation_id: uuid.UUID
+) -> Optional[Conversation]:
+    """Get any conversation by ID (admin only, no user check)."""
+    result = await db.execute(
+        select(Conversation)
+        .options(selectinload(Conversation.messages))
+        .where(Conversation.id == conversation_id)
+    )
+    return result.scalar_one_or_none()
 
 
 # Message operations

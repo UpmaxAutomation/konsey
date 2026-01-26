@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, AsyncAdaptedQueuePool
 from sqlalchemy import select
 
 # Load .env file before reading environment variables
@@ -53,17 +53,33 @@ if USE_DATABASE:
     
     # Create async engine
     try:
+        # Detect if using external connection pooler (pgbouncer/Supabase)
+        is_using_pooler = "pooler.supabase.com" in DATABASE_URL or "pooler" in DATABASE_URL.lower()
+
         # For connection poolers (pgbouncer), disable prepared statement cache
         # pgbouncer in transaction/statement mode doesn't support prepared statements
         connect_args = {}
-        if "pooler.supabase.com" in DATABASE_URL or "pooler" in DATABASE_URL.lower():
+        if is_using_pooler:
             connect_args["statement_cache_size"] = 0
+
+        # Pool configuration
+        # - If using external pooler (pgbouncer): NullPool (pooler handles it)
+        # - If direct connection: AsyncAdaptedQueuePool with proper settings
+        pool_config = {}
+        if is_using_pooler:
+            pool_config["poolclass"] = NullPool
+        else:
+            pool_config["poolclass"] = AsyncAdaptedQueuePool
+            pool_config["pool_size"] = int(os.getenv("DB_POOL_SIZE", "10"))
+            pool_config["max_overflow"] = int(os.getenv("DB_MAX_OVERFLOW", "20"))
+            pool_config["pool_recycle"] = 3600  # Recycle connections after 1 hour
 
         engine = create_async_engine(
             DATABASE_URL,
             echo=os.getenv("DB_ECHO", "false").lower() == "true",
-            poolclass=NullPool,  # Use NullPool for better async compatibility
+            pool_pre_ping=True,  # Validate connections before use
             connect_args=connect_args,
+            **pool_config,
         )
     except Exception as e:
         raise ValueError(

@@ -185,15 +185,36 @@ export async function refreshAccessToken() {
  * @returns {Promise<Response>} Fetch response
  */
 export async function authFetch(url, options = {}, context = 'authFetch') {
-  const headers = { ...getAuthHeaders(), ...options.headers };
+  let headers = { ...getAuthHeaders(), ...options.headers };
+
+  // For FormData, don't set Content-Type - let browser set it with multipart boundary
+  // Also handle explicit null/undefined header values (for overriding defaults)
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
+  }
+  // Remove any null/undefined header values (allows callers to unset default headers)
+  Object.keys(headers).forEach(key => {
+    if (headers[key] === null || headers[key] === undefined) {
+      delete headers[key];
+    }
+  });
+
   let response = await safeFetch(url, { ...options, headers }, context);
 
   // If unauthorized, try refreshing the token
   if (response.status === 401) {
     try {
       await refreshAccessToken();
-      // Retry with new token
-      const newHeaders = { ...getAuthHeaders(), ...options.headers };
+      // Retry with new token - apply same FormData and null header handling
+      let newHeaders = { ...getAuthHeaders(), ...options.headers };
+      if (options.body instanceof FormData) {
+        delete newHeaders['Content-Type'];
+      }
+      Object.keys(newHeaders).forEach(key => {
+        if (newHeaders[key] === null || newHeaders[key] === undefined) {
+          delete newHeaders[key];
+        }
+      });
       response = await safeFetch(url, { ...options, headers: newHeaders }, context);
 
       // If still 401 after refresh, only redirect if not a streaming request

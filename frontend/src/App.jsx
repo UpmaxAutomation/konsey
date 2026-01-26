@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import ErrorBoundary from './components/ErrorBoundary';
 import ClaudeSidebar from './components/ClaudeSidebar';
 import ChatInterface from './components/ChatInterface';
 import ProjectView from './components/ProjectView';
@@ -825,62 +826,71 @@ function MainApp() {
         </svg>
       </button>
 
-      <ClaudeSidebar
-        conversations={filteredConversations}
-        currentConversationId={currentConversationId}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-        isMobileOpen={isSidebarOpen}
-        onToggleMobile={toggleSidebar}
-        isCreatingConversation={isCreatingConversation}
-        onProjectChange={handleProjectChange}
-        onProjectSelect={handleProjectSelect}
-        onMoveToProject={async (conversationId, projectId) => {
-          try {
-            await api.moveConversationToProject(conversationId, projectId);
-            // Update local state
-            setConversations((prev) =>
-              prev.map((c) =>
-                c.id === conversationId ? { ...c, project_id: projectId } : c
-              )
-            );
-            if (currentConversation?.id === conversationId) {
-              setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
+      <ErrorBoundary>
+        <ClaudeSidebar
+          conversations={filteredConversations}
+          currentConversationId={currentConversationId}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          isMobileOpen={isSidebarOpen}
+          onToggleMobile={toggleSidebar}
+          isCreatingConversation={isCreatingConversation}
+          onProjectChange={handleProjectChange}
+          onProjectSelect={handleProjectSelect}
+          onMoveToProject={async (conversationId, projectId) => {
+            try {
+              await api.moveConversationToProject(conversationId, projectId);
+              // Update local state
+              setConversations((prev) =>
+                prev.map((c) =>
+                  c.id === conversationId ? { ...c, project_id: projectId } : c
+                )
+              );
+              if (currentConversation?.id === conversationId) {
+                setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
+              }
+              toast.success(projectId ? 'Moved to project' : 'Removed from project');
+            } catch (error) {
+              toast.error('Failed to move conversation');
             }
-            toast.success(projectId ? 'Moved to project' : 'Removed from project');
-          } catch (error) {
-            toast.error('Failed to move conversation');
-          }
-        }}
-      />
-      <ChatInterface
-        conversation={currentConversation}
-        onSendMessage={handleSendMessage}
-        isLoading={isLoading}
-        onStopCouncil={handleStopCouncil}
-        onToggleSidebar={toggleSidebar}
-        onConversationUpdate={loadConversation}
-        councilProgress={councilProgress}
-        currentProjectId={currentProjectId}
-        onMoveToProject={async (conversationId, projectId) => {
-          try {
-            await api.moveConversationToProject(conversationId, projectId);
-            // Update local state
-            setConversations((prev) =>
-              prev.map((c) =>
-                c.id === conversationId ? { ...c, project_id: projectId } : c
-              )
-            );
-            if (currentConversation?.id === conversationId) {
-              setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
-            }
-            toast.success(projectId ? 'Moved to project' : 'Removed from project');
-          } catch (error) {
-            toast.error('Failed to move conversation');
-          }
-        }}
-      />
+          }}
+        />
+      </ErrorBoundary>
+
+      {/* Main content area wrapper for mobile-first layout */}
+      <main className="app-main">
+        <ErrorBoundary>
+          <ChatInterface
+            conversation={currentConversation}
+            currentConversationId={currentConversationId}
+            onSendMessage={handleSendMessage}
+            isLoading={isLoading}
+            onStopCouncil={handleStopCouncil}
+            onToggleSidebar={toggleSidebar}
+            onConversationUpdate={loadConversation}
+            councilProgress={councilProgress}
+            currentProjectId={currentProjectId}
+            onMoveToProject={async (conversationId, projectId) => {
+              try {
+                await api.moveConversationToProject(conversationId, projectId);
+                // Update local state
+                setConversations((prev) =>
+                  prev.map((c) =>
+                    c.id === conversationId ? { ...c, project_id: projectId } : c
+                  )
+                );
+                if (currentConversation?.id === conversationId) {
+                  setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
+                }
+                toast.success(projectId ? 'Moved to project' : 'Removed from project');
+              } catch (error) {
+                toast.error('Failed to move conversation');
+              }
+            }}
+          />
+        </ErrorBoundary>
+      </main>
 
       {/* Manager Modals */}
       {showTeamManager && (

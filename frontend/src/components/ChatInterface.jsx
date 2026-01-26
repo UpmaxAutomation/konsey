@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from './SafeMarkdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import './ChatInterface.css';
@@ -11,6 +11,7 @@ import Stage2 from './Stage2';
 import FileUpload from './FileUpload';
 import ProgressIndicator from './ProgressIndicator';
 import CostEstimate from './CostEstimate';
+import { useDebounce } from '../hooks/useDebounce';
 
 // Estimate tokens for cost calculation
 const ESTIMATED_INPUT_TOKENS = 500;  // Average input tokens per model
@@ -35,6 +36,7 @@ const POPULAR_MODELS = [
 
 export default function ChatInterface({
   conversation,
+  currentConversationId,
   onSendMessage,
   isLoading,
   onStopCouncil,
@@ -43,6 +45,7 @@ export default function ChatInterface({
   currentProjectId,
   onMoveToProject,
 }) {
+  const activeConversationId = conversation?.id || currentConversationId || null;
   const [input, setInput] = useState('');
   const [pastedImages, setPastedImages] = useState([]); // Array of {id, dataUrl, file}
   const [selectedModel, setSelectedModel] = useState('');
@@ -55,6 +58,8 @@ export default function ChatInterface({
   const [mode, setMode] = useState('quick'); // 'quick', 'council', or 'compare'
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [modelSearch, setModelSearch] = useState('');
+  // Debounce search for performance - prevents filtering on every keystroke
+  const debouncedModelSearch = useDebounce(modelSearch, 200);
   // Compare mode state
   const [compareModels, setCompareModels] = useState([]); // Selected models for comparison (2-3)
   const [compareResponses, setCompareResponses] = useState({}); // {modelId: {text, done, error}}
@@ -67,6 +72,7 @@ export default function ChatInterface({
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showScrollFab, setShowScrollFab] = useState(false);
   const [copiedCode, setCopiedCode] = useState(null);
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState(null); // Track which message was copied
   const [expandedCouncil, setExpandedCouncil] = useState({}); // Track which messages show council details
   const [showShortcuts, setShowShortcuts] = useState(false); // Keyboard shortcuts modal
   // Favorites and Recent models state
@@ -129,6 +135,47 @@ export default function ChatInterface({
       setTimeout(() => setCopiedCode(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  // Copy a single message to clipboard
+  const copyMessage = async (msg, index) => {
+    const stage3Content = typeof msg.stage3 === 'object' ? msg.stage3?.response : msg.stage3;
+    const content = msg.content || stage3Content || '';
+    const role = msg.role === 'user' ? 'You' : 'Assistant';
+    const text = `**${role}:**\n${content}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageIndex(index);
+      toast.success('Message copied!');
+      setTimeout(() => setCopiedMessageIndex(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy message:', err);
+      toast.error('Failed to copy message');
+    }
+  };
+
+  // Copy entire conversation to clipboard
+  const copyConversation = async () => {
+    if (!conversation?.messages?.length) return;
+
+    const title = conversation.title || 'Conversation';
+    let text = `# ${title}\n\n`;
+
+    conversation.messages.forEach((msg) => {
+      const stage3Content = typeof msg.stage3 === 'object' ? msg.stage3?.response : msg.stage3;
+      const content = msg.content || stage3Content || '';
+      const role = msg.role === 'user' ? 'You' : 'Assistant';
+      text += `**${role}:**\n${content}\n\n---\n\n`;
+    });
+
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Conversation copied!');
+    } catch (err) {
+      console.error('Failed to copy conversation:', err);
+      toast.error('Failed to copy conversation');
     }
   };
 
@@ -220,6 +267,26 @@ export default function ChatInterface({
       recognition.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
+        // Show user-friendly error messages for common errors
+        switch (event.error) {
+          case 'no-speech':
+            // Silent - user just didn't speak, not an error
+            break;
+          case 'audio-capture':
+            toast.error('No microphone found. Please connect a microphone.');
+            break;
+          case 'not-allowed':
+            toast.error('Microphone access denied. Please allow microphone in browser settings.');
+            break;
+          case 'network':
+            toast.error('Network error during speech recognition.');
+            break;
+          case 'aborted':
+            // Silent - user aborted, not an error
+            break;
+          default:
+            toast.error('Speech recognition error: ' + event.error);
+        }
       };
 
       recognition.onend = () => {
@@ -236,16 +303,32 @@ export default function ChatInterface({
     };
   }, []);
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) return;
+  const toggleListening = async () => {
+    if (!recognitionRef.current) {
+      toast.error('Speech recognition not available in this browser');
+      return;
+    }
 
     if (isListening) {
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
-      recognitionRef.current.start();
-      setIsListening(true);
-      textareaRef.current?.focus();
+      try {
+        // Request microphone permission first
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        recognitionRef.current.start();
+        setIsListening(true);
+        textareaRef.current?.focus();
+      } catch (err) {
+        console.error('Microphone permission error:', err);
+        if (err.name === 'NotAllowedError') {
+          toast.error('Microphone access denied. Please allow microphone in browser settings.');
+        } else if (err.name === 'NotFoundError') {
+          toast.error('No microphone found. Please connect a microphone.');
+        } else {
+          toast.error('Could not start voice input: ' + err.message);
+        }
+      }
     }
   };
 
@@ -299,11 +382,11 @@ export default function ChatInterface({
     return { groups, popular };
   }, [models]);
 
-  // Filter models by search
+  // Filter models by search (using debounced value for performance)
   const filteredModels = useMemo(() => {
-    if (!modelSearch) return groupedModels;
+    if (!debouncedModelSearch) return groupedModels;
 
-    const query = modelSearch.toLowerCase();
+    const query = debouncedModelSearch.toLowerCase();
     const filtered = {};
 
     Object.entries(groupedModels.groups).forEach(([provider, modelList]) => {
@@ -321,7 +404,7 @@ export default function ChatInterface({
         m.name.toLowerCase().includes(query)
       )
     };
-  }, [groupedModels, modelSearch]);
+  }, [groupedModels, debouncedModelSearch]);
 
   // Calculate estimated cost for council mode
   const councilCostEstimate = useMemo(() => {
@@ -931,9 +1014,35 @@ export default function ChatInterface({
                     )}
                   </div>
                   <div className="claude-message-text">
-                    <ReactMarkdown components={{ code: CodeBlock }}>
+                    <SafeMarkdown components={{ code: CodeBlock }}>
                       {content}
-                    </ReactMarkdown>
+                    </SafeMarkdown>
+                  </div>
+
+                  {/* Message actions */}
+                  <div className="claude-message-actions">
+                    <button
+                      className={`message-action-btn ${copiedMessageIndex === i ? 'copied' : ''}`}
+                      onClick={() => copyMessage(msg, i)}
+                      title="Copy message"
+                    >
+                      {copiedMessageIndex === i ? (
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                          </svg>
+                          Copy
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   {/* Council details toggle */}
@@ -1011,9 +1120,9 @@ export default function ChatInterface({
                       {response.error ? (
                         <div className="compare-error">{response.error}</div>
                       ) : response.text ? (
-                        <ReactMarkdown components={{ code: CodeBlock }}>
+                        <SafeMarkdown components={{ code: CodeBlock }}>
                           {response.text}
-                        </ReactMarkdown>
+                        </SafeMarkdown>
                       ) : (
                         <div className="compare-loading">
                           <div className="skeleton skeleton-line"></div>
@@ -1055,9 +1164,9 @@ export default function ChatInterface({
             <div className="claude-message-content">
               <div className="claude-message-role">Assistant</div>
               <div className="claude-message-text">
-                <ReactMarkdown components={{ code: CodeBlock }}>
+                <SafeMarkdown components={{ code: CodeBlock }}>
                   {streamingText}
-                </ReactMarkdown>
+                </SafeMarkdown>
                 <span className="cursor">|</span>
               </div>
             </div>
@@ -1498,8 +1607,8 @@ export default function ChatInterface({
                 type="button"
                 onClick={() => setShowFileUpload(true)}
                 className="file-btn"
-                disabled={isLoading || isStreaming || isComparing || !conversation}
-                title="Upload files"
+                disabled={isLoading || isStreaming || isComparing || !activeConversationId}
+                title={!activeConversationId ? "Start a conversation first to upload files" : "Upload files (PDF, docs, code)"}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
@@ -1645,6 +1754,19 @@ export default function ChatInterface({
                 <button
                   type="button"
                   className="claude-input-hint hint-btn"
+                  onClick={copyConversation}
+                  title="Copy entire conversation"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '4px', verticalAlign: 'middle'}}>
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                  copy all
+                </button>
+                <span className="claude-input-hint hint-separator">·</span>
+                <button
+                  type="button"
+                  className="claude-input-hint hint-btn"
                   onClick={exportConversation}
                   title="Export conversation"
                 >
@@ -1724,15 +1846,23 @@ export default function ChatInterface({
       )}
 
       {/* File Upload Modal */}
-      {showFileUpload && conversation && (
+      {showFileUpload && activeConversationId && (
         <FileUpload
-          conversationId={conversation.id}
+          conversationId={activeConversationId}
           onFileUploaded={(files) => {
             setUploadedFiles(prev => [...prev, ...files]);
           }}
           onClose={() => setShowFileUpload(false)}
         />
       )}
+
+      {/* Cost Estimate Modal */}
+      <CostEstimate
+        messageLength={pendingMessage?.message?.length || 0}
+        onConfirm={handleCostEstimateConfirm}
+        onCancel={handleCostEstimateCancel}
+        isVisible={showCostEstimate}
+      />
     </div>
   );
 }
