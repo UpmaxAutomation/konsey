@@ -41,7 +41,9 @@ function MainApp() {
     models: [],
     modelProgress: {},
     chairmanModel: '',
-    chairmanStatus: 'pending'
+    chairmanStatus: 'pending',
+    contextStatus: null,
+    searchType: null
   });
   const budgetTimeoutRef = useRef(null);
   const councilAbortRef = useRef(null);
@@ -55,39 +57,35 @@ function MainApp() {
     };
   }, []);
 
-  // Load conversations and budget alerts on mount
-  useEffect(() => {
-    // Check backend connection first
-    const checkBackend = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-        
-        // Check root endpoint (not /api/) - backend root is at /
-        const baseUrl = API_BASE.replace('/api', '');
-        const response = await fetch(`${baseUrl}/`, { 
-          method: 'GET',
-          signal: controller.signal
-        });
-        
-        if (response.ok) {
-          // Backend is available, load data
-          loadConversations();
-          loadBudgetAlerts();
-        } else {
-          console.warn('Backend responded with error:', response.status);
-          toast.error('Backend server error. Please check if the server is running correctly.');
-        }
-      } catch (error) {
-        console.error('Backend connection check failed:', error);
-        // Don't show error toast here - let individual API calls handle it
-        // Just try to load anyway in case it's a temporary issue
-        loadConversations();
-        loadBudgetAlerts();
+  // Check API keys on mount and warn if missing
+  const checkApiKeys = async () => {
+    try {
+      const keysData = await api.getApiKeys();
+      // Response format: { api_keys: { openrouter: "sk-o...xxxx" or "", ... }, providers: [...] }
+      const openRouterKey = keysData?.api_keys?.openrouter;
+      const hasOpenRouter = openRouterKey && openRouterKey.length > 0;
+      if (!hasOpenRouter) {
+        // Delay the warning to not overwhelm on first load
+        setTimeout(() => {
+          toast.error(
+            'No OpenRouter API key configured. Go to Settings → API Keys to add your key.',
+            8000
+          );
+        }, 2000);
       }
-    };
-    
-    checkBackend();
+    } catch (e) {
+      // Silently fail - user might not be logged in yet
+      console.log('Could not check API keys:', e.message);
+    }
+  };
+
+  // Load conversations and budget alerts on mount - load immediately for fast UX
+  useEffect(() => {
+    // Load immediately without waiting for backend health check
+    // This makes the app feel faster like ChatGPT
+    loadConversations();
+    loadBudgetAlerts();
+    checkApiKeys();
   }, []);
 
   // Listen for custom events to open managers
@@ -383,6 +381,7 @@ function MainApp() {
   }, [currentConversationId]);
 
   const handleSendMessage = async (content, attachedFiles = [], features = null) => {
+    console.log('📨 App.handleSendMessage received features:', features);
     if (!currentConversationId) return;
 
     // Store message count before adding optimistic updates for safe rollback
@@ -398,7 +397,9 @@ function MainApp() {
       models: [],
       modelProgress: {},
       chairmanModel: '',
-      chairmanStatus: 'pending'
+      chairmanStatus: 'pending',
+      contextStatus: null,
+      searchType: null
     });
     try {
       // Optimistically add user message to UI
@@ -439,6 +440,24 @@ function MainApp() {
         content,
         (eventType, event) => {
           switch (eventType) {
+            // Context gathering events (web search / deep search)
+            case 'context_start':
+              setCouncilProgress(prev => ({
+                ...prev,
+                stage: 0,
+                contextStatus: 'loading',
+                searchType: event.search_type
+              }));
+              break;
+
+            case 'context_complete':
+              setCouncilProgress(prev => ({
+                ...prev,
+                contextStatus: event.success ? 'completed' : 'failed',
+                contextError: event.error || null
+              }));
+              break;
+
             // Model-level progress events for Stage 1
             case 'stage1_model_start':
               setCouncilProgress(prev => ({
@@ -576,7 +595,22 @@ function MainApp() {
               break;
 
             case 'title_complete':
-              // Reload conversations to get updated title
+              // Update current conversation title directly
+              if (event.data?.title) {
+                setCurrentConversation((prev) => {
+                  if (!prev) return prev;
+                  return { ...prev, title: event.data.title };
+                });
+                // Also update in conversations list
+                setConversations((prev) =>
+                  prev.map((conv) =>
+                    conv.id === currentConversation?.id
+                      ? { ...conv, title: event.data.title }
+                      : conv
+                  )
+                );
+              }
+              // Also reload to ensure sync
               loadConversations();
               break;
 
@@ -590,13 +624,24 @@ function MainApp() {
                 models: [],
                 modelProgress: {},
                 chairmanModel: '',
-                chairmanStatus: 'pending'
+                chairmanStatus: 'pending',
+                contextStatus: null,
+                searchType: null
               });
               break;
 
             case 'error':
               console.error('Stream error:', event.message);
-              // Show error message to user
+              // Show toast notification for errors
+              const errorMsg = event.message || 'An error occurred';
+              if (errorMsg.includes('API key') || errorMsg.includes('api key')) {
+                toast.error('API key missing or invalid. Go to Settings → API Keys to configure your keys.');
+              } else if (errorMsg.includes('No OpenRouter')) {
+                toast.error('OpenRouter API key required. Go to Settings → API Keys to add it.');
+              } else {
+                toast.error(errorMsg);
+              }
+              // Show error message in conversation
               setCurrentConversation((prev) => {
                 if (!prev?.messages?.length) return prev;
                 const messages = [...prev.messages];
@@ -620,7 +665,9 @@ function MainApp() {
                 models: [],
                 modelProgress: {},
                 chairmanModel: '',
-                chairmanStatus: 'pending'
+                chairmanStatus: 'pending',
+                contextStatus: null,
+                searchType: null
               });
               break;
 
@@ -678,7 +725,9 @@ function MainApp() {
         models: [],
         modelProgress: {},
         chairmanModel: '',
-        chairmanStatus: 'pending'
+        chairmanStatus: 'pending',
+        contextStatus: null,
+        searchType: null
       });
     } finally {
       councilAbortRef.current = null;
@@ -828,7 +877,7 @@ function MainApp() {
 
       <ErrorBoundary>
         <ClaudeSidebar
-          conversations={filteredConversations}
+          conversations={conversations}
           currentConversationId={currentConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
@@ -851,8 +900,8 @@ function MainApp() {
                 setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
               }
               toast.success(projectId ? 'Moved to project' : 'Removed from project');
-            } catch (error) {
-              toast.error('Failed to move conversation');
+          } catch (error) {
+            toast.error(error.message || 'Failed to move conversation');
             }
           }}
         />
@@ -884,8 +933,8 @@ function MainApp() {
                   setCurrentConversation((prev) => ({ ...prev, project_id: projectId }));
                 }
                 toast.success(projectId ? 'Moved to project' : 'Removed from project');
-              } catch (error) {
-                toast.error('Failed to move conversation');
+          } catch (error) {
+            toast.error(error.message || 'Failed to move conversation');
               }
             }}
           />

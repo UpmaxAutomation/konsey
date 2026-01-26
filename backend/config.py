@@ -393,6 +393,41 @@ def is_reasoning_model(model: str) -> bool:
     """Check if a model is a reasoning model."""
     return model in REASONING_MODELS
 
+
+# Vision-capable models (support image input)
+VISION_MODELS = [
+    # OpenAI
+    "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4-turbo",
+    "openai/gpt-4.1", "openai/gpt-4.1-mini", "openai/gpt-4.1-nano",
+    # Anthropic
+    "anthropic/claude-sonnet-4", "anthropic/claude-3.5-sonnet",
+    "anthropic/claude-3-opus", "anthropic/claude-3-sonnet", "anthropic/claude-3-haiku",
+    "anthropic/claude-opus-4", "anthropic/claude-3.7-sonnet",
+    # Google
+    "google/gemini-2.5-pro", "google/gemini-2.5-flash",
+    "google/gemini-2.0-flash-001", "google/gemini-pro-vision",
+    "google/gemini-1.5-pro", "google/gemini-1.5-flash",
+    # xAI
+    "x-ai/grok-2-vision", "x-ai/grok-3",
+    # Meta
+    "meta-llama/llama-3.2-90b-vision-instruct",
+    "meta-llama/llama-3.2-11b-vision-instruct",
+]
+
+
+def supports_vision(model: str) -> bool:
+    """Check if a model supports vision/image input."""
+    # Check exact match
+    if model in VISION_MODELS:
+        return True
+    # Check partial match (for versioned models)
+    model_lower = model.lower()
+    for vision_model in VISION_MODELS:
+        if vision_model.lower() in model_lower or model_lower in vision_model.lower():
+            return True
+    return False
+
+
 def get_personas():
     """Get all available personas (default + custom)."""
     return {

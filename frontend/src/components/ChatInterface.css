@@ -2937,6 +2937,147 @@ input:focus-visible {
   font-weight: 500;
 }
 
+/* ========== Options Panel V2 (10/10 Design) ========== */
+.options-panel-v2 {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
+  min-width: 220px;
+  z-index: 100;
+  animation: optionsFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.options-section {
+  padding: 14px 16px;
+}
+
+.options-section:not(:last-child) {
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.options-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.options-section-header svg {
+  color: var(--text-muted);
+}
+
+.options-provider {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  color: #20b2aa;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Toggle Group (Off / Online / Deep) */
+.options-toggle-group {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.option-toggle {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.option-toggle:hover:not(.active) {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.option-toggle.active {
+  background: var(--bg-primary);
+  color: var(--accent-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Chips (Memory / Code) */
+.options-chips {
+  display: flex;
+  gap: 8px;
+}
+
+.option-chip {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1.5px solid var(--border-primary);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.option-chip:hover:not(.active) {
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+}
+
+.option-chip.active {
+  background: var(--accent-light);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.option-chip svg {
+  opacity: 0.7;
+}
+
+.option-chip.active svg {
+  opacity: 1;
+}
+
+/* Dark theme adjustments */
+[data-theme="dark"] .options-panel-v2 {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .options-provider {
+  background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+  color: #58d68d;
+}
+
+[data-theme="dark"] .option-toggle.active {
+  background: var(--bg-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MODE BUTTON TOOLTIPS
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -3138,6 +3279,18 @@ input:focus-visible {
 .claude-textarea::placeholder {
   color: var(--text-muted);
   opacity: 0.5;
+}
+
+/* Listening state - show interim transcript prominently */
+.claude-input-container.listening {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+}
+
+.claude-input-container.listening .claude-textarea::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.85;
+  font-style: italic;
 }
 
 /* Premium mode buttons */

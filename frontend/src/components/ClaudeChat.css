@@ -133,6 +133,27 @@
   color: #e5e5e5;
 }
 
+.claude-message-role .role-name {
+  font-weight: 600;
+}
+
+.message-timestamp {
+  font-size: 12px;
+  font-weight: 400;
+  color: #9ca3af;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.claude-message:hover .message-timestamp {
+  opacity: 1;
+}
+
+[data-theme="dark"] .message-timestamp {
+  color: #6b7280;
+}
+
 .claude-message-text {
   font-size: 15px;
   line-height: 1.75;
@@ -774,6 +795,33 @@
   color: #9ca3af;
 }
 
+/* Minimal welcome state - cleaner like ChatGPT */
+.claude-welcome-minimal {
+  padding: 40px 24px;
+}
+
+.claude-welcome-minimal .claude-welcome-icon {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 20px;
+}
+
+.claude-welcome-minimal .claude-welcome-title {
+  font-size: 24px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.claude-welcome-hint {
+  font-size: 14px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
+[data-theme="dark"] .claude-welcome-hint {
+  color: #6b7280;
+}
+
 /* Thinking/Loading indicator */
 .claude-thinking {
   display: flex;
@@ -1042,6 +1090,105 @@
   color: #4ade80;
 }
 
+.message-action-btn.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.message-action-btn svg.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Per-message attachments */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.message-attachment {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.message-attachment.image {
+  max-width: 200px;
+  max-height: 150px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+}
+
+.message-attachment.image:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.message-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.attachment-link:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.attachment-icon {
+  font-size: 14px;
+}
+
+.attachment-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-theme="dark"] .message-attachments {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .message-attachment.image {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .attachment-link {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .attachment-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 /* Collapsible council details */
 .claude-council-toggle {
   display: inline-flex;
@@ -1237,12 +1384,37 @@
   gap: 6px;
   padding: 6px 10px;
   background: #f5f5f5;
+  border: 1px solid transparent;
   border-radius: 8px;
   font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  appearance: none;
+  outline: none;
 }
 
 [data-theme="dark"] .uploaded-file-chip {
   background: #2a2a2a;
+}
+
+.uploaded-file-chip:hover {
+  border-color: #d4a373;
+  background: #fff6ed;
+}
+
+.uploaded-file-chip:focus-visible {
+  border-color: #d4a373;
+  box-shadow: 0 0 0 2px rgba(212, 163, 115, 0.25);
+}
+
+[data-theme="dark"] .uploaded-file-chip:hover {
+  border-color: #e9c46a;
+  background: rgba(233, 196, 106, 0.12);
+}
+
+[data-theme="dark"] .uploaded-file-chip:focus-visible {
+  border-color: #e9c46a;
+  box-shadow: 0 0 0 2px rgba(233, 196, 106, 0.2);
 }
 
 .pasted-image-item {
@@ -1266,6 +1438,14 @@
   color: #999;
   cursor: pointer;
   padding: 2px 4px;
+}
+
+.uploaded-file-chip .remove-uploaded-file {
+  color: #777;
+}
+
+.uploaded-file-chip .remove-uploaded-file:hover {
+  color: #d33;
 }
 
 .remove-pasted-image {
@@ -1312,6 +1492,7 @@
   color: #999;
   cursor: pointer;
   transition: all 0.15s;
+  position: relative;
 }
 
 .file-btn:hover {
@@ -1323,4 +1504,192 @@
 [data-theme="dark"] .voice-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #e5e5e5;
+}
+
+.file-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #d4a373;
+  color: #1a1a1a;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+[data-theme="dark"] .file-badge {
+  background: #e9c46a;
+  color: #1a1a1a;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKELETON LOADING
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+  background-size: 200% 100%;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.message-skeleton {
+  display: flex;
+  gap: 16px;
+  padding: 28px 0;
+}
+
+.skeleton-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.skeleton-content {
+  flex: 1;
+}
+
+.skeleton-line {
+  height: 16px;
+  margin-bottom: 8px;
+}
+
+.skeleton-line:last-child {
+  margin-bottom: 0;
+}
+
+.skeleton-line.short {
+  width: 60%;
+}
+
+.skeleton-line.medium {
+  width: 80%;
+}
+
+.skeleton-line.long {
+  width: 95%;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   IMPROVED TRANSITIONS & MICRO-ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Smooth button press effect */
+.message-action-btn:active,
+.claude-send-btn:active,
+.tab:active {
+  transform: scale(0.95);
+}
+
+/* Pulse animation for loading states */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.loading-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Slide up animation */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease;
+}
+
+/* Success flash animation */
+@keyframes successFlash {
+  0% { background-color: transparent; }
+  50% { background-color: rgba(34, 197, 94, 0.1); }
+  100% { background-color: transparent; }
+}
+
+.success-flash {
+  animation: successFlash 0.5s ease;
+}
+
+/* Toast notification animation */
+@keyframes toastSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Enhanced hover effects */
+.example-prompts .prompt-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.example-prompts .prompt-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="dark"] .example-prompts .prompt-btn:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Smooth scroll behavior */
+.claude-messages {
+  scroll-behavior: smooth;
+}
+
+/* Focus ring for accessibility */
+.message-action-btn:focus-visible,
+.claude-send-btn:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+/* Improved tab transitions */
+.tab {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab:hover {
+  transform: translateY(-1px);
 }

@@ -221,6 +221,15 @@
   width: 100%;
   display: flex;
   align-items: center;
+  padding: 0;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.claude-projects-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
   gap: 6px;
   padding: 8px;
   background: transparent;
@@ -235,7 +244,7 @@
   transition: all 0.15s ease;
 }
 
-.claude-projects-header:hover {
+.claude-projects-toggle:hover {
   background: rgba(255, 255, 255, 0.05);
   color: #e5e5e5;
 }
@@ -265,6 +274,10 @@
 }
 
 .claude-projects-header:hover .claude-projects-settings {
+  opacity: 1;
+}
+
+.claude-projects-settings:focus {
   opacity: 1;
 }
 
@@ -610,11 +623,11 @@
 }
 
 /* Light mode projects */
-[data-theme="light"] .claude-projects-header {
+[data-theme="light"] .claude-projects-toggle {
   color: #666;
 }
 
-[data-theme="light"] .claude-projects-header:hover {
+[data-theme="light"] .claude-projects-toggle:hover {
   background: rgba(0, 0, 0, 0.03);
   color: #1a1a1a;
 }

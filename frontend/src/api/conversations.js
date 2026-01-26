@@ -157,6 +157,11 @@ export async function sendMessageStream(
   if (features?.deep_search !== undefined) {
     body.deep_search = features.deep_search;
   }
+  if (features?.fast_mode !== undefined) {
+    body.fast_mode = features.fast_mode;
+  }
+
+  console.log('🚀 Sending council request:', { fast_mode: body.fast_mode, features });
 
   // Retry only the initial connection, not the streaming itself
   const response = await withStreamRetry(

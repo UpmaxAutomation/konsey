@@ -262,11 +262,15 @@
   overflow-x: auto;
   overflow-y: hidden;
   height: calc(100vh - 280px);
+  /* Ensure grid rows don't grow beyond container */
+  grid-auto-rows: 1fr;
 }
 
 /* Ensure minimum column width for readability */
 .compare-grid > .compare-column {
   min-width: 280px;
+  /* Explicit max-height to constrain grid children */
+  max-height: 100%;
 }
 
 /* Compare Column */
@@ -277,8 +281,9 @@
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-secondary);
-  height: 100%;
-  min-height: 0;
+  /* Use explicit height calculation instead of 100% */
+  height: calc(100vh - 320px);
+  min-height: 300px;
 }
 
 .compare-column-header {
@@ -320,13 +325,15 @@
 
 /* Column Content - Scrollable */
 .compare-column-content {
-  flex: 1;
+  flex: 1 1 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 16px;
   background: var(--bg-primary);
   scroll-behavior: smooth;
   min-height: 0;
+  /* Ensure content area takes remaining space and scrolls */
+  max-height: calc(100% - 50px); /* Subtract header height */
 }
 
 /* Synchronized scroll styling */
@@ -491,11 +498,17 @@
     height: calc(100vh - 200px);
     grid-template-columns: 1fr !important;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .compare-grid > .compare-column {
     min-width: unset;
-    max-height: 400px;
+    max-height: none;
+    height: 400px;
+  }
+
+  .compare-column-content {
+    max-height: calc(400px - 50px);
   }
 
   .compare-header {

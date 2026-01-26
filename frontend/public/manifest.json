@@ -1,6 +1,6 @@
 {
-  "name": "LLM Council",
-  "short_name": "Council",
+  "name": "AI Konsey",
+  "short_name": "AI Konsey",
   "description": "Multi-model AI deliberation system with peer review",
   "start_url": "/",
   "display": "standalone",

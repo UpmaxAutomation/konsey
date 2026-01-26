@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '../api';
 import './FileUpload.css';
 
@@ -30,7 +30,24 @@ export default function FileUpload({ conversationId, onFileUploaded, onClose }) 
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState([]);
   const [error, setError] = useState(null);
+  const [loadingExisting, setLoadingExisting] = useState(true);
   const fileInputRef = useRef(null);
+  useEffect(() => {
+    const loadExistingFiles = async () => {
+      if (!conversationId) return;
+      setLoadingExisting(true);
+      setError(null);
+      try {
+        const result = await api.listFiles(conversationId);
+        setFiles(result.files || []);
+      } catch (err) {
+        setError(`Failed to load existing files: ${err.message}`);
+      } finally {
+        setLoadingExisting(false);
+      }
+    };
+    loadExistingFiles();
+  }, [conversationId]);
 
   const getFileIcon = (filename) => {
     const ext = '.' + filename.split('.').pop().toLowerCase();
@@ -93,8 +110,13 @@ export default function FileUpload({ conversationId, onFileUploaded, onClose }) 
     }
   };
 
-  const removeFile = (index) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFile = async (fileToRemove) => {
+    try {
+      await api.deleteFile(conversationId, fileToRemove.filename);
+      setFiles(prev => prev.filter((file) => file.filename !== fileToRemove.filename));
+    } catch (err) {
+      setError(`Failed to remove ${fileToRemove.filename}: ${err.message}`);
+    }
   };
 
   const isImage = (filename) => {
@@ -137,6 +159,13 @@ export default function FileUpload({ conversationId, onFileUploaded, onClose }) 
           <div className="file-upload-error">{error}</div>
         )}
 
+        {loadingExisting && (
+          <div className="file-upload-progress">
+            <div className="spinner"></div>
+            <span>Loading attachments...</span>
+          </div>
+        )}
+
         {uploading && (
           <div className="file-upload-progress">
             <div className="spinner"></div>
@@ -146,30 +175,43 @@ export default function FileUpload({ conversationId, onFileUploaded, onClose }) 
 
         {files.length > 0 && (
           <div className="file-list">
-            <h4>Uploaded Files</h4>
-            {files.map((file, index) => (
-              <div key={index} className="file-item">
-                <span className="file-icon">{getFileIcon(file.name || file.filename)}</span>
-                <div className="file-info">
-                  <div className="file-name">{file.name || file.filename}</div>
-                  <div className="file-size">{formatSize(file.size)}</div>
-                </div>
-                {isImage(file.name || file.filename) && (
-                  <div className="file-preview">
-                    <img
-                      src={`/api/conversations/${conversationId}/files/${file.filename}`}
-                      alt="Preview"
-                    />
+            <h4>Attachments ({files.length})</h4>
+            {files.map((file) => {
+              const filename = file.name || file.filename;
+              const isImg = isImage(filename);
+              const isCode = /\.(py|js|jsx|ts|tsx|json|html|css|go|rs|java|c|cpp|h|sh|sql|yaml|yml)$/i.test(filename);
+
+              return (
+                <div key={file.filename} className={`file-item ${isImg ? 'file-item-image' : ''}`}>
+                  {isImg ? (
+                    <div className="file-thumbnail">
+                      <img
+                        src={`/api/conversations/${conversationId}/files/${file.filename}`}
+                        alt={filename}
+                        loading="lazy"
+                      />
+                    </div>
+                  ) : (
+                    <span className="file-icon">{getFileIcon(filename)}</span>
+                  )}
+                  <div className="file-info">
+                    <div className="file-name" title={filename}>{filename}</div>
+                    <div className="file-meta">
+                      <span className="file-size">{formatSize(file.size)}</span>
+                      {isCode && <span className="file-type-badge">Code</span>}
+                      {isImg && <span className="file-type-badge image">Image</span>}
+                    </div>
                   </div>
-                )}
-                <button
-                  className="remove-file-btn"
-                  onClick={() => removeFile(index)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+                  <button
+                    className="remove-file-btn"
+                    onClick={() => removeFile(file)}
+                    title="Remove file"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 

@@ -103,14 +103,18 @@ async def get_conversation(conversation_id: str, user_id: Optional[uuid.UUID] = 
         # Convert to JSON-compatible format
         messages = []
         for msg in conv.messages:
+            # Common fields for all messages
+            timestamp = msg.created_at.isoformat() if msg.created_at else None
+
             if msg.role == "user":
                 messages.append({
                     "role": "user",
                     "content": msg.content,
-                    "attached_files": msg.attached_files or []
+                    "attached_files": msg.attached_files or [],
+                    "timestamp": timestamp
                 })
             else:
-                msg_data = {"role": "assistant", "type": msg.message_type}
+                msg_data = {"role": "assistant", "type": msg.message_type, "timestamp": timestamp}
                 if msg.message_type == "council":
                     msg_data["stage1"] = msg.stage1 or []
                     msg_data["stage2"] = msg.stage2 or []
@@ -123,7 +127,7 @@ async def get_conversation(conversation_id: str, user_id: Optional[uuid.UUID] = 
                     if msg.usage_info:
                         msg_data["usage"] = msg.usage_info
                 elif msg.message_type == "debate":
-                    msg_data["debate"] = msg.stage1  # Stored in stage1 for debates
+                    msg_data["debate"] = msg.stage1  # Stored in debates
                 messages.append(msg_data)
 
         return {
@@ -373,6 +377,12 @@ async def delete_conversation(
     db: Optional[AsyncSession] = None,
 ) -> bool:
     """Delete a conversation (user-scoped if user_id provided)."""
+    # Clean up uploaded files before deleting conversation
+    from . import files as file_manager
+    deleted_files = file_manager.delete_all_files(conversation_id)
+    if deleted_files > 0:
+        logger.info(f"Deleted {deleted_files} files for conversation {conversation_id}")
+
     if USE_DATABASE:
         actual_user_id = user_id or _get_user_id()
         try:
@@ -646,7 +656,8 @@ async def move_conversation_to_project(
         if not conv:
             return False
         conv["project_id"] = project_id
-        return json_storage.save_conversation(conv)
+        json_storage.save_conversation(conv)
+        return True
 
 
 # ============ TAG OPERATIONS ============

@@ -415,28 +415,27 @@ export default function ClaudeSidebar({
 
         {/* Projects Section */}
         <div className="claude-projects-section">
-          <button
-            className="claude-projects-header"
-            onClick={() => setProjectsExpanded(!projectsExpanded)}
-          >
-            <svg
-              className={`claude-projects-chevron ${projectsExpanded ? 'expanded' : ''}`}
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+          <div className="claude-projects-header">
+            <button
+              className="claude-projects-toggle"
+              onClick={() => setProjectsExpanded(!projectsExpanded)}
             >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-            <span className="claude-projects-title">Projects</span>
+              <svg
+                className={`claude-projects-chevron ${projectsExpanded ? 'expanded' : ''}`}
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+              <span className="claude-projects-title">Projects</span>
+            </button>
             <button
               className="claude-projects-settings"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSettings(true);
-              }}
+              onClick={() => setShowSettings(true)}
               title="Settings"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -444,7 +443,7 @@ export default function ClaudeSidebar({
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
               </svg>
             </button>
-          </button>
+          </div>
 
           {projectsExpanded && (
             <div className="claude-projects-list">
@@ -472,20 +471,6 @@ export default function ClaudeSidebar({
                   )}
                 </div>
               )}
-
-              {/* All Chats option */}
-              <button
-                className={`claude-project-item ${currentProject.id === 'all' ? 'active' : ''}`}
-                onClick={() => handleProjectSelect(DEFAULT_PROJECT)}
-              >
-                <span className="claude-project-icon">{DEFAULT_PROJECT.icon}</span>
-                <span className="claude-project-name">{DEFAULT_PROJECT.name}</span>
-                {currentProject.id === 'all' && (
-                  <svg className="claude-project-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                )}
-              </button>
 
               {/* Loading state */}
               {loadingProjects && (

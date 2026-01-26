@@ -380,6 +380,7 @@ class SendMessageRequest(BaseModel):
     attached_files: Optional[List[str]] = Field(default=None, max_length=20)
     web_search: Optional[bool] = None
     deep_search: Optional[bool] = None
+    fast_mode: Optional[bool] = Field(default=False, description="Skip Stage 2 peer review for faster results")
 
 
 class QuickMessageRequest(BaseModel):
@@ -388,6 +389,7 @@ class QuickMessageRequest(BaseModel):
     model: Optional[str] = Field(default=None, max_length=100)
     web_search: Optional[bool] = None
     deep_search: Optional[bool] = None
+    attached_files: Optional[List[str]] = Field(default=None, max_length=20)
 
 
 class QuickModeRequest(BaseModel):
@@ -1072,6 +1074,8 @@ async def set_api_key_endpoint(
                 request.provider,
                 request.api_key or "",
             )
+            # Commit the transaction to persist the key
+            await db.commit()
             # Verify the key was actually saved by querying it back
             verify_key = await db_crud.api_keys.get_user_key(db, current_user.id, request.provider)
             if not verify_key and request.api_key:
@@ -1144,10 +1148,12 @@ async def delete_api_key_endpoint(
     if current_user:
         # Delete user-specific key
         await db_crud.api_keys.delete_user_key(db, current_user.id, provider)
+        # Commit the transaction to persist the deletion
+        await db.commit()
     else:
         # Fallback to global config
         set_api_key(provider, "")
-    
+
     return {
         "status": "success",
         "message": f"API key removed for {provider}",
@@ -3183,6 +3189,66 @@ async def tool_search(request: SearchRequest):
 
 
 @app.post(
+    "/api/tools/perplexity-search",
+    tags=["tools"],
+    summary="Perplexity Web Search",
+    response_description="Perplexity search results with citations"
+)
+async def tool_perplexity_search(request: SearchRequest):
+    """
+    Search the web using Perplexity AI.
+
+    Uses Perplexity's sonar model for web-grounded search results.
+    Requires a Perplexity API key to be configured.
+
+    Args:
+        request: SearchRequest with query and optional num_results
+
+    Returns:
+        dict: Search results containing:
+            - query: The original query
+            - summary: Perplexity's answer
+            - citations: List of source URLs
+            - results: Formatted results
+
+    Raises:
+        HTTPException 403: If no Perplexity API key configured
+        HTTPException 500: If search fails
+    """
+    from .config import get_perplexity_api_key, get_perplexity_models
+    from .tools import perplexity_search
+
+    api_key = get_perplexity_api_key()
+    if not api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Perplexity API key not configured. Add it in Settings or set PERPLEXITY_API_KEY env var."
+        )
+
+    try:
+        models = get_perplexity_models()
+        result = await perplexity_search(
+            query=request.query,
+            api_key=api_key,
+            model=models["search"],
+            num_results=request.num_results,
+            deep_search=False
+        )
+        return {
+            "query": request.query,
+            "summary": result.get("summary", ""),
+            "citations": result.get("citations", []),
+            "results": result.get("results", []),
+            "model": models["search"]
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Perplexity search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+
+@app.post(
     "/api/tools/fetch",
     tags=["tools"],
     summary="Fetch URL Content",
@@ -3535,6 +3601,9 @@ async def get_conversation(
     """
     user_id = current_user.id if current_user else None
     conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
+    if conversation is None and current_user:
+        # Fallback to anonymous conversation (created before login)
+        conversation = await storage.get_conversation(conversation_id, user_id=None, db=db)
     if conversation is None:
         # If conversation is missing, attempt to create it to avoid upload race
         try:
@@ -3743,6 +3812,8 @@ async def send_message(
     # Check if conversation exists (with user_id for proper scoping)
     user_id = current_user.id if current_user else None
     conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
+    if conversation is None and current_user:
+        conversation = await storage.get_conversation(conversation_id, user_id=None, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -3830,6 +3901,8 @@ async def send_message_stream(
     # Check if conversation exists
     user_id = current_user.id if current_user else None
     conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
+    if conversation is None and current_user:
+        conversation = await storage.get_conversation(conversation_id, user_id=None, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -3863,13 +3936,15 @@ async def send_message_stream(
             metadata = None
 
             # Stream the council process with real-time token updates (using user-specific API keys)
+            logger.info(f"Council request: fast_mode={request.fast_mode}, web_search={request.web_search}, deep_search={request.deep_search}")
             async for event in run_full_council_stream(
                 request.content,
                 conversation_context,
                 web_search=request.web_search,
                 deep_search=request.deep_search,
                 user_id=user_id,
-                db=db
+                db=db,
+                fast_mode=request.fast_mode
             ):
                 # Check for cancellation
                 if cancel_event.is_set():
@@ -4206,8 +4281,13 @@ async def send_quick_message(
         cancelled = False
 
         try:
-            # Add user message
-            await storage.add_user_message(conversation_id, request.content, db=db)
+            # Add user message (include attached files if provided)
+            await storage.add_user_message(
+                conversation_id,
+                request.content,
+                attached_files=request.attached_files,
+                db=db
+            )
 
             # Start title generation in parallel if first message
             title_task = None
@@ -4224,6 +4304,34 @@ async def send_quick_message(
 
             if conversation_context:
                 context_sections.append(conversation_context)
+
+            # Handle attached files - separate images from text files
+            image_content = []
+            if request.attached_files:
+                try:
+                    from . import files as file_utils
+                    # Separate image files from text files
+                    image_files = [f for f in request.attached_files if file_utils.is_image_file(f)]
+                    text_files = [f for f in request.attached_files if not file_utils.is_image_file(f)]
+
+                    # Add text files to context
+                    if text_files:
+                        file_context = file_utils.format_files_for_context(
+                            conversation_id,
+                            text_files
+                        )
+                        if file_context:
+                            context_sections.append(file_context)
+
+                    # Prepare images for vision models
+                    if image_files:
+                        image_content = file_utils.format_files_for_vision(conversation_id, image_files)
+                except Exception as err:
+                    logger.warning(
+                        "quick_message_file_context_error",
+                        conversation_id=conversation_id,
+                        error=str(err)
+                    )
 
             if context.get("web_search") or context.get("web_search_summary"):
                 web_context_text = format_web_context(
@@ -4243,8 +4351,24 @@ async def send_quick_message(
                 all_context = "\n\n".join(context_sections)
                 enhanced_content = f"{all_context}\n\n---\n\n{request.content}"
 
-            # Prepare messages for the model
-            messages = [{"role": "user", "content": enhanced_content}]
+            # Prepare messages for the model - handle vision content if present
+            from .config import supports_vision
+            if image_content and supports_vision(model_to_use):
+                # Build multimodal content for vision models
+                user_content = [{"type": "text", "text": enhanced_content}]
+                for img in image_content:
+                    if img.get("type") == "image":
+                        source = img.get("source", {})
+                        if source.get("type") == "base64":
+                            user_content.append({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
+                                }
+                            })
+                messages = [{"role": "user", "content": user_content}]
+            else:
+                messages = [{"role": "user", "content": enhanced_content}]
 
             # Stream the response (with user-specific API keys)
             full_content = ""
@@ -4406,6 +4530,8 @@ async def run_debate_mode(
     # Check if conversation exists (with user_id for proper scoping)
     user_id = current_user.id if current_user else None
     conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
+    if conversation is None and current_user:
+        conversation = await storage.get_conversation(conversation_id, user_id=None, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -4768,6 +4894,42 @@ async def list_conversation_files(
 
     file_list = files.list_files(conversation_id)
     return {"conversation_id": conversation_id, "files": file_list, "count": len(file_list)}
+
+
+@app.get(
+    "/api/conversations/{conversation_id}/files/context-size",
+    tags=["files"],
+    summary="Get Context Size",
+    response_description="File context size analysis"
+)
+async def get_context_size(
+    conversation_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Calculate the total context size of attached files.
+
+    Returns token estimates for all files and warns if context is too large.
+    Useful for determining if files will fit within LLM context limits.
+
+    Args:
+        conversation_id: The conversation to analyze
+
+    Returns:
+        dict: Context size analysis with total tokens, per-file breakdown,
+              and warning/error flags if context is too large
+
+    Raises:
+        HTTPException 404: If conversation not found
+    """
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    context_info = files.calculate_context_size(conversation_id)
+    return {"conversation_id": conversation_id, **context_info}
 
 
 @app.get(
@@ -5576,12 +5738,21 @@ async def move_to_project(
     Raises:
         HTTPException 404: If conversation not found
     """
+    user_id = current_user.id if current_user else None
     success = await storage.move_conversation_to_project(
         conversation_id,
         request.project_id,
-        user_id=current_user.id if current_user else None,
+        user_id=user_id,
         db=db,
     )
+    if not success and current_user:
+        # Fallback for conversations created before login (anonymous scope)
+        success = await storage.move_conversation_to_project(
+            conversation_id,
+            request.project_id,
+            user_id=None,
+            db=db,
+        )
     if not success:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return {"status": "success", "project_id": request.project_id}

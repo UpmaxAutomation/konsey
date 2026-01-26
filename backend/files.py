@@ -46,6 +46,35 @@ def ensure_upload_dir(conversation_id: str) -> str:
     return upload_path
 
 
+def _safe_file_path(conversation_id: str, filename: str) -> str:
+    """
+    Construct a safe file path, preventing path traversal attacks.
+
+    Args:
+        conversation_id: Unique conversation identifier
+        filename: Name of the file
+
+    Returns:
+        Safe absolute file path
+
+    Raises:
+        ValueError: If path traversal is detected
+    """
+    # Validate filename doesn't contain path separators
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise ValueError("Invalid filename - cannot contain path separators")
+
+    # Construct the path
+    base_path = os.path.abspath(os.path.join(UPLOAD_DIR, conversation_id))
+    file_path = os.path.abspath(os.path.join(base_path, filename))
+
+    # Verify the resolved path is still within the base path
+    if not file_path.startswith(base_path + os.sep) and file_path != base_path:
+        raise ValueError("Invalid filename - path traversal detected")
+
+    return file_path
+
+
 def validate_file(filename: str, file_size: int) -> tuple[bool, Optional[str]]:
     """
     Validate file for upload.
@@ -141,8 +170,9 @@ def get_file_content(conversation_id: str, filename: str) -> str:
     Raises:
         FileNotFoundError: If file doesn't exist
         UnicodeDecodeError: If file is not valid text
+        ValueError: If path traversal is detected
     """
-    file_path = os.path.join(UPLOAD_DIR, conversation_id, filename)
+    file_path = _safe_file_path(conversation_id, filename)
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {filename} not found")
@@ -165,8 +195,9 @@ def get_file_bytes(conversation_id: str, filename: str) -> bytes:
 
     Raises:
         FileNotFoundError: If file doesn't exist
+        ValueError: If path traversal is detected
     """
-    file_path = os.path.join(UPLOAD_DIR, conversation_id, filename)
+    file_path = _safe_file_path(conversation_id, filename)
 
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File {filename} not found")
@@ -218,8 +249,11 @@ def delete_file(conversation_id: str, filename: str) -> bool:
 
     Returns:
         True if file was deleted, False if file didn't exist
+
+    Raises:
+        ValueError: If path traversal is detected
     """
-    file_path = os.path.join(UPLOAD_DIR, conversation_id, filename)
+    file_path = _safe_file_path(conversation_id, filename)
 
     if not os.path.exists(file_path):
         return False
@@ -269,8 +303,11 @@ def get_file_info(conversation_id: str, filename: str) -> Optional[Dict]:
 
     Returns:
         File metadata dict or None if file doesn't exist
+
+    Raises:
+        ValueError: If path traversal is detected
     """
-    file_path = os.path.join(UPLOAD_DIR, conversation_id, filename)
+    file_path = _safe_file_path(conversation_id, filename)
 
     if not os.path.exists(file_path):
         return None
@@ -284,13 +321,20 @@ def get_file_info(conversation_id: str, filename: str) -> Optional[Dict]:
     }
 
 
-def format_files_for_context(conversation_id: str, filenames: Optional[List[str]] = None) -> str:
+def format_files_for_context(
+    conversation_id: str,
+    filenames: Optional[List[str]] = None,
+    max_tokens_per_file: int = 50_000,
+    max_total_tokens: int = 100_000
+) -> str:
     """
-    Format file contents for inclusion in LLM context.
+    Format file contents for inclusion in LLM context with automatic truncation.
 
     Args:
         conversation_id: Unique conversation identifier
         filenames: Optional list of specific filenames to include (all files if None)
+        max_tokens_per_file: Maximum tokens per individual file (default 50k)
+        max_total_tokens: Maximum total tokens for all files (default 100k)
 
     Returns:
         Formatted string with file contents
@@ -303,13 +347,47 @@ def format_files_for_context(conversation_id: str, filenames: Optional[List[str]
         return ""
 
     context_parts = ["**Attached Files:**\n"]
+    total_chars = 0
+    max_total_chars = max_total_tokens * 4  # Rough char estimate
+    max_file_chars = max_tokens_per_file * 4
 
     for filename in filenames:
         try:
-            content = get_file_content(conversation_id, filename)
+            ext = os.path.splitext(filename)[1].lower()
+
+            # Handle different file types
+            if ext == '.pdf':
+                content = extract_pdf_text(conversation_id, filename)
+            elif ext in ('.docx', '.doc'):
+                content = extract_docx_text(conversation_id, filename)
+            elif ext in ('.xls', '.xlsx'):
+                content = "[Excel files not yet supported - please convert to CSV]"
+            elif is_image_file(filename):
+                # Skip images - they should be handled separately via format_files_for_vision
+                continue
+            else:
+                # Regular text file
+                content = get_file_content(conversation_id, filename)
+
+            # Truncate individual file if too large
+            if len(content) > max_file_chars:
+                content = content[:max_file_chars] + "\n\n[... Content truncated - file too large ...]"
+
+            # Check if adding this file would exceed total limit
+            file_chars = len(content)
+            if total_chars + file_chars > max_total_chars:
+                remaining = max_total_chars - total_chars
+                if remaining > 1000:  # Only include if we have meaningful space
+                    content = content[:remaining] + "\n\n[... Truncated to fit context limit ...]"
+                else:
+                    context_parts.append(f"\n--- File: {filename} (Skipped - context limit reached) ---\n")
+                    continue
+
             context_parts.append(f"\n--- File: {filename} ---")
             context_parts.append(content)
             context_parts.append(f"--- End of {filename} ---\n")
+            total_chars += file_chars
+
         except Exception as e:
             context_parts.append(f"\n--- File: {filename} (Error reading: {str(e)}) ---\n")
 
@@ -373,7 +451,7 @@ def extract_pdf_text(conversation_id: str, filename: str) -> str:
     try:
         import fitz  # PyMuPDF
 
-        file_path = os.path.join(UPLOAD_DIR, conversation_id, filename)
+        file_path = _safe_file_path(conversation_id, filename)
         doc = fitz.open(file_path)
 
         text_parts = []
@@ -388,6 +466,46 @@ def extract_pdf_text(conversation_id: str, filename: str) -> str:
         return "[PDF extraction requires PyMuPDF: pip install pymupdf]"
     except Exception as e:
         return f"[Error extracting PDF: {str(e)}]"
+
+
+def extract_docx_text(conversation_id: str, filename: str) -> str:
+    """
+    Extract text from a .docx file.
+
+    Args:
+        conversation_id: Unique conversation identifier
+        filename: Name of the .docx file
+
+    Returns:
+        Extracted text content
+    """
+    try:
+        from docx import Document
+
+        file_path = _safe_file_path(conversation_id, filename)
+        doc = Document(file_path)
+
+        text_parts = []
+        for para in doc.paragraphs:
+            if para.text.strip():
+                text_parts.append(para.text)
+
+        # Also extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                row_text = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+                if row_text:
+                    text_parts.append(" | ".join(row_text))
+
+        return "\n\n".join(text_parts)
+    except ImportError:
+        return "[DOCX extraction requires python-docx: pip install python-docx]"
+    except Exception as e:
+        return f"[Error extracting DOCX: {str(e)}]"
+
+
+# Binary document extensions that need special handling
+DOCUMENT_EXTENSIONS = {'.pdf', '.doc', '.docx', '.xls', '.xlsx'}
 
 
 def format_files_for_vision(conversation_id: str, filenames: List[str]) -> List[Dict]:
@@ -445,3 +563,114 @@ def format_files_for_vision(conversation_id: str, filenames: List[str]) -> List[
                 })
 
     return content_parts
+
+
+# Context size limits
+MAX_CONTEXT_TOKENS = 100_000  # ~400KB of text
+MAX_SINGLE_FILE_TOKENS = 50_000  # ~200KB per file
+CHARS_PER_TOKEN = 4  # Rough estimate
+
+
+def calculate_context_size(conversation_id: str, filenames: Optional[List[str]] = None) -> Dict:
+    """
+    Calculate total context size for files and warn if too large.
+
+    Args:
+        conversation_id: Unique conversation identifier
+        filenames: Optional list of specific filenames to check (all files if None)
+
+    Returns:
+        Dict with total_tokens, files breakdown, and warning/error flags
+    """
+    if filenames is None:
+        files_list = list_files(conversation_id)
+        filenames = [f["filename"] for f in files_list]
+
+    if not filenames:
+        return {
+            "total_tokens": 0,
+            "files": [],
+            "warning": False,
+            "error": False,
+            "message": None
+        }
+
+    file_sizes = []
+    total_tokens = 0
+
+    for filename in filenames:
+        try:
+            if is_image_file(filename):
+                # Images are roughly 1-2k tokens each for vision models
+                tokens = 1500
+                file_sizes.append({
+                    "filename": filename,
+                    "tokens": tokens,
+                    "type": "image",
+                    "truncated": False
+                })
+            else:
+                # Text file - estimate based on character count
+                content = get_file_content(conversation_id, filename)
+                chars = len(content)
+                tokens = chars // CHARS_PER_TOKEN
+
+                truncated = tokens > MAX_SINGLE_FILE_TOKENS
+                if truncated:
+                    tokens = MAX_SINGLE_FILE_TOKENS
+
+                file_sizes.append({
+                    "filename": filename,
+                    "tokens": tokens,
+                    "type": "text",
+                    "truncated": truncated,
+                    "original_chars": chars
+                })
+            total_tokens += file_sizes[-1]["tokens"]
+        except Exception as e:
+            file_sizes.append({
+                "filename": filename,
+                "tokens": 0,
+                "type": "error",
+                "error": str(e)
+            })
+
+    # Determine warning/error status
+    warning = total_tokens > MAX_CONTEXT_TOKENS * 0.7  # 70% threshold
+    error = total_tokens > MAX_CONTEXT_TOKENS
+
+    message = None
+    if error:
+        message = f"Total file context ({total_tokens:,} tokens) exceeds limit ({MAX_CONTEXT_TOKENS:,} tokens). Files will be truncated."
+    elif warning:
+        message = f"Large file context ({total_tokens:,} tokens). Some models may have issues."
+
+    return {
+        "total_tokens": total_tokens,
+        "files": file_sizes,
+        "warning": warning,
+        "error": error,
+        "message": message,
+        "limit": MAX_CONTEXT_TOKENS
+    }
+
+
+def truncate_file_content(content: str, max_tokens: int = MAX_SINGLE_FILE_TOKENS) -> str:
+    """
+    Truncate file content to fit within token limit.
+
+    Args:
+        content: File content string
+        max_tokens: Maximum tokens allowed
+
+    Returns:
+        Truncated content with indicator if truncated
+    """
+    max_chars = max_tokens * CHARS_PER_TOKEN
+
+    if len(content) <= max_chars:
+        return content
+
+    # Truncate and add indicator
+    truncated = content[:max_chars]
+    return f"{truncated}\n\n[... Content truncated - file too large for context ...]"

@@ -109,7 +109,7 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 async def query_model(
     model: str,
     messages: List[Dict[str, str]],
-    timeout: float = 120.0,
+    timeout: float = 60.0,
     use_cache: bool = True,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None
@@ -127,6 +127,13 @@ async def query_model(
         Response dict with 'content', optional 'thinking', optional 'reasoning_details', and 'usage', or None if failed
     """
     global _session_usage
+
+    # Disable caching for multimodal content (images are too large to cache efficiently)
+    has_multimodal = any(
+        isinstance(msg.get("content"), list) for msg in messages
+    )
+    if has_multimodal:
+        use_cache = False
 
     # Check cache first (if enabled)
     if use_cache:
@@ -283,7 +290,7 @@ async def query_model(
 async def query_model_stream(
     model: str,
     messages: List[Dict[str, str]],
-    timeout: float = 120.0,
+    timeout: float = 60.0,
     user_id: Optional[uuid.UUID] = None,
     db: Optional[Any] = None
 ):

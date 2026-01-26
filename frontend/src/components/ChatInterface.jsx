@@ -41,7 +41,7 @@ export default function ChatInterface({
   isLoading,
   onStopCouncil,
   onConversationUpdate,
-  councilProgress = { stage: 0, models: [], modelProgress: {}, chairmanModel: '', chairmanStatus: 'pending' },
+  councilProgress = { stage: 0, models: [], modelProgress: {}, chairmanModel: '', chairmanStatus: 'pending', contextStatus: null, searchType: null },
   currentProjectId,
   onMoveToProject,
 }) {
@@ -70,9 +70,13 @@ export default function ChatInterface({
   const compareAbortControllersRef = useRef({});
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState(''); // Real-time speech preview
   const [showScrollFab, setShowScrollFab] = useState(false);
   const [copiedCode, setCopiedCode] = useState(null);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState(null); // Track which message was copied
+  const [editingMessageIndex, setEditingMessageIndex] = useState(null); // Track which message is being edited
+  const [editingText, setEditingText] = useState(''); // Text being edited
+  const [regeneratingIndex, setRegeneratingIndex] = useState(null); // Track which message is being regenerated
   const [expandedCouncil, setExpandedCouncil] = useState({}); // Track which messages show council details
   const [showShortcuts, setShowShortcuts] = useState(false); // Keyboard shortcuts modal
   // Favorites and Recent models state
@@ -97,11 +101,12 @@ export default function ChatInterface({
     memory: true,
     web_search: true,
     deep_search: false,
-    code_execution: true
+    code_execution: true,
+    fast_mode: false
   });
-  // File upload state
+  // File attachment state
   const [showFileUpload, setShowFileUpload] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [attachedFiles, setAttachedFiles] = useState([]);
   // Collapsed provider groups in model picker (start collapsed by default)
   const [collapsedGroups, setCollapsedGroups] = useState({});
   // Options panel visibility
@@ -115,6 +120,34 @@ export default function ChatInterface({
   const recognitionRef = useRef(null);
   const abortControllerRef = useRef(null);
   const toast = useToast();
+
+  const loadAttachedFiles = useCallback(async () => {
+    if (!activeConversationId) {
+      setAttachedFiles([]);
+      return;
+    }
+    try {
+      const result = await api.listFiles(activeConversationId);
+      setAttachedFiles(result.files || []);
+    } catch (err) {
+      console.error('Failed to load attachments:', err);
+    }
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    loadAttachedFiles();
+  }, [loadAttachedFiles]);
+
+  const removeAttachedFile = async (filename) => {
+    if (!activeConversationId) return;
+    try {
+      await api.deleteFile(activeConversationId, filename);
+      setAttachedFiles((prev) => prev.filter((file) => file.filename !== filename));
+    } catch (err) {
+      console.error('Failed to remove attachment:', err);
+      toast.error('Failed to remove attachment');
+    }
+  };
 
   // Handle scroll to show/hide FAB
   const handleScroll = useCallback((e) => {
@@ -179,6 +212,90 @@ export default function ChatInterface({
     }
   };
 
+  // Regenerate an assistant response (resend the previous user message)
+  const regenerateMessage = async (messageIndex) => {
+    if (!conversation?.messages || isLoading || isStreaming) return;
+
+    // Find the user message that triggered this response
+    const userMessageIndex = messageIndex - 1;
+    if (userMessageIndex < 0 || conversation.messages[userMessageIndex]?.role !== 'user') {
+      toast.error('Cannot regenerate: no user message found');
+      return;
+    }
+
+    const userMessage = conversation.messages[userMessageIndex];
+    const content = userMessage.content || '';
+
+    setRegeneratingIndex(messageIndex);
+
+    try {
+      // Resend the user message based on current mode
+      if (mode === 'council') {
+        onSendMessage(content, attachedFiles.map(f => f.filename), features);
+      } else {
+        // Quick mode - stream directly
+        setStreamingText('');
+        abortControllerRef.current = new AbortController();
+        setIsStreaming(true);
+
+        await api.sendQuickMessageStream(
+          conversation.id,
+          content,
+          selectedModel,
+          (type, event) => {
+            if (type === 'chunk') {
+              setStreamingText(prev => prev + event.data);
+            } else if (type === 'complete' || type === 'title_complete') {
+              setStreamingText('');
+              onConversationUpdate?.(conversation.id);
+            } else if (type === 'error') {
+              setStreamingText('');
+              toast.error('Regeneration failed');
+            }
+          },
+          abortControllerRef.current.signal,
+          attachedFiles.map(f => f.filename),
+          {},
+          features
+        );
+
+        setIsStreaming(false);
+      }
+      toast.success('Regenerating response...');
+    } catch (err) {
+      console.error('Failed to regenerate:', err);
+      toast.error('Failed to regenerate response');
+    } finally {
+      setRegeneratingIndex(null);
+    }
+  };
+
+  // Start editing a user message
+  const startEditMessage = (messageIndex) => {
+    const msg = conversation?.messages?.[messageIndex];
+    if (!msg || msg.role !== 'user') return;
+
+    setEditingMessageIndex(messageIndex);
+    setEditingText(msg.content || '');
+  };
+
+  // Save edited message and regenerate response
+  const saveEditMessage = async () => {
+    if (editingMessageIndex === null || !editingText.trim()) return;
+
+    // For now, we'll fork from this point with the edited message
+    // A full edit would require backend support to update the message
+    setInput(editingText);
+    cancelEditMessage();
+    toast.info('Edit applied - send to update conversation');
+  };
+
+  // Cancel editing
+  const cancelEditMessage = () => {
+    setEditingMessageIndex(null);
+    setEditingText('');
+  };
+
   // Custom code block renderer with copy button
   const CodeBlock = ({ node, inline, className, children, ...props }) => {
     const match = /language-(\w+)/.exec(className || '');
@@ -239,94 +356,183 @@ export default function ChatInterface({
   // Check for speech recognition support
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
+    // Speech recognition requires secure context (HTTPS or localhost)
+    const isSecureContext = window.isSecureContext ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+
+    if (SpeechRecognition && isSecureContext) {
       setSpeechSupported(true);
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        if (finalTranscript) {
-          setInput(prev => prev + finalTranscript + ' ');
-        }
-      };
-
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setIsListening(false);
-        // Show user-friendly error messages for common errors
-        switch (event.error) {
-          case 'no-speech':
-            // Silent - user just didn't speak, not an error
-            break;
-          case 'audio-capture':
-            toast.error('No microphone found. Please connect a microphone.');
-            break;
-          case 'not-allowed':
-            toast.error('Microphone access denied. Please allow microphone in browser settings.');
-            break;
-          case 'network':
-            toast.error('Network error during speech recognition.');
-            break;
-          case 'aborted':
-            // Silent - user aborted, not an error
-            break;
-          default:
-            toast.error('Speech recognition error: ' + event.error);
-        }
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
     }
-
+    // Cleanup on unmount
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore errors on cleanup
+        }
+        recognitionRef.current = null;
       }
     };
   }, []);
 
+  // Create/manage recognition instance when listening state changes
+  useEffect(() => {
+    if (!isListening) {
+      // Stop recognition when not listening
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // Ignore - might already be stopped
+        }
+      }
+      setInterimTranscript('');
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    // Create fresh recognition instance
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US'; // Use browser language
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      let interim = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+
+      // Show interim results in real-time
+      setInterimTranscript(interim);
+
+      // Append final results to input
+      if (finalTranscript) {
+        setInput(prev => prev + finalTranscript + ' ');
+        setInterimTranscript('');
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      // Stop listening on fatal errors
+      const fatalErrors = ['not-allowed', 'audio-capture', 'service-not-allowed', 'network'];
+      if (fatalErrors.includes(event.error)) {
+        setIsListening(false);
+        setInterimTranscript('');
+      }
+      // Show user-friendly error messages
+      switch (event.error) {
+        case 'no-speech':
+          // Silent - user just didn't speak, not an error
+          break;
+        case 'audio-capture':
+          toast.error('No microphone found. Please connect a microphone.');
+          break;
+        case 'not-allowed':
+        case 'service-not-allowed':
+          toast.error('Microphone access denied. Please allow microphone in browser settings.');
+          break;
+        case 'network':
+          // Network error - Chrome uses Google servers for speech recognition
+          toast.error('Cannot connect to speech service. Check internet, VPN, or try disabling ad blockers.');
+          break;
+        case 'aborted':
+          // Silent - user or system aborted, not an error
+          break;
+        default:
+          // Don't show error for common transient issues
+          console.warn('Speech recognition issue:', event.error);
+      }
+    };
+
+    recognition.onend = () => {
+      // Auto-restart if still supposed to be listening (browser stopped due to silence)
+      if (isListening && recognitionRef.current === recognition) {
+        try {
+          recognition.start();
+        } catch (e) {
+          // If restart fails, stop listening
+          console.warn('Failed to restart recognition:', e);
+          setIsListening(false);
+          setInterimTranscript('');
+        }
+      }
+    };
+
+    recognitionRef.current = recognition;
+
+    // Start recognition with a small delay to ensure everything is initialized
+    const startTimeout = setTimeout(() => {
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error('Failed to start recognition:', e);
+        setIsListening(false);
+        if (e.message?.includes('already started')) {
+          // Recognition was already started, ignore
+        } else {
+          toast.error('Failed to start voice input. Please try again.');
+        }
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(startTimeout);
+      if (recognitionRef.current === recognition) {
+        try {
+          recognition.stop();
+        } catch (e) {
+          // Ignore
+        }
+      }
+    };
+  }, [isListening, toast]);
+
   const toggleListening = async () => {
-    if (!recognitionRef.current) {
-      toast.error('Speech recognition not available in this browser');
+    if (!speechSupported) {
+      toast.error('Speech recognition not available in this browser. Try Chrome or Edge.');
       return;
     }
 
     if (isListening) {
-      recognitionRef.current.stop();
       setIsListening(false);
     } else {
       try {
         // Request microphone permission first
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        recognitionRef.current.start();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Stop the stream immediately - we just needed to check permission
+        stream.getTracks().forEach(track => track.stop());
+
+        // Check if we have internet (Chrome speech uses Google servers)
+        if (!navigator.onLine) {
+          toast.error('Speech recognition requires internet connection.');
+          return;
+        }
+
         setIsListening(true);
         textareaRef.current?.focus();
       } catch (err) {
         console.error('Microphone permission error:', err);
-        if (err.name === 'NotAllowedError') {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           toast.error('Microphone access denied. Please allow microphone in browser settings.');
-        } else if (err.name === 'NotFoundError') {
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           toast.error('No microphone found. Please connect a microphone.');
+        } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+          toast.error('Microphone is in use by another application.');
         } else {
-          toast.error('Could not start voice input: ' + err.message);
+          toast.error('Could not access microphone: ' + err.message);
         }
       }
     }
@@ -353,14 +559,34 @@ export default function ChatInterface({
     api.getFeatures().then(setFeatures).catch(console.error);
   }, []);
 
-  // Toggle feature
-  const toggleFeature = async (feature) => {
-    const newValue = !features[feature];
+  // Toggle or set feature
+  const toggleFeature = async (feature, value = null) => {
+    const newValue = value !== null ? value : !features[feature];
+    // Skip if already at desired value
+    if (features[feature] === newValue) return;
     try {
       const updated = await api.setFeatures({ [feature]: newValue });
       setFeatures(updated);
     } catch (e) {
       console.error('Failed to toggle feature:', e);
+    }
+  };
+
+  // Set search mode (Off / Online / Deep)
+  const setSearchMode = async (mode) => {
+    try {
+      let updates = {};
+      if (mode === 'off') {
+        updates = { web_search: false, deep_search: false };
+      } else if (mode === 'online') {
+        updates = { web_search: true, deep_search: false };
+      } else if (mode === 'deep') {
+        updates = { web_search: false, deep_search: true };
+      }
+      const updated = await api.setFeatures(updates);
+      setFeatures(updated);
+    } catch (e) {
+      console.error('Failed to set search mode:', e);
     }
   };
 
@@ -532,7 +758,7 @@ export default function ChatInterface({
             }
           },
           compareAbortControllersRef.current[modelId].signal,
-          [],
+          attachedFiles.map((file) => file.filename),
           {},
           features
         );
@@ -561,15 +787,15 @@ export default function ChatInterface({
     e.preventDefault();
     const hasText = input.trim();
     const hasImages = pastedImages.length > 0;
-    const hasFiles = uploadedFiles.length > 0;
+    const hasFiles = attachedFiles.length > 0;
 
     // Allow submit if there's text OR images OR files
     if ((!hasText && !hasImages && !hasFiles) || isLoading || isStreaming || isComparing || !conversation) return;
 
     const message = input.trim();
     const images = [...pastedImages]; // Copy images before clearing
-    // Get filenames from uploadedFiles objects
-    const files = uploadedFiles.map(f => f.filename);
+    // Get filenames from attached files
+    const files = attachedFiles.map(f => f.filename);
 
     // Show cost estimate for council mode with long messages
     if (mode === 'council' && message.length > COST_ESTIMATE_THRESHOLD) {
@@ -582,25 +808,31 @@ export default function ChatInterface({
     }
 
     setInput('');
-    setPastedImages([]); // Clear images
-    setUploadedFiles([]); // Clear uploaded files
+    setPastedImages([]); // Clear pasted images
+    setAttachedFiles([]); // Clear attached files after sending
 
     if (mode === 'council') {
       // Council mode - use existing flow
-      // Note: Images are currently handled by append to text (legacy way),
-      // but we now pass 'files' as a separate argument which the backend prefers.
-      // We'll keep the image text append for backward compatibility or visual feedback if needed,
-      // but 'files' argument is the robust way.
-      const messageWithImages = hasImages
-        ? `${message}\n\n[${images.length} image(s) attached]`
-        : message;
+      // Upload pasted images to server first, then include them in the message
+      let allFiles = [...files];
 
-      // If we have pasted images that aren't in uploadedFiles, we might need to upload them first?
-      // For now, let's assume 'uploadedFiles' covers the file upload button flow.
-      // Pasted images flow (lines 570+) converts to base64 dataUrl but doesn't seem to upload to server as files yet?
-      // Ideally, paste should also upload. For this task, we focus on the 'uploadedFiles' from the FileUpload component.
+      if (hasImages) {
+        // Upload each pasted image to the server
+        for (const img of images) {
+          try {
+            const result = await api.uploadFile(activeConversationId, img.file);
+            if (result?.filename) {
+              allFiles.push(result.filename);
+            }
+          } catch (err) {
+            console.error('Failed to upload pasted image:', err);
+            toast.error(`Failed to upload image: ${img.name}`);
+          }
+        }
+      }
 
-      onSendMessage(messageWithImages, files, features);
+      console.log('📤 Council submit with features:', features);
+      onSendMessage(message, allFiles, features);
     } else if (mode === 'compare') {
       // Compare mode - parallel queries to multiple models
       // Comparison typically doesn't support complex file context yet across all models easily
@@ -680,6 +912,22 @@ export default function ChatInterface({
       setStreamingText('');
       setRouteInfo(null);
 
+      // Upload pasted images first
+      let allFiles = [...files];
+      if (hasImages) {
+        for (const img of images) {
+          try {
+            const result = await api.uploadFile(activeConversationId, img.file);
+            if (result?.filename) {
+              allFiles.push(result.filename);
+            }
+          } catch (err) {
+            console.error('Failed to upload pasted image:', err);
+            toast.error(`Failed to upload image: ${img.name}`);
+          }
+        }
+      }
+
       // Create abort controller for cancellation
       abortControllerRef.current = new AbortController();
       let streamCompleted = false;
@@ -721,17 +969,30 @@ export default function ChatInterface({
             } else if (type === 'error') {
               streamCompleted = true;
               setStreamingText('');
-              console.error('Quick message error:', event.message || event);
+              const errorMsg = event.message || 'An error occurred';
+              console.error('Quick message error:', errorMsg);
+              // Show error to user
+              if (errorMsg.includes('API key')) {
+                toast.error('API key missing. Go to Settings → API Keys to add your OpenRouter key.');
+              } else {
+                toast.error(errorMsg);
+              }
             }
           },
           abortControllerRef.current.signal,
-          files, // Pass attached files
+          allFiles, // Pass all files including uploaded pasted images
           {},
           features
         );
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.error('Request failed:', err);
+          const errorMsg = err.message || 'Request failed';
+          if (errorMsg.includes('API key')) {
+            toast.error('API key missing. Go to Settings → API Keys to add your OpenRouter key.');
+          } else {
+            toast.error(errorMsg);
+          }
         }
         setStreamingText('');
       } finally {
@@ -754,7 +1015,7 @@ export default function ChatInterface({
     if (pendingMessage) {
       setInput('');
       setPastedImages([]);
-      setUploadedFiles([]);
+      // Keep attached files for subsequent messages
       onSendMessage(pendingMessage.message, pendingMessage.files, features);
     }
     setShowCostEstimate(false);
@@ -804,17 +1065,25 @@ export default function ChatInterface({
     return name.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
-  // Example prompts for empty state
-  const examplePrompts = [
-    { text: "Compare approaches to authentication", icon: "🔐" },
-    { text: "Review this code for bugs", icon: "🐛" },
-    { text: "Explain quantum computing simply", icon: "⚛️" },
-    { text: "Design a REST API structure", icon: "🏗️" },
-  ];
+  // Format message timestamp
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
 
-  const handleExampleClick = (prompt) => {
-    setInput(prompt);
-    textareaRef.current?.focus();
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+
+    // Show time if today, otherwise show date
+    const isToday = date.toDateString() === now.toDateString();
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   // Toggle favorite status of a model
@@ -925,7 +1194,7 @@ export default function ChatInterface({
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
           </div>
-          <h1 className="claude-welcome-title">LLM Council</h1>
+          <h1 className="claude-welcome-title">AI Konsey</h1>
           <p className="claude-welcome-subtitle">Multi-model AI deliberation system. Select or create a conversation to get started.</p>
         </div>
       </div>
@@ -938,9 +1207,9 @@ export default function ChatInterface({
       <div className="claude-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         <div className="claude-messages-inner">
         {(!conversation.messages || conversation.messages.length === 0) ? (
-          <div className="claude-welcome">
+          <div className="claude-welcome claude-welcome-minimal">
             <div className="claude-welcome-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 {mode === 'council' ? (
                   <><circle cx="9" cy="7" r="4" /><circle cx="17" cy="11" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4" /><path d="M21 21v-2a4 4 0 0 0-3-3.85" /></>
                 ) : mode === 'compare' ? (
@@ -950,32 +1219,21 @@ export default function ChatInterface({
                 )}
               </svg>
             </div>
-            <h1 className="claude-welcome-title">{mode === 'council' ? 'Council Mode' : mode === 'compare' ? 'Compare Mode' : 'Quick Mode'}</h1>
-            <p className="claude-welcome-subtitle">
+            <h1 className="claude-welcome-title">
               {mode === 'council'
-                ? 'Get perspectives from multiple AI models working together'
+                ? 'What would you like the council to discuss?'
                 : mode === 'compare'
-                  ? 'Compare responses from 2-3 models side by side'
-                  : 'Fast responses from a single model'
+                  ? 'What would you like to compare?'
+                  : 'How can I help you today?'}
+            </h1>
+            <p className="claude-welcome-hint">
+              {mode === 'council'
+                ? 'Multiple AI models will deliberate on your question'
+                : mode === 'compare'
+                  ? 'Get side-by-side responses from different models'
+                  : `Using ${getModelName(selectedModel)}`
               }
             </p>
-
-            {/* Example prompts */}
-            <div className="example-prompts">
-              <p className="prompts-label">Try asking:</p>
-              <div className="prompts-grid">
-                {examplePrompts.map((prompt, i) => (
-                  <button
-                    key={i}
-                    className="prompt-btn"
-                    onClick={() => handleExampleClick(prompt.text)}
-                  >
-                    <span className="prompt-icon">{prompt.icon}</span>
-                    {prompt.text}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         ) : (
           (conversation.messages || []).map((msg, i) => {
@@ -993,9 +1251,16 @@ export default function ChatInterface({
                 </div>
                 <div className="claude-message-content">
                   <div className="claude-message-role">
-                    {msg.role === 'user' ? 'You' : isCouncilResponse ? 'Council' : 'Assistant'}
+                    <span className="role-name">
+                      {msg.role === 'user' ? 'You' : isCouncilResponse ? 'Council' : 'Assistant'}
+                    </span>
                     {isCouncilResponse && (
                       <span className="claude-model-badge">Multi-model</span>
+                    )}
+                    {msg.timestamp && (
+                      <span className="message-timestamp" title={new Date(msg.timestamp).toLocaleString()}>
+                        {formatMessageTime(msg.timestamp)}
+                      </span>
                     )}
                     {msg.role === 'user' && (
                       <button
@@ -1019,8 +1284,41 @@ export default function ChatInterface({
                     </SafeMarkdown>
                   </div>
 
+                  {/* Per-message attachments */}
+                  {msg.attached_files && msg.attached_files.length > 0 && (
+                    <div className="message-attachments">
+                      {msg.attached_files.map((filename, fileIdx) => {
+                        const isImage = /\.(png|jpg|jpeg|gif|webp)$/i.test(filename);
+                        const isCode = /\.(py|js|jsx|ts|tsx|json|html|css|go|rs|java|c|cpp|h|sh|sql|yaml|yml|md)$/i.test(filename);
+                        return (
+                          <div key={fileIdx} className={`message-attachment ${isImage ? 'image' : ''}`}>
+                            {isImage ? (
+                              <img
+                                src={`/api/conversations/${conversation.id}/files/${filename}`}
+                                alt={filename}
+                                loading="lazy"
+                                onClick={() => window.open(`/api/conversations/${conversation.id}/files/${filename}`, '_blank')}
+                              />
+                            ) : (
+                              <a
+                                href={`/api/conversations/${conversation.id}/files/${filename}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="attachment-link"
+                              >
+                                <span className="attachment-icon">{isCode ? '📄' : '📎'}</span>
+                                <span className="attachment-name">{filename}</span>
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   {/* Message actions */}
                   <div className="claude-message-actions">
+                    {/* Copy button - for all messages */}
                     <button
                       className={`message-action-btn ${copiedMessageIndex === i ? 'copied' : ''}`}
                       onClick={() => copyMessage(msg, i)}
@@ -1043,6 +1341,38 @@ export default function ChatInterface({
                         </>
                       )}
                     </button>
+
+                    {/* Edit button - for user messages only */}
+                    {msg.role === 'user' && (
+                      <button
+                        className="message-action-btn"
+                        onClick={() => startEditMessage(i)}
+                        title="Edit and resend"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Edit
+                      </button>
+                    )}
+
+                    {/* Regenerate button - for assistant messages only */}
+                    {msg.role === 'assistant' && (
+                      <button
+                        className={`message-action-btn ${regeneratingIndex === i ? 'loading' : ''}`}
+                        onClick={() => regenerateMessage(i)}
+                        disabled={isLoading || isStreaming || regeneratingIndex !== null}
+                        title="Regenerate response"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={regeneratingIndex === i ? 'spinning' : ''}>
+                          <path d="M23 4v6h-6" />
+                          <path d="M1 20v-6h6" />
+                          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                        </svg>
+                        {regeneratingIndex === i ? 'Regenerating...' : 'Regenerate'}
+                      </button>
+                    )}
                   </div>
 
                   {/* Council details toggle */}
@@ -1175,13 +1505,16 @@ export default function ChatInterface({
 
         {/* Loading indicator - Progress for council mode, skeleton for others */}
         {(isLoading || (isStreaming && !streamingText)) && (
-          mode === 'council' && councilProgress.stage > 0 ? (
+          mode === 'council' && (councilProgress.stage > 0 || councilProgress.contextStatus === 'loading') ? (
             <ProgressIndicator
               stage={councilProgress.stage}
               models={councilProgress.models}
               modelProgress={councilProgress.modelProgress}
               chairmanModel={councilProgress.chairmanModel}
               chairmanStatus={councilProgress.chairmanStatus}
+              contextStatus={councilProgress.contextStatus}
+              searchType={councilProgress.searchType}
+              fastMode={features.fast_mode}
             />
           ) : (
             <div className="claude-thinking">
@@ -1210,7 +1543,7 @@ export default function ChatInterface({
 
       {/* Input */}
       <div className="claude-input-area">
-        <div className="claude-input-container">
+        <div className={`claude-input-container ${isListening ? 'listening' : ''}`}>
           {/* Mode selector with inline model pickers */}
           <div className="claude-mode-selector">
             <button
@@ -1550,18 +1883,39 @@ export default function ChatInterface({
           </div>
 
           <form onSubmit={handleSubmit}>
-            {/* Uploaded Files Preview */}
-            {uploadedFiles.length > 0 && (
+            {/* Attached Files */}
+            {attachedFiles.length > 0 && (
               <div className="uploaded-files-preview">
-                {uploadedFiles.map((file, index) => (
-                  <div key={index} className="uploaded-file-chip">
+                {attachedFiles.map((file) => (
+                  <div
+                    key={file.filename}
+                    className="uploaded-file-chip"
+                    onClick={() => {
+                      if (!activeConversationId) return;
+                      const url = `/api/conversations/${activeConversationId}/files/${file.filename}`;
+                      window.open(url, '_blank', 'noopener,noreferrer');
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title="Open attachment"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        const url = `/api/conversations/${activeConversationId}/files/${file.filename}`;
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                  >
                     <span className="uploaded-file-icon">📎</span>
                     <span className="uploaded-file-name">{file.name || file.filename}</span>
                     <button
                       type="button"
                       className="remove-uploaded-file"
-                      onClick={() => setUploadedFiles(prev => prev.filter((_, i) => i !== index))}
-                      title="Remove file"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeAttachedFile(file.filename);
+                      }}
+                      title="Remove attachment"
                     >
                       ×
                     </button>
@@ -1597,7 +1951,7 @@ export default function ChatInterface({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onPaste={handlePaste}
-                placeholder={isListening ? "Listening..." : (mode === 'council' ? "Ask the council..." : mode === 'compare' ? "Compare models..." : "Message...")}
+                placeholder={isListening ? (interimTranscript || "Listening...") : (mode === 'council' ? "Ask the council..." : mode === 'compare' ? "Compare models..." : "Message...")}
                 disabled={isLoading || isStreaming || isComparing}
                 rows={1}
               />
@@ -1613,6 +1967,9 @@ export default function ChatInterface({
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                 </svg>
+                {attachedFiles.length > 0 && (
+                  <span className="file-badge">{attachedFiles.length}</span>
+                )}
               </button>
 
               {/* Voice input button */}
@@ -1643,7 +2000,7 @@ export default function ChatInterface({
               <div className="options-toggle-wrapper">
                 <button
                   type="button"
-                  className={`options-toggle-btn ${showOptions ? 'active' : ''} ${(features.web_search || features.deep_search || features.memory || features.code_execution) ? 'has-active' : ''}`}
+                  className={`options-toggle-btn ${showOptions ? 'active' : ''} ${(features.web_search || features.deep_search || features.memory || features.code_execution || features.fast_mode) ? 'has-active' : ''}`}
                   onClick={() => setShowOptions(!showOptions)}
                   title="Options"
                 >
@@ -1655,44 +2012,97 @@ export default function ChatInterface({
                 {showOptions && (
                   <>
                     <div className="options-backdrop" onClick={() => setShowOptions(false)} />
-                    <div className="options-panel">
-                      <div className="options-header">
-                        <span>Options</span>
-                        <button className="options-close" onClick={() => setShowOptions(false)}>×</button>
+                    <div className="options-panel-v2">
+                      {/* Search Section */}
+                      <div className="options-section">
+                        <div className="options-section-header">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="m21 21-4.35-4.35"/>
+                          </svg>
+                          <span>Search</span>
+                          <span className="options-provider">Perplexity</span>
+                        </div>
+                        <div className="options-toggle-group">
+                          <button
+                            type="button"
+                            className={`option-toggle ${!features.web_search && !features.deep_search ? 'active' : ''}`}
+                            onClick={() => setSearchMode('off')}
+                          >
+                            Off
+                          </button>
+                          <button
+                            type="button"
+                            className={`option-toggle ${features.web_search && !features.deep_search ? 'active' : ''}`}
+                            onClick={() => setSearchMode('online')}
+                          >
+                            Online
+                          </button>
+                          <button
+                            type="button"
+                            className={`option-toggle ${features.deep_search ? 'active' : ''}`}
+                            onClick={() => setSearchMode('deep')}
+                          >
+                            Deep
+                          </button>
+                        </div>
                       </div>
-                      <div className="options-grid">
-                        <button
-                          type="button"
-                          className={`option-btn ${features.web_search ? 'active' : ''}`}
-                          onClick={() => toggleFeature('web_search')}
-                        >
-                          <span className="option-icon">🔍</span>
-                          <span className="option-label">Web Search</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`option-btn ${features.deep_search ? 'active' : ''}`}
-                          onClick={() => toggleFeature('deep_search')}
-                        >
-                          <span className="option-icon">🧭</span>
-                          <span className="option-label">Deep Search</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`option-btn ${features.memory ? 'active' : ''}`}
-                          onClick={() => toggleFeature('memory')}
-                        >
-                          <span className="option-icon">🧠</span>
-                          <span className="option-label">Memory</span>
-                        </button>
-                        <button
-                          type="button"
-                          className={`option-btn ${features.code_execution ? 'active' : ''}`}
-                          onClick={() => toggleFeature('code_execution')}
-                        >
-                          <span className="option-icon">💻</span>
-                          <span className="option-label">Code Exec</span>
-                        </button>
+
+                      {/* Tools Section */}
+                      <div className="options-section">
+                        <div className="options-section-header">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                          </svg>
+                          <span>Tools</span>
+                        </div>
+                        <div className="options-chips">
+                          <button
+                            type="button"
+                            className={`option-chip ${features.memory ? 'active' : ''}`}
+                            onClick={() => toggleFeature('memory')}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                              <path d="M12 8v4l3 3"/>
+                            </svg>
+                            Memory
+                          </button>
+                          <button
+                            type="button"
+                            className={`option-chip ${features.code_execution ? 'active' : ''}`}
+                            onClick={() => toggleFeature('code_execution')}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="16 18 22 12 16 6"/>
+                              <polyline points="8 6 2 12 8 18"/>
+                            </svg>
+                            Code
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Speed Section - Fast Mode for Council */}
+                      <div className="options-section">
+                        <div className="options-section-header">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                          </svg>
+                          <span>Speed</span>
+                        </div>
+                        <div className="options-chips">
+                          <button
+                            type="button"
+                            className={`option-chip ${features.fast_mode ? 'active' : ''}`}
+                            onClick={() => setFeatures(prev => ({ ...prev, fast_mode: !prev.fast_mode }))}
+                            title="Skip peer review (Stage 2) for faster Council results"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                            Fast Mode
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </>
@@ -1739,41 +2149,6 @@ export default function ChatInterface({
             <span className="claude-input-hint">
               <kbd>Enter</kbd> send
             </span>
-            <span className="claude-input-hint hint-separator">·</span>
-            <button
-              type="button"
-              className="claude-input-hint hint-btn"
-              onClick={() => setShowShortcuts(true)}
-              title="Keyboard shortcuts"
-            >
-              <kbd>⌘?</kbd> shortcuts
-            </button>
-            {conversation?.messages?.length > 0 && (
-              <>
-                <span className="claude-input-hint hint-separator">·</span>
-                <button
-                  type="button"
-                  className="claude-input-hint hint-btn"
-                  onClick={copyConversation}
-                  title="Copy entire conversation"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '4px', verticalAlign: 'middle'}}>
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                  copy all
-                </button>
-                <span className="claude-input-hint hint-separator">·</span>
-                <button
-                  type="button"
-                  className="claude-input-hint hint-btn"
-                  onClick={exportConversation}
-                  title="Export conversation"
-                >
-                  ↓ export
-                </button>
-              </>
-            )}
             {mode === 'council' && councilCostEstimate && (
               <>
                 <span className="claude-input-hint hint-separator">·</span>
@@ -1850,7 +2225,9 @@ export default function ChatInterface({
         <FileUpload
           conversationId={activeConversationId}
           onFileUploaded={(files) => {
-            setUploadedFiles(prev => [...prev, ...files]);
+            setAttachedFiles(prev => [...prev, ...files]);
+            toast.success(`${files.length} file${files.length !== 1 ? 's' : ''} attached`);
+            loadAttachedFiles();
           }}
           onClose={() => setShowFileUpload(false)}
         />

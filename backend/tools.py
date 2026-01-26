@@ -125,34 +125,39 @@ async def perplexity_search(
     model: str,
     num_results: int = 5,
     deep_search: bool = False,
-    timeout: float = 30.0
+    timeout: float = 60.0
 ) -> Dict[str, Any]:
     """
-    Query Perplexity for web search or deep search results.
+    Query Perplexity for web-grounded search results.
+
+    Perplexity's sonar models automatically search the web and include citations.
+    This function extracts the response and citations from their API.
 
     Args:
         query: Search query
         api_key: Perplexity API key
-        model: Perplexity model ID
-        num_results: Number of results to request
-        deep_search: Whether to request a deep search summary
+        model: Perplexity model ID (e.g., "sonar", "sonar-pro", "sonar-deep-research")
+        num_results: Number of citations to include
+        deep_search: Whether using deep research model (affects timeout)
         timeout: Request timeout in seconds
 
     Returns:
-        Dict with keys: results (list), summary (optional), citations (list)
+        Dict with keys: results (list), summary (str), citations (list)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     if not api_key:
         raise ValueError("Perplexity API key is required.")
 
+    # Perplexity models are web-grounded by default - just ask the question
     system_prompt = (
-        "You are a web research assistant. Return ONLY valid JSON with keys: "
-        '"results" (array of {title, url, snippet}), and optional "summary". '
-        f"Include {num_results} results. Keep snippets concise."
+        "You are a helpful research assistant. Provide accurate, well-sourced information. "
+        "Be concise but thorough. Include specific facts and data when available."
     )
-    if deep_search:
-        system_prompt += (
-            " Provide a brief 1-2 paragraph summary grounded in the sources."
-        )
+
+    # Use longer timeout for deep research (can take 2-3 minutes)
+    actual_timeout = timeout if not deep_search else max(timeout, 180.0)
 
     payload = {
         "model": model,
@@ -160,7 +165,9 @@ async def perplexity_search(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": query}
         ],
-        "temperature": 0.2
+        "temperature": 0.2,
+        "return_citations": True,  # Request citations in response
+        "return_related_questions": False
     }
 
     headers = {
@@ -168,34 +175,66 @@ async def perplexity_search(
         "Content-Type": "application/json"
     }
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.post(PERPLEXITY_API_URL, json=payload, headers=headers)
-        response.raise_for_status()
-        data = response.json()
+    logger.info(f"Perplexity search: model={model}, query={query[:100]}...")
 
-    content = (
-        data.get("choices", [{}])[0]
-        .get("message", {})
-        .get("content", "")
-    )
-    citations = data.get("citations") or []
+    try:
+        # Explicit timeout configuration for long-running deep research
+        timeout_config = httpx.Timeout(
+            connect=30.0,  # 30s to connect
+            read=actual_timeout,  # full timeout for reading response
+            write=30.0,  # 30s to write request
+            pool=30.0  # 30s to acquire connection from pool
+        )
+        async with httpx.AsyncClient(timeout=timeout_config) as client:
+            response = await client.post(PERPLEXITY_API_URL, json=payload, headers=headers)
 
-    parsed = _extract_json_payload(content) or {}
-    results = parsed.get("results") if isinstance(parsed.get("results"), list) else []
-    summary = parsed.get("summary") if isinstance(parsed.get("summary"), str) else ""
+            if response.status_code == 401:
+                logger.error("Perplexity API key is invalid")
+                raise ValueError("Invalid Perplexity API key")
 
-    if not results and citations:
-        results = [{
-            "title": "Source",
-            "url": url,
-            "snippet": ""
-        } for url in citations[:num_results]]
+            if response.status_code == 429:
+                logger.warning("Perplexity rate limit exceeded")
+                raise ValueError("Perplexity rate limit exceeded")
 
-    return {
-        "results": results[:num_results],
-        "summary": summary,
-        "citations": citations
-    }
+            response.raise_for_status()
+            data = response.json()
+
+        # Extract content from response
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+
+        # Citations are returned at the top level by Perplexity
+        citations = data.get("citations") or []
+
+        logger.info(f"Perplexity response: {len(content)} chars, {len(citations)} citations")
+
+        # Build results from citations
+        results = []
+        for i, url in enumerate(citations[:num_results]):
+            results.append({
+                "title": f"Source {i + 1}",
+                "url": url,
+                "snippet": ""
+            })
+
+        return {
+            "results": results,
+            "summary": content,  # The full response IS the summary
+            "citations": citations
+        }
+
+    except httpx.TimeoutException:
+        logger.error(f"Perplexity request timed out after {actual_timeout}s")
+        raise ValueError(f"Perplexity request timed out after {actual_timeout}s")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Perplexity HTTP error: {e.response.status_code}")
+        raise ValueError(f"Perplexity API error: {e.response.status_code}")
+    except Exception as e:
+        logger.error(f"Perplexity search failed: {e}")
+        raise
 
 
 # ============ CODE EXECUTION ============

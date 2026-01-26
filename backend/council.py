@@ -1,8 +1,11 @@
 """3-stage LLM Council orchestration."""
 
+import logging
 from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 import uuid
+
+logger = logging.getLogger(__name__)
 from .openrouter import query_models_parallel, query_model, query_model_stream
 from .config import (
     get_council_models,
@@ -52,19 +55,28 @@ def format_web_context(
     return "\n".join(lines)
 
 
-async def stage1_collect_responses(user_query: str, context: Optional[str] = None, user_id: Optional[uuid.UUID] = None, db: Optional[Any] = None) -> List[Dict[str, Any]]:
+async def stage1_collect_responses(
+    user_query: str,
+    context: Optional[str] = None,
+    image_content: Optional[List[Dict]] = None,
+    user_id: Optional[uuid.UUID] = None,
+    db: Optional[Any] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 1: Collect individual responses from all council models.
 
     Args:
         user_query: The user's question
         context: Optional conversation context from previous exchanges
+        image_content: Optional list of image content dicts for vision models
         user_id: Optional user ID for user-specific API keys
         db: Optional database session for resolving API keys
 
     Returns:
         List of dicts with 'model' and 'response' keys
     """
+    from .config import supports_vision
+
     # Build the query with context if available
     if context:
         enhanced_query = f"{context}\n\n---\n\nCurrent Question: {user_query}"
@@ -86,15 +98,35 @@ async def stage1_collect_responses(user_query: str, context: Optional[str] = Non
 
     for model in council_models:
         persona = get_model_persona(model)
+
+        # Build user content - multimodal for vision models with images
+        if image_content and supports_vision(model):
+            # Build multimodal content array for vision models
+            user_content = [{"type": "text", "text": enhanced_query}]
+            for img in image_content:
+                if img.get("type") == "image":
+                    # Convert to OpenAI-compatible format
+                    source = img.get("source", {})
+                    if source.get("type") == "base64":
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
+                            }
+                        })
+        else:
+            # Plain text content for non-vision models or no images
+            user_content = enhanced_query
+
         if persona:
             # Prepend system message with persona
             messages_by_model[model] = [
                 {"role": "system", "content": persona},
-                {"role": "user", "content": enhanced_query}
+                {"role": "user", "content": user_content}
             ]
         else:
             # No persona, just user message
-            messages_by_model[model] = [{"role": "user", "content": enhanced_query}]
+            messages_by_model[model] = [{"role": "user", "content": user_content}]
 
     # Query all models in parallel (with user-specific API keys)
     responses = await query_models_parallel(council_models, messages_by_model, user_id=user_id, db=db)
@@ -280,9 +312,10 @@ Provide a clear, well-reasoned final answer that represents the council's collec
 
     if response is None:
         # Fallback if chairman fails
+        logger.error(f"Chairman model failed: {chairman}. Check API key in Settings → API Keys.")
         return {
             "model": chairman,
-            "response": "Error: Unable to generate final synthesis."
+            "response": f"Error: Chairman model ({chairman}) failed to respond. Please check your API key in Settings → API Keys."
         }
 
     return {
@@ -393,13 +426,31 @@ Title:"""
 
     messages = [{"role": "user", "content": title_prompt}]
 
-    # Use gemini-2.5-flash for title generation (fast and cheap)
-    # Pass user_id and db to use user-specific API keys
-    response = await query_model("google/gemini-2.5-flash", messages, timeout=30.0, user_id=user_id, db=db)
+    # Try multiple models for title generation (fast and cheap options)
+    title_models = [
+        "google/gemini-2.0-flash-001",
+        "google/gemini-2.5-flash",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3-5-haiku-20241022"
+    ]
 
-    if response is None:
-        # Fallback to a generic title
-        return "New Conversation"
+    response = None
+    for model in title_models:
+        try:
+            response = await query_model(model, messages, timeout=30.0, user_id=user_id, db=db)
+            if response and response.get('content'):
+                break
+        except Exception as e:
+            print(f"Title generation with {model} failed: {e}")
+            continue
+
+    if response is None or not response.get('content'):
+        # Local fallback: extract first few words from query
+        words = user_query.split()[:6]
+        fallback_title = ' '.join(words)
+        if len(fallback_title) > 40:
+            fallback_title = fallback_title[:37] + "..."
+        return fallback_title if fallback_title else "New Conversation"
 
     title = response.get('content', 'New Conversation').strip()
 
@@ -443,6 +494,7 @@ async def gather_context(
             if perplexity_key:
                 models = get_perplexity_models()
                 model = models["deep_search"] if use_deep_search else models["search"]
+                logger.info(f"Using Perplexity search: model={model}, deep_search={use_deep_search}")
                 search_payload = await perplexity_search(
                     user_query,
                     api_key=perplexity_key,
@@ -456,12 +508,16 @@ async def gather_context(
                     context["web_search_summary"] = search_payload["summary"]
                 if search_payload.get("citations"):
                     context["web_search_citations"] = search_payload["citations"]
+                logger.info(f"Perplexity search completed: {len(context.get('web_search', []))} results")
             elif use_web_search:
+                logger.info("No Perplexity key, falling back to DuckDuckGo search")
                 search_results = await web_search(user_query, num_results=3)
                 if search_results and search_results[0].get("url"):
                     context["web_search"] = search_results
+            else:
+                logger.warning("Deep search requested but no Perplexity API key configured")
         except Exception as e:
-            print(f"Web search failed: {e}")
+            logger.error(f"Web search failed: {e}", exc_info=True)
 
     # Memory context
     if features.get("memory"):
@@ -521,11 +577,23 @@ async def run_full_council(
         context_sections.append(project_context)
 
     # Add attached files (most relevant to the query)
+    # Separate images for vision models vs text files for all models
+    image_content = []
     if conversation_id and attached_files:
         from . import files
-        file_context = files.format_files_for_context(conversation_id, attached_files)
-        if file_context:
-            context_sections.append(file_context)
+        # Separate image files from text files
+        image_files = [f for f in attached_files if files.is_image_file(f)]
+        text_files = [f for f in attached_files if not files.is_image_file(f)]
+
+        # Add text files to context (works with all models)
+        if text_files:
+            file_context = files.format_files_for_context(conversation_id, text_files)
+            if file_context:
+                context_sections.append(file_context)
+
+        # Prepare image content for vision models (will be handled separately)
+        if image_files:
+            image_content = files.format_files_for_vision(conversation_id, image_files)
 
     # Add conversation history context (also highly relevant)
     if conversation_context:
@@ -551,7 +619,13 @@ async def run_full_council(
         enhanced_query = f"{all_context}\n\n---\n\n{user_query}"
 
     # Stage 1: Collect individual responses (pass enhanced query with all context)
-    stage1_results = await stage1_collect_responses(enhanced_query if context_sections else user_query, None, user_id=user_id, db=db)
+    stage1_results = await stage1_collect_responses(
+        enhanced_query if context_sections else user_query,
+        None,
+        image_content=image_content,
+        user_id=user_id,
+        db=db
+    )
 
     # If no models responded successfully, return error
     if not stage1_results:
@@ -627,7 +701,8 @@ async def run_full_council_stream(
     web_search: Optional[bool] = None,
     deep_search: Optional[bool] = None,
     user_id: Optional[uuid.UUID] = None,
-    db: Optional[Any] = None
+    db: Optional[Any] = None,
+    fast_mode: Optional[bool] = False
 ):
     """
     Run the complete 3-stage council process with streaming.
@@ -636,28 +711,43 @@ async def run_full_council_stream(
     Args:
         user_query: The user's question
         conversation_context: Optional context from previous conversation exchanges
+        web_search: Enable web search for context
+        deep_search: Enable deep search for context
+        user_id: User ID for API key resolution
+        db: Database session
+        fast_mode: If True, skips Stage 2 peer review for faster results
 
     Yields:
         Dict events with structure:
+        - {type: 'context_start', search_type: str} (when gathering context)
+        - {type: 'context_complete', search_type: str, success: bool}
         - {type: 'stage1_model_start', model: str}
         - {type: 'stage1_model_chunk', model: str, chunk: str}
         - {type: 'stage1_model_complete', model: str, response: str}
         - {type: 'stage1_complete', data: List[Dict]}
-        - {type: 'stage2_model_start', model: str}
-        - {type: 'stage2_model_chunk', model: str, chunk: str}
-        - {type: 'stage2_model_complete', model: str, response: str}
+        - {type: 'stage2_model_start', model: str} (skipped in fast_mode)
+        - {type: 'stage2_model_chunk', model: str, chunk: str} (skipped in fast_mode)
+        - {type: 'stage2_model_complete', model: str, response: str} (skipped in fast_mode)
         - {type: 'stage2_complete', data: List[Dict], metadata: Dict}
         - {type: 'stage3_start'}
         - {type: 'stage3_chunk', chunk: str}
         - {type: 'stage3_complete', data: Dict}
         - {type: 'complete', stage1: List, stage2: List, stage3: Dict, metadata: Dict}
     """
-    # Gather additional context
-    context = await gather_context(
-        user_query,
-        web_search=web_search,
-        deep_search=deep_search
-    )
+    # Gather additional context (search + memory)
+    context = {}
+
+    # Only gather context if search is enabled
+    if web_search or deep_search:
+        search_type = "deep_search" if deep_search else "web_search"
+        yield {"type": "context_start", "search_type": search_type}
+        try:
+            context = await gather_context(user_query, web_search=web_search, deep_search=deep_search)
+            has_results = bool(context.get("web_search") or context.get("web_search_summary"))
+            yield {"type": "context_complete", "search_type": search_type, "success": has_results}
+        except Exception as e:
+            logger.error(f"Context gathering failed: {e}")
+            yield {"type": "context_complete", "search_type": search_type, "success": False, "error": str(e)}
 
     # Build enhanced query with context
     enhanced_query = user_query
@@ -774,6 +864,112 @@ async def run_full_council_stream(
         yield {
             "type": "error",
             "message": "All models failed to respond. Please check your API key in Settings → API Keys and ensure OpenRouter API key is set."
+        }
+        return
+
+    # Fast mode: Skip Stage 2 and go directly to Stage 3
+    logger.info(f"🔍 Fast mode check: fast_mode={fast_mode}, type={type(fast_mode)}")
+    if fast_mode:
+        logger.info("✅ Fast mode enabled - skipping Stage 2 peer review")
+
+        # Create empty stage2 data
+        stage2_results = []
+        label_to_model = {}
+        aggregate_rankings = []
+
+        yield {
+            "type": "stage2_complete",
+            "data": stage2_results,
+            "metadata": {
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+                "fast_mode": True
+            }
+        }
+
+        # Jump to Stage 3 with fast mode prompt
+        yield {"type": "stage3_start"}
+
+        # Build simplified chairman prompt for fast mode
+        stage1_text = "\n\n".join([
+            f"Model: {result['model']}\nResponse: {result['response']}"
+            for result in stage1_results
+        ])
+
+        chairman_prompt = f"""You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question.
+
+Original Question: {user_query}
+
+Individual Responses:
+{stage1_text}
+
+Your task is to synthesize all responses into a single, comprehensive, accurate answer. Consider the strengths of each response and provide a clear final answer that represents the best insights from all models:"""
+
+        if web_context_text:
+            chairman_prompt = f"{web_context_text}\n\n---\n\n{chairman_prompt}"
+
+        messages_stage3 = [{"role": "user", "content": chairman_prompt}]
+
+        # Get user-specific chairman model if available
+        if user_id and db:
+            from .database import crud as db_crud
+            settings = await db_crud.settings.get_by_user_id(db, user_id)
+            if settings and settings.chairman_model:
+                chairman = settings.chairman_model
+            else:
+                chairman = get_chairman_model()
+        else:
+            chairman = get_chairman_model()
+
+        logger.info(f"Fast mode: Starting chairman synthesis with model: {chairman}")
+        full_synthesis = ""
+        stage3_result = None
+        event_count = 0
+        async for event in query_model_stream(chairman, messages_stage3, user_id=user_id, db=db):
+            event_count += 1
+            logger.debug(f"Fast mode chairman event {event_count}: {list(event.keys())}")
+            if event.get("chunk"):
+                full_synthesis += event["chunk"]
+                yield {"type": "stage3_chunk", "chunk": event["chunk"]}
+            elif event.get("done"):
+                stage3_result = {
+                    "model": chairman,
+                    "response": full_synthesis
+                }
+                yield {
+                    "type": "stage3_complete",
+                    "data": stage3_result,
+                    "usage": event.get("usage", {})
+                }
+            elif event.get("error"):
+                error_msg = event.get("message", "Unknown error")
+                logger.error(f"Fast mode chairman synthesis error: {error_msg}, full event: {event}")
+                stage3_result = {
+                    "model": chairman,
+                    "response": f"Error: {error_msg}"
+                }
+                yield {"type": "stage3_complete", "data": stage3_result}
+
+        # If stage3_result is still None (no events received), set error
+        if stage3_result is None:
+            logger.error(f"Fast mode: No response received from chairman after {event_count} events")
+            stage3_result = {
+                "model": chairman,
+                "response": f"Error: No response from chairman model ({chairman}). Check API key in Settings → API Keys."
+            }
+            yield {"type": "stage3_complete", "data": stage3_result}
+
+        # Final complete event
+        yield {
+            "type": "complete",
+            "stage1": stage1_results,
+            "stage2": stage2_results,
+            "stage3": stage3_result,
+            "metadata": {
+                "label_to_model": label_to_model,
+                "aggregate_rankings": aggregate_rankings,
+                "fast_mode": True
+            }
         }
         return
 
@@ -977,9 +1173,11 @@ Provide a clear, well-reasoned final answer that represents the council's collec
                 "usage": event.get("usage", {})
             }
         elif event.get("error"):
+            error_msg = event.get("message", "Unknown error")
+            logger.error(f"Chairman synthesis error: {error_msg}, chairman: {chairman}")
             stage3_result = {
                 "model": chairman,
-                "response": "Error: Unable to generate final synthesis."
+                "response": f"Error: {error_msg}"
             }
             yield {"type": "stage3_complete", "data": stage3_result}
 

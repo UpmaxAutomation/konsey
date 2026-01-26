@@ -151,7 +151,14 @@ export async function moveConversationToProject(conversationId, projectId) {
     body: JSON.stringify({ project_id: projectId }),
   });
   if (!response.ok) {
-    throw new Error('Failed to move conversation to project');
+    let errorMessage = 'Failed to move conversation to project';
+    try {
+      const errorData = await response.json();
+      errorMessage = errorData.detail || errorData.message || errorMessage;
+    } catch (e) {
+      errorMessage = response.statusText || errorMessage;
+    }
+    throw new Error(errorMessage);
   }
   return response.json();
 }
