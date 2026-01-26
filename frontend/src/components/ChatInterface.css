@@ -2564,6 +2564,7 @@ input:focus-visible {
 /* Inline picker positioning - appears above the button */
 .inline-picker {
   position: absolute;
+  top: auto !important; /* Override .model-picker's top value */
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
