@@ -56,6 +56,7 @@ export default function Settings({ isOpen, onClose }) {
   const [selectedPreset, setSelectedPreset] = useState('');
   const [showSavePresetModal, setShowSavePresetModal] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
+  const [isRefreshingModels, setIsRefreshingModels] = useState(false);
 
   // Features state (moved from ChatInterface)
   const [features, setFeatures] = useState({
@@ -77,6 +78,14 @@ export default function Settings({ isOpen, onClose }) {
       loadData();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'models') return;
+    const interval = setInterval(() => {
+      loadData();
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, activeTab]);
 
   const loadData = async () => {
     setLoading(true);
@@ -122,6 +131,19 @@ export default function Settings({ isOpen, onClose }) {
     setLoading(false);
   };
 
+  const refreshModelsAndPresets = async () => {
+    setIsRefreshingModels(true);
+    try {
+      await api.refreshModels();
+      await loadData();
+      showMessage('success', 'Models and presets refreshed');
+    } catch (e) {
+      showMessage('error', `Failed to refresh models: ${e.message || 'Unknown error'}`);
+    } finally {
+      setIsRefreshingModels(false);
+    }
+  };
+
   // Provider definitions with status
   const providers = [
     { id: 'openrouter', name: 'OpenRouter', models: 'All models via OpenRouter', hint: 'sk-or-v1-...', priority: true },
@@ -161,6 +183,7 @@ export default function Settings({ isOpen, onClose }) {
       const result = await api.setApiKey(provider, key);
       const keysData = await api.getApiKeys();
       setApiKeys(keysData.api_keys || {});
+      window.dispatchEvent(new CustomEvent('api-keys-updated', { detail: keysData.api_keys || {} }));
       setApiKeyInputs({ ...apiKeyInputs, [provider]: '' });
       showMessage('success', `${provider} API key saved successfully`);
     } catch (err) {
@@ -171,14 +194,21 @@ export default function Settings({ isOpen, onClose }) {
   };
 
   const handleDeleteApiKey = async (provider) => {
+    console.log(`[Settings] Deleting API key for provider: ${provider}`);
     setSavingKey(provider);
     setError(null);
     try {
-      await api.deleteApiKey(provider);
+      const deleteResult = await api.deleteApiKey(provider);
+      console.log(`[Settings] Delete result:`, deleteResult);
+
+      // Refetch keys to update UI
       const keysData = await api.getApiKeys();
+      console.log(`[Settings] Refreshed API keys:`, keysData);
       setApiKeys(keysData.api_keys || {});
+      window.dispatchEvent(new CustomEvent('api-keys-updated', { detail: keysData.api_keys || {} }));
       showMessage('success', `${provider} API key removed`);
     } catch (err) {
+      console.error(`[Settings] Failed to delete API key:`, err);
       showMessage('error', `Failed to remove ${provider} API key: ${err.message || 'Unknown error'}`);
     } finally {
       setSavingKey(null);
@@ -204,10 +234,18 @@ export default function Settings({ isOpen, onClose }) {
     }
     
     try {
-      await api.updateConfig({
+      const updated = await api.updateConfig({
         council_models: selectedCouncil,
         chairman_model: selectedChairman,
       });
+      setConfig((prev) => ({
+        ...prev,
+        council_models: updated.council_models,
+        chairman_model: updated.chairman_model,
+      }));
+      setSelectedCouncil(updated.council_models || []);
+      setSelectedChairman(updated.chairman_model || '');
+      window.dispatchEvent(new CustomEvent('council-config-updated', { detail: updated }));
       showMessage('success', 'Settings saved successfully');
       setTimeout(() => onClose(), 500);
     } catch (err) {
@@ -238,12 +276,40 @@ export default function Settings({ isOpen, onClose }) {
         const result = await api.applyPreset(presetValue);
         setSelectedCouncil(result.council_models);
         setSelectedChairman(result.chairman_model);
+        setConfig((prev) => ({
+          ...prev,
+          council_models: result.council_models,
+          chairman_model: result.chairman_model,
+        }));
+        window.dispatchEvent(new CustomEvent('council-config-updated', { detail: result }));
         showMessage('success', `Applied preset: ${result.preset_name}`);
       } catch (err) {
         showMessage('error', `Failed to apply preset: ${err.message || 'Unknown error'}`);
       }
     }
   };
+
+  const availableModelIds = useMemo(() => {
+    return new Set(Object.keys(config?.available_models || {}));
+  }, [config]);
+
+  const presetValidity = useMemo(() => {
+    const validity = {};
+    builtInPresets.forEach((preset) => {
+      const invalidModels = (preset.models || []).filter((model) => !availableModelIds.has(model));
+      const chairmanInvalid = preset.chairman && !availableModelIds.has(preset.chairman);
+      validity[preset.id] = {
+        invalidModels,
+        chairmanInvalid,
+      };
+    });
+    return validity;
+  }, [builtInPresets, availableModelIds]);
+
+  const selectedPresetValidity = useMemo(() => {
+    if (!selectedPreset || selectedPreset.startsWith('custom:')) return null;
+    return presetValidity[selectedPreset] || null;
+  }, [selectedPreset, presetValidity]);
 
   const handleSaveAsPreset = () => {
     if (selectedCouncil.length === 0) {
@@ -672,17 +738,43 @@ export default function Settings({ isOpen, onClose }) {
             {/* Tab: Council Models */}
             {activeTab === 'models' && (
               <div className="tab-content">
+                {/* Chairman Selection */}
+                <div className="chairman-section">
+                  <label className="chairman-label">Chairman Model (synthesizes final answer)</label>
+                  <select
+                    className="chairman-select"
+                    value={selectedChairman || ''}
+                    onChange={(e) => setSelectedChairman(e.target.value)}
+                    required
+                  >
+                    <option value="">-- Select Chairman Model --</option>
+                    {config && Object.entries(config.available_models).map(([modelId, info]) => (
+                      <option key={modelId} value={modelId}>{info.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Presets Section */}
                 <div className="presets-section">
                   <div className="presets-header">
                     <label className="presets-label">Council Presets</label>
-                    <button
-                      className="save-preset-btn"
-                      onClick={handleSaveAsPreset}
-                      title="Save current configuration as a custom preset"
-                    >
-                      + Save as Preset
-                    </button>
+                    <div className="preset-actions">
+                      <button
+                        className="save-preset-btn"
+                        onClick={handleSaveAsPreset}
+                        title="Save current configuration as a custom preset"
+                      >
+                        + Save as Preset
+                      </button>
+                      <button
+                        className="refresh-models-btn"
+                        onClick={refreshModelsAndPresets}
+                        disabled={isRefreshingModels}
+                        title="Refresh models and presets"
+                      >
+                        {isRefreshingModels ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                    </div>
                   </div>
                   <div className="presets-row">
                     <select
@@ -693,11 +785,15 @@ export default function Settings({ isOpen, onClose }) {
                       <option value="">-- Select a preset --</option>
                       {builtInPresets.length > 0 && (
                         <optgroup label="Built-in Presets">
-                          {builtInPresets.map(preset => (
-                            <option key={preset.id} value={preset.id}>
-                              {preset.name}
-                            </option>
-                          ))}
+                          {builtInPresets.map(preset => {
+                            const validity = presetValidity[preset.id];
+                            const hasInvalid = validity && (validity.invalidModels.length > 0 || validity.chairmanInvalid);
+                            return (
+                              <option key={preset.id} value={preset.id} disabled={hasInvalid}>
+                                {preset.name}{hasInvalid ? ' (Unavailable models)' : ''}
+                              </option>
+                            );
+                          })}
                         </optgroup>
                       )}
                       {Object.keys(customPresets).length > 0 && (
@@ -725,6 +821,24 @@ export default function Settings({ isOpen, onClose }) {
                       {builtInPresets.find(p => p.id === selectedPreset)?.description || ''}
                     </p>
                   )}
+                  {selectedPresetValidity && (selectedPresetValidity.invalidModels.length > 0 || selectedPresetValidity.chairmanInvalid) && (
+                    <p className="preset-warning">
+                      Some models in this preset are unavailable. Please refresh or choose a different preset.
+                    </p>
+                  )}
+                </div>
+
+                {/* OpenRouter Best Practices */}
+                <div className="openrouter-info">
+                  <div className="info-icon">ℹ️</div>
+                  <div className="info-content">
+                    <strong>Get the most out of OpenRouter</strong>
+                    <p>
+                      Free models can be rate-limited. For reliability, use stable paid models
+                      and add your own provider keys (BYOK). Refresh models regularly to avoid
+                      stale or unavailable IDs.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Selected Models Summary */}
@@ -947,21 +1061,6 @@ export default function Settings({ isOpen, onClose }) {
                   )}
                 </div>
 
-                {/* Chairman Selection */}
-                <div className="chairman-section">
-                  <label className="chairman-label">Chairman Model (synthesizes final answer)</label>
-                  <select
-                    className="chairman-select"
-                    value={selectedChairman || ''}
-                    onChange={(e) => setSelectedChairman(e.target.value)}
-                    required
-                  >
-                    <option value="">-- Select Chairman Model --</option>
-                    {config && Object.entries(config.available_models).map(([modelId, info]) => (
-                      <option key={modelId} value={modelId}>{info.name}</option>
-                    ))}
-                  </select>
-                </div>
               </div>
             )}
 

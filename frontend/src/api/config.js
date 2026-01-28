@@ -46,13 +46,19 @@ export async function setApiKey(provider, apiKey) {
  * @returns {Promise<Object>} Status of the operation
  */
 export async function deleteApiKey(provider) {
+  console.log(`[API] Deleting API key for provider: ${provider}`);
   const response = await authFetch(`${API_BASE}/keys/${provider}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
-    throw new Error('Failed to delete API key');
+    const errorData = await response.json().catch(() => ({}));
+    const errorMsg = errorData.detail || errorData.message || `HTTP ${response.status}`;
+    console.error(`[API] Failed to delete API key: ${errorMsg}`);
+    throw new Error(`Failed to delete API key: ${errorMsg}`);
   }
-  return response.json();
+  const data = await response.json();
+  console.log(`[API] Delete API key response:`, data);
+  return data;
 }
 
 // ============ CONFIG API ============
@@ -392,14 +398,32 @@ export async function clearCache() {
  * @param {boolean} params.prefer_speed - Prefer faster models
  * @param {boolean} params.prefer_cost - Prefer cheaper models
  * @param {boolean} params.prefer_quality - Prefer higher quality models
+ * @param {"quality"|"speed"|"cost"} params.preference - Convenience preference flag
  * @param {number} params.num_recommendations - Number of models to recommend
  * @returns {Promise<Object>} Routing result with query type, scores, and recommendations
  */
-export async function routeQuery({ query, prefer_speed = false, prefer_cost = false, prefer_quality = true, num_recommendations = 3 }) {
+export async function routeQuery({
+  query,
+  prefer_speed = false,
+  prefer_cost = false,
+  prefer_quality = true,
+  preference = null,
+  num_recommendations = 3
+}) {
+  const resolvedPreference = preference || null;
+  const resolvedSpeed = resolvedPreference ? resolvedPreference === 'speed' : prefer_speed;
+  const resolvedCost = resolvedPreference ? resolvedPreference === 'cost' : prefer_cost;
+  const resolvedQuality = resolvedPreference ? resolvedPreference === 'quality' : prefer_quality;
   const response = await authFetch(`${API_BASE}/route`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, prefer_speed, prefer_cost, prefer_quality, num_recommendations }),
+    body: JSON.stringify({
+      query,
+      prefer_speed: resolvedSpeed,
+      prefer_cost: resolvedCost,
+      prefer_quality: resolvedQuality,
+      num_recommendations
+    }),
   });
   if (!response.ok) {
     throw new Error('Failed to route query');

@@ -21,7 +21,9 @@ QUERY_PATTERNS = {
         r"\b(api|endpoint|backend|frontend|database|query|algorithm|data structure)\b",
         r"\b(git|github|docker|kubernetes|aws|azure|deploy|devops)\b",
         r"```[\s\S]*```",  # Code blocks
-        r"\b(implement|refactor|optimize|review|test|unittest)\b",
+        r"\b(implement|refactor|optimize|review|test|unittest|lint|type check)\b",
+        r"\b(stack trace|traceback|compiler|syntax error|runtime error|build error)\b",
+        r"\b(react|vite|fastapi|sqlalchemy|pydantic)\b",
     ],
     "creative": [
         r"\b(write|create|compose|draft|story|poem|essay|article|blog)\b",
@@ -29,6 +31,7 @@ QUERY_PATTERNS = {
         r"\b(brainstorm|ideate|generate ideas|concept|design)\b",
         r"\b(marketing|copy|slogan|tagline|advertisement)\b",
         r"\b(screenplay|script|dialogue|scene)\b",
+        r"\b(rewrite|tone|voice|style|outline|copywriting)\b",
     ],
     "reasoning": [
         r"\b(prove|theorem|mathematical|equation|calculate|compute)\b",
@@ -36,14 +39,16 @@ QUERY_PATTERNS = {
         r"\b(step by step|chain of thought|reasoning|think through)\b",
         r"\b(puzzle|problem solving|brain teaser|riddle)\b",
         r"\b(analyze|evaluate|compare|contrast|assess)\b",
-        r"\b(why|how come|what if|suppose|hypothesis)\b",
+        r"\b(why|how come|what if|suppose|hypothesis|optimize)\b",
+        r"\b(derive|proof|counterexample)\b",
     ],
     "research": [
         r"\b(research|study|paper|journal|academic|scientific)\b",
         r"\b(source|citation|reference|evidence|data)\b",
         r"\b(current|latest|recent|news|update|today)\b",
-        r"\b(search|find|look up|discover|explore)\b",
+        r"\b(search|find|look up|discover|explore|web)\b",
         r"\b(fact check|verify|confirm|accurate)\b",
+        r"\b(citations|sources|bibliography|perplexity)\b",
     ],
     "vision": [
         r"\b(image|picture|photo|photograph|screenshot|diagram)\b",
@@ -58,6 +63,55 @@ QUERY_PATTERNS = {
         r"uploaded|attached|here is the",
     ],
 }
+
+DEFAULT_CONTEXT_WINDOW = 128000
+
+
+def _infer_cost_category(model_info: Dict[str, Any]) -> str:
+    """Infer cost category from available model pricing."""
+    input_cost = model_info.get("input_cost")
+    output_cost = model_info.get("output_cost")
+    if input_cost == 0 and output_cost == 0:
+        return "free"
+    if input_cost is None or output_cost is None:
+        return "medium"
+    blended = (input_cost + output_cost) / 2
+    if blended <= 0.2:
+        return "low"
+    if blended <= 2.5:
+        return "medium"
+    return "high"
+
+
+def _infer_capabilities(model_id: str, model_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Infer capabilities for models without explicit routing metadata."""
+    name = model_id.lower()
+    strengths = ["general"]
+
+    if any(token in name for token in ["code", "coder", "codex", "devstral"]):
+        strengths.append("code")
+    if any(token in name for token in ["reason", "r1", "o1", "o3", "o4", "qwq", "thinking"]):
+        strengths.append("reasoning")
+    if any(token in name for token in ["research", "search", "sonar", "deep"]):
+        strengths.append("research")
+    if any(token in name for token in ["vision", "image", "vl"]):
+        strengths.append("vision")
+    if any(token in name for token in ["long", "1m", "2m"]):
+        strengths.append("long_context")
+
+    cost = _infer_cost_category(model_info)
+    tier = 2
+    if any(token in name for token in ["opus", "pro", "ultra"]):
+        tier = 1
+    if any(token in name for token in ["mini", "small", "lite"]):
+        tier = 3
+
+    return {
+        "strengths": strengths,
+        "tier": tier,
+        "cost": cost,
+        "context_window": DEFAULT_CONTEXT_WINDOW,
+    }
 
 # ============ MODEL CAPABILITIES ============
 
@@ -266,47 +320,59 @@ def route_query(
 
     # Score each model for this query
     model_scores: List[Tuple[str, float, str]] = []
+    preference_label = (
+        "cost"
+        if prefer_cost
+        else "speed"
+        if prefer_speed
+        else "quality"
+        if prefer_quality
+        else "balanced"
+    )
 
     for model_id in available_models:
-        if model_id not in MODEL_CAPABILITIES:
-            continue
-
-        caps = MODEL_CAPABILITIES[model_id]
+        if model_id in MODEL_CAPABILITIES:
+            caps = MODEL_CAPABILITIES[model_id]
+        else:
+            model_info = AVAILABLE_MODELS.get(model_id, {})
+            caps = _infer_capabilities(model_id, model_info)
         score = 0.0
-        reasons = []
+        reasons: List[str] = []
 
         # Score based on capability match
         for query_type, confidence in type_scores.items():
             if confidence > 0.2 and query_type in caps["strengths"]:
-                type_bonus = confidence * 2.0
+                type_bonus = confidence * 2.4
                 score += type_bonus
-                if confidence > 0.5:
-                    reasons.append(f"strong at {query_type}")
+                if confidence > 0.35:
+                    reasons.append(f"{query_type} fit")
+                if query_type == primary_type and confidence >= 0.5:
+                    score += 0.6
 
         # Tier bonus (1 = best)
-        tier_bonus = (4 - caps["tier"]) * 0.5
+        tier_bonus = (4 - caps["tier"]) * 0.55
         score += tier_bonus
 
         # Cost preference
         if prefer_cost:
             if caps["cost"] == "free":
-                score += 1.5
-                reasons.append("free")
+                score += 1.8
+                reasons.append("cost-optimized")
             elif caps["cost"] == "low":
-                score += 1.0
-                reasons.append("low cost")
+                score += 1.2
+                reasons.append("cost-optimized")
             elif caps["cost"] == "medium":
                 score += 0.3
 
         # Quality preference
         if prefer_quality:
             if caps["tier"] == 1:
-                score += 1.0
+                score += 1.2
                 reasons.append("top tier")
 
         # Speed preference (smaller models tend to be faster)
         if prefer_speed and caps["cost"] in ["free", "low"]:
-            score += 0.5
+            score += 0.7
             reasons.append("fast")
 
         # Check for long context needs
@@ -319,7 +385,9 @@ def route_query(
                 score += 1.0
                 reasons.append("1M+ context")
 
-        model_scores.append((model_id, score, ", ".join(reasons[:2])))
+        if not reasons:
+            reasons.append("general")
+        model_scores.append((model_id, score, ", ".join(reasons[:3])))
 
     # Sort by score and get top recommendations
     model_scores.sort(key=lambda x: x[1], reverse=True)
@@ -327,11 +395,24 @@ def route_query(
     recommendations = []
     for model_id, score, reason in model_scores[:num_recommendations]:
         model_info = AVAILABLE_MODELS.get(model_id, {})
+        caps = MODEL_CAPABILITIES.get(model_id) or _infer_capabilities(
+            model_id, model_info
+        )
+        reason_details = []
+        if primary_type in caps["strengths"]:
+            reason_details.append(f"primary={primary_type}")
+        if prefer_cost:
+            reason_details.append(f"cost={caps.get('cost', 'unknown')}")
+        if prefer_speed:
+            reason_details.append("speed=fast" if caps.get("cost") in ["free", "low"] else "speed=standard")
+        if prefer_quality:
+            reason_details.append(f"tier={caps.get('tier', 'unknown')}")
         recommendations.append({
             "model_id": model_id,
             "name": model_info.get("name", model_id.split("/")[1]),
             "score": round(score, 2),
             "reason": reason,
+            "reason_details": reason_details,
             "cost": MODEL_CAPABILITIES.get(model_id, {}).get("cost", "unknown"),
         })
 
@@ -361,6 +442,7 @@ def route_query(
             "speed": prefer_speed,
             "cost": prefer_cost,
             "quality": prefer_quality,
+            "label": preference_label,
         }
     }
 

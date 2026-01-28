@@ -12,6 +12,7 @@ import FileUpload from './FileUpload';
 import ProgressIndicator from './ProgressIndicator';
 import CostEstimate from './CostEstimate';
 import { useDebounce } from '../hooks/useDebounce';
+import ChartRenderer, { isChartLanguage, getChartType } from './ChartRenderer';
 
 // Estimate tokens for cost calculation
 const ESTIMATED_INPUT_TOKENS = 500;  // Average input tokens per model
@@ -53,6 +54,7 @@ export default function ChatInterface({
   const [routeInfo, setRouteInfo] = useState(null); // Routing info for display
   const [models, setModels] = useState({});
   const [councilModels, setCouncilModels] = useState([]);
+  const [hasPerplexityKey, setHasPerplexityKey] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingUserMessage, setPendingUserMessage] = useState(null); // Show user message immediately in quick mode
@@ -103,11 +105,15 @@ export default function ChatInterface({
     web_search: true,
     deep_search: false,
     code_execution: true,
-    fast_mode: false
+    fast_mode: false,
+    auto_preference: 'quality',
   });
   // File attachment state
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const dragCounterRef = useRef(0);
   // Collapsed provider groups in model picker (start collapsed by default)
   const [collapsedGroups, setCollapsedGroups] = useState({});
   // Options panel visibility
@@ -115,12 +121,28 @@ export default function ChatInterface({
   // Cost estimate state
   const [showCostEstimate, setShowCostEstimate] = useState(false);
   const [pendingMessage, setPendingMessage] = useState(null);
+  // Project context state
+  const [projectInfo, setProjectInfo] = useState(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const recognitionRef = useRef(null);
   const abortControllerRef = useRef(null);
   const toast = useToast();
+
+  const handleChatAreaClick = (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const isInteractive = target.closest(
+      'button, a, input, textarea, select, label, [role="button"], .model-picker, .options-panel, .claude-input-container, .uploaded-files-preview, .pasted-images-preview'
+    );
+    if (isInteractive) {
+      return;
+    }
+    textareaRef.current?.focus();
+  };
 
   const loadAttachedFiles = useCallback(async () => {
     if (!activeConversationId) {
@@ -138,6 +160,24 @@ export default function ChatInterface({
   useEffect(() => {
     loadAttachedFiles();
   }, [loadAttachedFiles]);
+
+  // Load project info when project context is active
+  useEffect(() => {
+    if (!currentProjectId) {
+      setProjectInfo(null);
+      return;
+    }
+    const loadProjectInfo = async () => {
+      try {
+        const project = await api.getProject(currentProjectId);
+        setProjectInfo(project);
+      } catch (err) {
+        console.error('Failed to load project:', err);
+        setProjectInfo(null);
+      }
+    };
+    loadProjectInfo();
+  }, [currentProjectId]);
 
   const removeAttachedFile = async (filename) => {
     if (!activeConversationId) return;
@@ -297,16 +337,23 @@ export default function ChatInterface({
     setEditingText('');
   };
 
-  // Custom code block renderer with copy button
+  // Custom code block renderer with copy button and chart support
   const CodeBlock = ({ node, inline, className, children, ...props }) => {
-    const match = /language-(\w+)/.exec(className || '');
+    const match = /language-(\w+:?\w*)/.exec(className || '');
+    const language = match ? match[1] : '';
     const code = String(children).replace(/\n$/, '');
+
+    // Handle chart code blocks (e.g., ```chart:bar, ```chart:line, ```chart:pie)
+    if (!inline && isChartLanguage(language)) {
+      const chartType = getChartType(language);
+      return <ChartRenderer type={chartType}>{code}</ChartRenderer>;
+    }
 
     if (!inline && match) {
       return (
         <div className="code-block-wrapper">
           <div className="code-block-header">
-            <span className="code-language">{match[1]}</span>
+            <span className="code-language">{language}</span>
             <button
               className="copy-code-btn"
               onClick={() => copyCode(code)}
@@ -332,7 +379,7 @@ export default function ChatInterface({
           </div>
           <SyntaxHighlighter
             style={oneDark}
-            language={match[1]}
+            language={language}
             PreTag="div"
             customStyle={{
               margin: 0,
@@ -539,20 +586,58 @@ export default function ChatInterface({
     }
   };
 
-  // Load models once
-  useEffect(() => {
-    api.getConfig().then(config => {
+  const loadConfig = async () => {
+    try {
+      const config = await api.getConfig();
       setModels(config.available_models || {});
       setCouncilModels(config.council_models || []);
+      const maskedKeys = config.api_keys || {};
+      setHasPerplexityKey(!!maskedKeys.perplexity);
       // Default to Claude Sonnet 4 or first available
       const modelList = Object.keys(config.available_models || {});
       const defaultModel = modelList.find(m => m.includes('claude-sonnet-4')) || modelList[0];
       setSelectedModel(defaultModel || 'anthropic/claude-sonnet-4');
-    }).catch((error) => {
+    } catch (error) {
       console.error('Failed to load config:', error);
       toast.error('Failed to load model configuration.');
       setSelectedModel('anthropic/claude-sonnet-4');
-    });
+    }
+  };
+
+  // Load models once
+  useEffect(() => {
+    loadConfig();
+  }, []);
+
+  const refreshApiKeys = useCallback(async () => {
+    try {
+      const keysData = await api.getApiKeys();
+      const masked = keysData.api_keys || {};
+      setHasPerplexityKey(!!masked.perplexity);
+    } catch (error) {
+      console.error('Failed to refresh API keys:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshApiKeys();
+    const handleKeysUpdated = () => refreshApiKeys();
+    window.addEventListener('api-keys-updated', handleKeysUpdated);
+    return () => window.removeEventListener('api-keys-updated', handleKeysUpdated);
+  }, [refreshApiKeys]);
+
+  // Refresh council models after settings update
+  useEffect(() => {
+    const handleConfigUpdated = (event) => {
+      const updated = event?.detail;
+      if (updated?.council_models) {
+        setCouncilModels(updated.council_models);
+      } else {
+        loadConfig();
+      }
+    };
+    window.addEventListener('council-config-updated', handleConfigUpdated);
+    return () => window.removeEventListener('council-config-updated', handleConfigUpdated);
   }, []);
 
   // Load features (memory, web_search, etc.)
@@ -573,6 +658,16 @@ export default function ChatInterface({
     }
   };
 
+  const setAutoPreference = async (preference) => {
+    if (features.auto_preference === preference) return;
+    try {
+      const updated = await api.setFeatures({ auto_preference: preference });
+      setFeatures(updated);
+    } catch (e) {
+      console.error('Failed to set auto preference:', e);
+    }
+  };
+
   // Set search mode (Off / Online / Deep)
   const setSearchMode = async (mode) => {
     try {
@@ -582,7 +677,9 @@ export default function ChatInterface({
       } else if (mode === 'online') {
         updates = { web_search: true, deep_search: false };
       } else if (mode === 'deep') {
-        updates = { web_search: false, deep_search: true };
+        updates = hasPerplexityKey
+          ? { web_search: false, deep_search: true }
+          : { web_search: true, deep_search: false };
       }
       const updated = await api.setFeatures(updates);
       setFeatures(updated);
@@ -590,6 +687,39 @@ export default function ChatInterface({
       console.error('Failed to set search mode:', e);
     }
   };
+
+  // Cycle search mode: Off -> Online -> Deep -> Off
+  const cycleSearchMode = useCallback(() => {
+    if (!features.web_search && !features.deep_search) {
+      setSearchMode('online');
+    } else if (features.web_search && !features.deep_search) {
+      if (!hasPerplexityKey) {
+        setSearchMode('off');
+        return;
+      }
+      setSearchMode('deep');
+    } else {
+      setSearchMode('off');
+    }
+  }, [features.web_search, features.deep_search, hasPerplexityKey]);
+
+  useEffect(() => {
+    if (!hasPerplexityKey && features.deep_search) {
+      setSearchMode('online');
+    }
+  }, [hasPerplexityKey, features.deep_search]);
+
+  // Keyboard shortcut: Ctrl+Shift+S to toggle search
+  useEffect(() => {
+    const handleKeyboard = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        cycleSearchMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [cycleSearchMode]);
 
   // Group models by provider
   const groupedModels = useMemo(() => {
@@ -791,12 +921,27 @@ export default function ChatInterface({
     const hasFiles = attachedFiles.length > 0;
 
     // Allow submit if there's text OR images OR files
-    if ((!hasText && !hasImages && !hasFiles) || isLoading || isStreaming || isComparing || !conversation) return;
+    const isBlocked =
+      (!hasText && !hasImages && !hasFiles) ||
+      isLoading ||
+      isStreaming ||
+      isComparing ||
+      !conversation;
+    if (isBlocked) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_1',location:'ChatInterface.jsx:handleSubmit',message:'submit_blocked',data:{mode,hasText,hasImages,hasFiles,isLoading,isStreaming,isComparing,hasConversation:!!conversation},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return;
+    }
 
     const message = input.trim();
     const images = [...pastedImages]; // Copy images before clearing
     // Get filenames from attached files
     const files = attachedFiles.map(f => f.filename);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_2',location:'ChatInterface.jsx:handleSubmit',message:'submit_allowed',data:{mode,activeConversationId,currentConversationId,conversationId:conversation?.id||null,conversationTitle:conversation?.title||null,conversationMessagesLen:Array.isArray(conversation?.messages)?conversation.messages.length:null,messagePreview:String(message).slice(0,120)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Show cost estimate for council mode with long messages
     if (mode === 'council' && message.length > COST_ESTIMATE_THRESHOLD) {
@@ -832,7 +977,10 @@ export default function ChatInterface({
         }
       }
 
-      console.log('📤 Council submit with features:', features);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_council_1',location:'ChatInterface.jsx:handleSubmit',message:'council_submit',data:{conversationId:conversation?.id||null,councilModelsCount:councilModels.length,councilModels:councilModels.slice(0,8),selectedModel,featuresKeys:features?Object.keys(features):null,filesCount:allFiles.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+
       onSendMessage(message, allFiles, features);
     } else if (mode === 'compare') {
       // Compare mode - parallel queries to multiple models
@@ -856,8 +1004,15 @@ export default function ChatInterface({
 
       // Get smart recommendation based on query
       let modelToUse = selectedModel || 'anthropic/claude-sonnet-4'; // Fallback
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_3',location:'ChatInterface.jsx:auto',message:'auto_route_start',data:{conversationId:conversation?.id||null,modelToUseFallback:modelToUse,messageLength:message.length,filesCount:files.length,hasImages:images.length>0},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       try {
-        const routeResult = await api.routeQuery({ query: message, num_recommendations: 1 });
+        const routeResult = await api.routeQuery({
+          query: message,
+          num_recommendations: 1,
+          preference: features.auto_preference || 'quality',
+        });
         if (routeResult.recommended_models?.length > 0) {
           const recommended = routeResult.recommended_models[0];
           modelToUse = recommended.model_id;
@@ -868,21 +1023,34 @@ export default function ChatInterface({
             confidence: routeResult.primary_confidence,
           });
           toast.info(`Auto-selected: ${recommended.name}`);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_3',location:'ChatInterface.jsx:auto',message:'auto_route_success',data:{selectedModel:modelToUse,queryType:routeResult.query_type,confidence:routeResult.primary_confidence},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         }
       } catch (e) {
         console.error('Auto-routing failed, using fallback model:', e);
         toast.warning('Auto-routing unavailable, using default model');
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_3',location:'ChatInterface.jsx:auto',message:'auto_route_error',data:{errorName:e?.name||null,errorMessage:String(e?.message||e).slice(0,200),fallbackModel:modelToUse},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
       }
 
       try {
         setIsStreaming(true);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_4',location:'ChatInterface.jsx:auto',message:'auto_stream_start',data:{conversationId:conversation?.id||null,modelToUse,filesCount:files.length,featuresKeys:features?Object.keys(features):null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         await api.sendQuickMessageStream(
           conversation.id,
           message,
           modelToUse,
           (eventType, event) => {
             if (eventType === 'chunk') {
-              setStreamingText((prev) => prev + event.text);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_21',location:'ChatInterface.jsx:auto',message:'auto_chunk_received',data:{eventKeys:event&&typeof event==='object'?Object.keys(event).slice(0,12):null,hasText:typeof event?.text==='string',hasData:typeof event?.data==='string'},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+              const chunkText = typeof event?.text === 'string' ? event.text : event?.data;
+              setStreamingText((prev) => prev + (chunkText || ''));
             } else if (eventType === 'complete') {
               streamCompleted = true;
               setIsStreaming(false);
@@ -949,13 +1117,18 @@ export default function ChatInterface({
       // Create abort controller for cancellation
       abortControllerRef.current = new AbortController();
       let streamCompleted = false;
+      let debugFirstEventLogged = false;
 
       // Determine which model to use
       let modelToUse = selectedModel;
       if (autoMode) {
         try {
           // Get smart recommendation based on query (legacy autoMode flag)
-          const routeResult = await api.routeQuery({ query: message, num_recommendations: 1 });
+          const routeResult = await api.routeQuery({
+            query: message,
+            num_recommendations: 1,
+            preference: features.auto_preference || 'quality',
+          });
           if (routeResult.recommended_models?.length > 0) {
             const recommended = routeResult.recommended_models[0];
             modelToUse = recommended.model_id;
@@ -978,6 +1151,18 @@ export default function ChatInterface({
           message,
           modelToUse,
           (type, event) => {
+            if (!debugFirstEventLogged) {
+              debugFirstEventLogged = true;
+              const eventDataPreview =
+                typeof event?.data === 'string'
+                  ? event.data.slice(0, 200)
+                  : typeof event?.data?.content === 'string'
+                    ? event.data.content.slice(0, 200)
+                    : null;
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'ChatInterface.jsx:quick_stream',message:'first_stream_event',data:{type,conversationId:conversation?.id||null,eventKeys:event&&typeof event==='object'?Object.keys(event).slice(0,20):null,eventDataPreview},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+            }
             if (type === 'chunk') {
               setStreamingText(prev => prev + event.data);
             } else if (type === 'complete' || type === 'title_complete') {
@@ -985,18 +1170,20 @@ export default function ChatInterface({
               setStreamingText('');
               setPendingUserMessage(null); // Clear pending message as conversation will reload
               onConversationUpdate?.(conversation.id);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'ChatInterface.jsx:quick_stream',message:'stream_terminal_event',data:{type,conversationId:conversation?.id||null,streamCompleted:true},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
             } else if (type === 'error') {
               streamCompleted = true;
               setStreamingText('');
               setPendingUserMessage(null); // Clear on error
               const errorMsg = event.message || 'An error occurred';
               console.error('Quick message error:', errorMsg);
-              // Show error to user
-              if (errorMsg.includes('API key')) {
-                toast.error('API key missing. Go to Settings → API Keys to add your OpenRouter key.');
-              } else {
-                toast.error(errorMsg);
-              }
+              // Show actual error message from backend for better debugging
+              toast.error(errorMsg);
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'ChatInterface.jsx:quick_stream',message:'stream_terminal_event',data:{type,conversationId:conversation?.id||null,streamCompleted:true,errorPreview:String(errorMsg).slice(0,200)},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
             }
           },
           abortControllerRef.current.signal,
@@ -1008,11 +1195,8 @@ export default function ChatInterface({
         if (err.name !== 'AbortError') {
           console.error('Request failed:', err);
           const errorMsg = err.message || 'Request failed';
-          if (errorMsg.includes('API key')) {
-            toast.error('API key missing. Go to Settings → API Keys to add your OpenRouter key.');
-          } else {
-            toast.error(errorMsg);
-          }
+          // Show actual error message for better debugging
+          toast.error(errorMsg);
         }
         setStreamingText('');
         setPendingUserMessage(null); // Clear on error/abort
@@ -1022,6 +1206,68 @@ export default function ChatInterface({
         abortControllerRef.current = null;
       }
     }
+  };
+
+  // Drag and drop file handling
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDraggingOver(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    dragCounterRef.current = 0;
+
+    if (!activeConversationId) {
+      toast.error('Please select or create a conversation first');
+      return;
+    }
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+
+    setUploadingFiles(true);
+    const uploadedFiles = [];
+
+    for (const file of files) {
+      try {
+        const result = await api.uploadFile(activeConversationId, file);
+        uploadedFiles.push({
+          ...result,
+          name: file.name,
+          size: file.size,
+          type: file.type
+        });
+      } catch (err) {
+        toast.error(`Failed to upload ${file.name}: ${err.message}`);
+      }
+    }
+
+    if (uploadedFiles.length > 0) {
+      setAttachedFiles(prev => [...prev, ...uploadedFiles]);
+      toast.success(`${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''} attached`);
+    }
+    setUploadingFiles(false);
   };
 
   const handleKeyDown = (e) => {
@@ -1223,7 +1469,56 @@ export default function ChatInterface({
   }
 
   return (
-    <div className="claude-chat">
+    <div
+      className={`claude-chat ${isDraggingOver ? 'drag-over' : ''}`}
+      onClick={handleChatAreaClick}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drop overlay */}
+      {isDraggingOver && (
+        <div className="drop-overlay">
+          <div className="drop-overlay-content">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>Drop files to attach</span>
+            <span className="drop-hint">Images, code, PDFs, documents (max 25MB)</span>
+          </div>
+        </div>
+      )}
+
+      {/* Upload progress overlay */}
+      {uploadingFiles && (
+        <div className="upload-progress-overlay">
+          <div className="upload-progress-content">
+            <div className="spinner"></div>
+            <span>Uploading files...</span>
+          </div>
+        </div>
+      )}
+
+      {/* Project context badge */}
+      {projectInfo && (
+        <div className="project-context-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          <span className="project-context-name">{projectInfo.name}</span>
+          {projectInfo.system_prompt && (
+            <span className="project-context-indicator" title="Has custom instructions">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="4" />
+              </svg>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       <div className="claude-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         <div className="claude-messages-inner">
@@ -1599,6 +1894,34 @@ export default function ChatInterface({
               </svg>
               Auto
             </button>
+            {mode === 'auto' && (
+              <div className="auto-preference-group" role="group" aria-label="Auto preference">
+                <button
+                  type="button"
+                  className={`auto-preference-btn ${features.auto_preference === 'quality' ? 'active' : ''}`}
+                  onClick={() => setAutoPreference('quality')}
+                  title="Prefer the best quality models"
+                >
+                  Quality
+                </button>
+                <button
+                  type="button"
+                  className={`auto-preference-btn ${features.auto_preference === 'speed' ? 'active' : ''}`}
+                  onClick={() => setAutoPreference('speed')}
+                  title="Prefer faster responses"
+                >
+                  Speed
+                </button>
+                <button
+                  type="button"
+                  className={`auto-preference-btn ${features.auto_preference === 'cost' ? 'active' : ''}`}
+                  onClick={() => setAutoPreference('cost')}
+                  title="Prefer lower-cost models"
+                >
+                  Cost
+                </button>
+              </div>
+            )}
 
             {/* Quick mode with model selector */}
             <div className="claude-mode-group">
@@ -1928,41 +2251,71 @@ export default function ChatInterface({
             {/* Attached Files */}
             {attachedFiles.length > 0 && (
               <div className="uploaded-files-preview">
-                {attachedFiles.map((file) => (
-                  <div
-                    key={file.filename}
-                    className="uploaded-file-chip"
-                    onClick={() => {
-                      if (!activeConversationId) return;
-                      const url = `/api/conversations/${activeConversationId}/files/${file.filename}`;
-                      window.open(url, '_blank', 'noopener,noreferrer');
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    title="Open attachment"
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        const url = `/api/conversations/${activeConversationId}/files/${file.filename}`;
-                        window.open(url, '_blank', 'noopener,noreferrer');
-                      }
-                    }}
+                <div className="uploaded-files-header">
+                  <span className="uploaded-files-count">{attachedFiles.length} file{attachedFiles.length !== 1 ? 's' : ''} attached</span>
+                  <button
+                    type="button"
+                    className="clear-all-files"
+                    onClick={() => setAttachedFiles([])}
+                    title="Remove all"
                   >
-                    <span className="uploaded-file-icon">📎</span>
-                    <span className="uploaded-file-name">{file.name || file.filename}</span>
-                    <button
-                      type="button"
-                      className="remove-uploaded-file"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removeAttachedFile(file.filename);
-                      }}
-                      title="Remove attachment"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
+                    Clear all
+                  </button>
+                </div>
+                <div className="uploaded-files-list">
+                  {attachedFiles.map((file) => {
+                    const filename = file.name || file.filename;
+                    const ext = filename.split('.').pop()?.toLowerCase();
+                    const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext);
+                    const isCode = ['py', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'css', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'sql'].includes(ext);
+                    const isPdf = ext === 'pdf';
+                    const icon = isImage ? '🖼️' : isCode ? '💻' : isPdf ? '📄' : '📎';
+
+                    return (
+                      <div
+                        key={file.filename}
+                        className={`uploaded-file-chip ${isImage ? 'has-thumbnail' : ''}`}
+                        onClick={() => {
+                          if (!activeConversationId) return;
+                          const url = `/api/conversations/${activeConversationId}/files/${file.filename}`;
+                          window.open(url, '_blank', 'noopener,noreferrer');
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        title={`Open ${filename}`}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            const url = `/api/conversations/${activeConversationId}/files/${file.filename}`;
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                          }
+                        }}
+                      >
+                        {isImage && activeConversationId ? (
+                          <img
+                            src={`/api/conversations/${activeConversationId}/files/${file.filename}`}
+                            alt={filename}
+                            className="uploaded-file-thumbnail"
+                          />
+                        ) : (
+                          <span className="uploaded-file-icon">{icon}</span>
+                        )}
+                        <span className="uploaded-file-name">{filename}</span>
+                        <button
+                          type="button"
+                          className="remove-uploaded-file"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeAttachedFile(file.filename);
+                          }}
+                          title="Remove attachment"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -1986,6 +2339,7 @@ export default function ChatInterface({
             )}
 
             <div className="claude-input-wrapper">
+              {/* Textarea first - full width */}
               <textarea
                 ref={textareaRef}
                 className="claude-textarea"
@@ -1998,97 +2352,124 @@ export default function ChatInterface({
                 rows={1}
               />
 
-              {/* File upload button */}
-              <button
-                type="button"
-                onClick={() => setShowFileUpload(true)}
-                className="file-btn"
-                disabled={isLoading || isStreaming || isComparing || !activeConversationId}
-                title={!activeConversationId ? "Start a conversation first to upload files" : "Upload files (PDF, docs, code)"}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-                </svg>
-                {attachedFiles.length > 0 && (
-                  <span className="file-badge">{attachedFiles.length}</span>
-                )}
-              </button>
-
-              {/* Voice input button */}
-              {speechSupported && (
-                <button
-                  type="button"
-                  onClick={toggleListening}
-                  className={`voice-btn ${isListening ? 'listening' : ''}`}
-                  disabled={isLoading || isStreaming || isComparing}
-                  title={isListening ? "Stop listening" : "Voice input"}
-                >
-                  {isListening ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="6" y="6" width="12" height="12" rx="2" />
+              {/* Bottom toolbar with tools on left, send on right */}
+              <div className="claude-input-toolbar">
+                <div className="claude-input-tools">
+                  {/* Search toggle */}
+                  <button
+                    type="button"
+                    onClick={cycleSearchMode}
+                    className={`search-toggle-btn ${features.web_search || features.deep_search ? 'active' : ''} ${features.deep_search ? 'deep' : ''}`}
+                    disabled={isLoading || isStreaming || isComparing}
+                    title={`Search: ${features.deep_search ? `Deep (${hasPerplexityKey ? 'Perplexity' : 'Unavailable'})` : features.web_search ? 'Online (DuckDuckGo)' : 'Off'} (Ctrl+Shift+S)`}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <circle cx="11" cy="11" r="8"/>
+                      <path d="m21 21-4.35-4.35"/>
                     </svg>
-                  ) : (
+                    {(features.web_search || features.deep_search) && (
+                      <span className="search-mode-badge">
+                        {features.deep_search ? 'Deep' : 'Web'}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* File upload button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowFileUpload(true)}
+                    className={`file-btn ${attachedFiles.length > 0 ? 'has-files' : ''}`}
+                    disabled={isLoading || isStreaming || isComparing || !activeConversationId}
+                    title={!activeConversationId ? "Start a conversation first" : "Attach files (or drag & drop anywhere)"}
+                  >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                      <line x1="12" y1="19" x2="12" y2="23" />
-                      <line x1="8" y1="23" x2="16" y2="23" />
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
                     </svg>
-                  )}
-                </button>
-              )}
+                    {attachedFiles.length > 0 && (
+                      <span className="file-badge">{attachedFiles.length}</span>
+                    )}
+                  </button>
 
-              {/* Options toggle */}
-              <div className="options-toggle-wrapper">
-                <button
-                  type="button"
-                  className={`options-toggle-btn ${showOptions ? 'active' : ''} ${(features.web_search || features.deep_search || features.memory || features.code_execution || features.fast_mode) ? 'has-active' : ''}`}
-                  onClick={() => setShowOptions(!showOptions)}
-                  title="Options"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                  </svg>
-                </button>
-                {showOptions && (
-                  <>
-                    <div className="options-backdrop" onClick={() => setShowOptions(false)} />
-                    <div className="options-panel-v2">
-                      {/* Search Section */}
-                      <div className="options-section">
-                        <div className="options-section-header">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <circle cx="11" cy="11" r="8"/>
-                            <path d="m21 21-4.35-4.35"/>
-                          </svg>
-                          <span>Search</span>
-                          <span className="options-provider">Perplexity</span>
+                  {/* Voice input button */}
+                  {speechSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleListening}
+                      className={`voice-btn ${isListening ? 'listening' : ''}`}
+                      disabled={isLoading || isStreaming || isComparing}
+                      title={isListening ? "Stop listening" : "Voice input"}
+                    >
+                      {isListening ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                          <rect x="6" y="6" width="12" height="12" rx="2" />
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                          <line x1="12" y1="19" x2="12" y2="23" />
+                          <line x1="8" y1="23" x2="16" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Options toggle */}
+                  <div className="options-toggle-wrapper">
+                  <button
+                    type="button"
+                    className={`options-toggle-btn ${showOptions ? 'active' : ''} ${(features.web_search || features.deep_search || features.memory || features.code_execution || features.fast_mode) ? 'has-active' : ''}`}
+                    onClick={() => setShowOptions(!showOptions)}
+                    title="Options"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                  </button>
+                  {showOptions && (
+                    <>
+                      <div className="options-backdrop" onClick={() => setShowOptions(false)} />
+                      <div className="options-panel-v2">
+                        {/* Search Section */}
+                        <div className="options-section">
+                          <div className="options-section-header">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                              <circle cx="11" cy="11" r="8"/>
+                              <path d="m21 21-4.35-4.35"/>
+                            </svg>
+                            <span>Search</span>
+                            <span className="options-provider">
+                              {hasPerplexityKey ? 'Perplexity' : 'DuckDuckGo'}
+                            </span>
+                          </div>
+                          <div className="options-toggle-group">
+                            <button
+                              type="button"
+                              className={`option-toggle ${!features.web_search && !features.deep_search ? 'active' : ''}`}
+                              onClick={() => setSearchMode('off')}
+                            >
+                              Off
+                            </button>
+                            <button
+                              type="button"
+                              className={`option-toggle ${features.web_search && !features.deep_search ? 'active' : ''}`}
+                              onClick={() => setSearchMode('online')}
+                            >
+                              Online
+                            </button>
+                            <button
+                              type="button"
+                              className={`option-toggle ${features.deep_search ? 'active' : ''} ${!hasPerplexityKey ? 'tooltip' : ''}`}
+                              onClick={() => setSearchMode('deep')}
+                              disabled={!hasPerplexityKey}
+                              data-tooltip={!hasPerplexityKey ? 'Deep search requires a Perplexity API key.' : undefined}
+                              title={!hasPerplexityKey ? 'Deep search requires a Perplexity API key.' : 'Deep search'}
+                            >
+                              Deep
+                            </button>
+                          </div>
                         </div>
-                        <div className="options-toggle-group">
-                          <button
-                            type="button"
-                            className={`option-toggle ${!features.web_search && !features.deep_search ? 'active' : ''}`}
-                            onClick={() => setSearchMode('off')}
-                          >
-                            Off
-                          </button>
-                          <button
-                            type="button"
-                            className={`option-toggle ${features.web_search && !features.deep_search ? 'active' : ''}`}
-                            onClick={() => setSearchMode('online')}
-                          >
-                            Online
-                          </button>
-                          <button
-                            type="button"
-                            className={`option-toggle ${features.deep_search ? 'active' : ''}`}
-                            onClick={() => setSearchMode('deep')}
-                          >
-                            Deep
-                          </button>
-                        </div>
-                      </div>
 
                       {/* Tools Section */}
                       <div className="options-section">
@@ -2150,39 +2531,43 @@ export default function ChatInterface({
                   </>
                 )}
               </div>
+              </div>
 
-              {/* Stop/Send button */}
-              {(isLoading || isStreaming || isComparing) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mode === 'compare') {
-                      handleStopCompare();
-                    } else if (mode === 'council' && onStopCouncil) {
-                      onStopCouncil();
-                    } else {
-                      handleStop();
-                    }
-                  }}
-                  className="claude-stop-btn"
-                  title="Stop generating"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="6" width="12" height="12" rx="2" />
-                  </svg>
-                </button>
-              ) : (
-                <button
-                  type="submit"
-                  disabled={(!input.trim() && pastedImages.length === 0) || (mode === 'compare' && compareModels.length < 2)}
-                  className="claude-send-btn"
-                  title="Send message"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                  </svg>
-                </button>
-              )}
+              {/* Send/Stop button on the right */}
+              <div className="claude-input-actions">
+                {(isLoading || isStreaming || isComparing) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (mode === 'compare') {
+                        handleStopCompare();
+                      } else if (mode === 'council' && onStopCouncil) {
+                        onStopCouncil();
+                      } else {
+                        handleStop();
+                      }
+                    }}
+                    className="claude-stop-btn"
+                    title="Stop generating"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={(!input.trim() && pastedImages.length === 0) || (mode === 'compare' && compareModels.length < 2)}
+                    className="claude-send-btn"
+                    title="Send message"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              </div>
             </div>
           </form>
 

@@ -758,7 +758,7 @@
   margin: 0 auto;
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 10px;
   animation: messageSlideIn 0.4s var(--transition-spring);
 }
 
@@ -779,16 +779,16 @@
 
 /* Message avatars */
 .message-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 18px;
+  font-size: 14px;
 }
 
 .message-avatar.user-avatar {
@@ -1188,42 +1188,114 @@
   left: 24px;
   right: 24px;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 16px;
   margin-bottom: 8px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: 12px;
+  border-radius: 16px;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.uploaded-files-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.uploaded-files-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.clear-all-files {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.clear-all-files:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.uploaded-files-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .uploaded-file-chip {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border-secondary);
-  border-radius: 20px;
+  border-radius: 10px;
   font-size: 13px;
   color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.uploaded-file-chip:hover {
+  border-color: var(--accent-primary);
+  background: var(--accent-light);
+}
+
+.uploaded-file-chip.has-thumbnail {
+  padding: 4px 12px 4px 4px;
+}
+
+.uploaded-file-thumbnail {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
 }
 
 .uploaded-file-icon {
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .uploaded-file-name {
-  max-width: 150px;
+  max-width: 120px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-weight: 500;
 }
 
 .remove-uploaded-file {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1233,12 +1305,14 @@
   color: var(--text-tertiary);
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
+  margin-left: auto;
 }
 
 .remove-uploaded-file:hover {
   background: #ef4444;
   color: white;
+  transform: scale(1.1);
 }
 
 [data-theme="dark"] .uploaded-files-preview {
@@ -1250,6 +1324,10 @@
 [data-theme="dark"] .uploaded-file-chip {
   background: #2a2a2a;
   border-color: #404040;
+}
+
+[data-theme="dark"] .uploaded-file-chip:hover {
+  background: rgba(59, 130, 246, 0.15);
 }
 
 /* Voice input button */
@@ -1345,6 +1423,24 @@
 .file-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.file-btn.has-files {
+  background: var(--accent-light);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.file-btn.has-files::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+  border-radius: 50%;
 }
 
 /* Send button */
@@ -3242,6 +3338,124 @@ input:focus-visible {
    PREMIUM UI POLISH - 10/10 feeling
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Input wrapper - vertical layout: textarea on top, toolbar below */
+.claude-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Textarea takes full width */
+.claude-input-wrapper .claude-textarea {
+  width: 100%;
+}
+
+/* Bottom toolbar: tools left, send button right */
+.claude-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.claude-input-tools,
+.claude-input-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Smaller, more subtle tool buttons */
+.claude-input-tools .file-btn,
+.claude-input-tools .voice-btn,
+.claude-input-tools .options-toggle-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.claude-input-tools .search-toggle-btn {
+  min-width: 36px;
+  height: 36px;
+}
+
+/* Send button slightly larger for emphasis */
+.claude-input-actions .claude-send-btn,
+.claude-input-actions .claude-stop-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.auto-preference-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+.auto-preference-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.auto-preference-btn:hover {
+  color: var(--text-primary);
+}
+
+.auto-preference-btn.active {
+  background: var(--bg-primary);
+  color: var(--accent-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.option-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.option-toggle.tooltip:disabled:hover::before,
+.option-toggle.tooltip:disabled:hover::after {
+  opacity: 1;
+}
+
+@media (max-width: 600px) {
+  .claude-input-wrapper {
+    gap: 10px;
+  }
+
+  .claude-input-toolbar {
+    gap: 8px;
+  }
+
+  .claude-input-tools {
+    gap: 4px;
+  }
+
+  /* Even smaller buttons on mobile */
+  .claude-input-tools .file-btn,
+  .claude-input-tools .voice-btn,
+  .claude-input-tools .options-toggle-btn,
+  .claude-input-tools .search-toggle-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .claude-input-actions .claude-send-btn,
+  .claude-input-actions .claude-stop-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
 /* Premium input area - Claude AI style */
 .claude-input-container {
   background: var(--bg-secondary);
@@ -3586,4 +3800,282 @@ input:focus-visible {
 
 [data-theme="dark"] .prompt-icon {
   background: linear-gradient(135deg, rgba(212, 163, 115, 0.2) 0%, rgba(233, 196, 106, 0.1) 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DRAG AND DROP FILE UPLOAD
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.claude-chat.drag-over {
+  position: relative;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.08);
+  backdrop-filter: blur(4px);
+  border: 3px dashed var(--accent-primary);
+  border-radius: var(--radius-lg);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dropOverlayFadeIn 0.2s ease;
+}
+
+@keyframes dropOverlayFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+
+.drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  text-align: center;
+  animation: dropContentBounce 0.3s ease;
+}
+
+@keyframes dropContentBounce {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.drop-overlay-content svg {
+  color: var(--accent-primary);
+  animation: dropIconFloat 1.5s ease-in-out infinite;
+}
+
+@keyframes dropIconFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.drop-overlay-content span {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.drop-overlay-content .drop-hint {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Upload progress overlay */
+.upload-progress-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-progress-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 48px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+}
+
+.upload-progress-content .spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border-primary);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.upload-progress-content span {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .drop-overlay {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+[data-theme="dark"] .drop-overlay-content {
+  background: var(--bg-secondary);
+}
+
+[data-theme="dark"] .upload-progress-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+[data-theme="dark"] .upload-progress-content {
+  background: var(--bg-secondary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SEARCH TOGGLE BUTTON (Visible in main UI)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.search-toggle-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.search-toggle-btn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.search-toggle-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search-toggle-btn.active {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%);
+  border-color: #22c55e;
+  color: #22c55e;
+}
+
+.search-toggle-btn.active.deep {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+}
+
+.search-mode-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+}
+
+.search-toggle-btn.active .search-mode-badge {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
+.search-toggle-btn.active.deep .search-mode-badge {
+  background: rgba(139, 92, 246, 0.15);
+  color: #7c3aed;
+}
+
+/* Dark mode */
+[data-theme="dark"] .search-toggle-btn {
+  background: var(--bg-secondary);
+}
+
+[data-theme="dark"] .search-toggle-btn.active {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.05) 100%);
+}
+
+[data-theme="dark"] .search-toggle-btn.active.deep {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+}
+
+[data-theme="dark"] .search-mode-badge {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .search-toggle-btn.active .search-mode-badge {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+[data-theme="dark"] .search-toggle-btn.active.deep .search-mode-badge {
+  background: rgba(139, 92, 246, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROJECT CONTEXT BADGE
+   Shows when conversation is linked to a project
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.project-context-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  margin: 8px 16px 0;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.project-context-badge svg {
+  color: #8b5cf6;
+  flex-shrink: 0;
+}
+
+.project-context-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-context-indicator {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  color: #22c55e;
+  opacity: 0.8;
+}
+
+.project-context-indicator svg {
+  color: inherit;
+}
+
+/* Dark mode */
+[data-theme="dark"] .project-context-badge {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(59, 130, 246, 0.12) 100%);
+  border-color: rgba(139, 92, 246, 0.25);
 }

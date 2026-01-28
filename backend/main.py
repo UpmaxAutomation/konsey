@@ -1,12 +1,27 @@
 """FastAPI backend for LLM Council."""
 
+# Ensure UTF-8 encoding for all I/O operations (prevents 'ascii' codec errors)
+import sys
+import io
+# Reconfigure stdout/stderr to use UTF-8 (handles Unicode like \u2028)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+else:
+    # Fallback for older Python versions
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+import os
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, PlainTextResponse, HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 import uuid
 import json
 import asyncio
@@ -50,7 +65,8 @@ from .routes.auth import router as auth_router
 from .auth.dependencies import get_current_user, get_current_user_optional
 from .database.connection import get_db, init_db
 from .database import crud as db_crud
-from .database.models import User
+from .database.crud import projects as projects_crud
+from .database.models import User, Project
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
@@ -70,6 +86,11 @@ _models_last_synced = None
 # Store active streams for cancellation support
 # Maps conversation_id -> asyncio.Event (set when cancellation requested)
 _active_streams: Dict[str, asyncio.Event] = {}
+
+
+def _json_sse(data: Any) -> str:
+    """Serialize data to JSON for SSE, handling Unicode properly."""
+    return json.dumps(data, ensure_ascii=False)
 
 
 @asynccontextmanager
@@ -577,11 +598,15 @@ async def get_config(
         if settings:
             council_models = settings.council_models or DEFAULT_COUNCIL_MODELS.copy()
             chairman_model = settings.chairman_model or DEFAULT_CHAIRMAN_MODEL
+            base_features = get_enhanced_features()
+            user_features = settings.enhanced_features or {}
+            enhanced_features = {**base_features, **user_features}
         else:
             # Create default settings for new user
             settings = await db_crud.settings.create(db, current_user.id)
             council_models = settings.council_models
             chairman_model = settings.chairman_model
+            enhanced_features = get_enhanced_features()
         
         # Get user API keys (masked) - optimized single query
         all_providers = [
@@ -645,6 +670,7 @@ async def get_config(
         council_models = get_council_models()
         chairman_model = get_chairman_model()
         api_keys = get_api_keys()
+        enhanced_features = get_enhanced_features()
     
     return {
         "council_models": council_models,
@@ -656,7 +682,8 @@ async def get_config(
         },
         "models_count": len(all_models),
         "last_synced": _models_last_synced,
-        "api_keys": api_keys
+        "api_keys": api_keys,
+        "enhanced_features": enhanced_features
     }
 
 
@@ -1065,34 +1092,40 @@ async def set_api_key_endpoint(
             detail=f"Invalid provider. Must be one of: {', '.join(valid_providers)}"
         )
 
-    # If user is authenticated, store in database (user-specific)
-    if current_user:
-        try:
-            key_record = await db_crud.api_keys.set_user_key(
-                db,
-                current_user.id,
-                request.provider,
-                request.api_key or "",
-            )
-            # Commit the transaction to persist the key
-            await db.commit()
-            # Verify the key was actually saved by querying it back
-            verify_key = await db_crud.api_keys.get_user_key(db, current_user.id, request.provider)
-            if not verify_key and request.api_key:
-                # Key was saved but can't be retrieved - this is a problem
-                logger.warning(f"API key saved but verification failed for user {current_user.id}, provider {request.provider}")
-        except Exception as e:
-            await db.rollback()
-            # Log the actual error for debugging (without sensitive data)
-            logger.error(f"Failed to save API key for user {current_user.id}, provider {request.provider}: {type(e).__name__}")
-            # Return generic error to client (don't expose internal details)
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to save API key. Please try again."
-            )
-    else:
-        # Fallback to global config for anonymous users
-        set_api_key(request.provider, request.api_key)
+    # Require authentication for API key management
+    if not current_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to save API keys. Please log in and try again."
+        )
+
+    # Store in database (user-specific)
+    try:
+        logger.info(f"Saving API key for user {current_user.id}, provider {request.provider}")
+        key_record = await db_crud.api_keys.set_user_key(
+            db,
+            current_user.id,
+            request.provider,
+            request.api_key or "",
+        )
+        # Commit the transaction to persist the key
+        await db.commit()
+        # Verify the key was actually saved by querying it back
+        verify_key = await db_crud.api_keys.get_user_key(db, current_user.id, request.provider)
+        if not verify_key and request.api_key:
+            # Key was saved but can't be retrieved - this is a problem
+            logger.warning(f"API key saved but verification failed for user {current_user.id}, provider {request.provider}")
+        else:
+            logger.info(f"API key saved successfully for user {current_user.id}, provider {request.provider}")
+    except Exception as e:
+        await db.rollback()
+        # Log the actual error for debugging (without sensitive data)
+        logger.error(f"Failed to save API key for user {current_user.id}, provider {request.provider}: {type(e).__name__}")
+        # Return generic error to client (don't expose internal details)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to save API key. Please try again."
+        )
 
     return {
         "status": "success",
@@ -1130,6 +1163,8 @@ async def delete_api_key_endpoint(
     Raises:
         HTTPException 400: If provider name is invalid
     """
+    logger.info(f"delete_api_key_endpoint called: provider={provider}, user_authenticated={current_user is not None}")
+
     valid_providers = [
         "openrouter",
         "openai",
@@ -1143,16 +1178,27 @@ async def delete_api_key_endpoint(
         "perplexity"
     ]
     if provider not in valid_providers:
+        logger.warning(f"Invalid provider in delete request: {provider}")
         raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")
 
     if current_user:
         # Delete user-specific key
-        await db_crud.api_keys.delete_user_key(db, current_user.id, provider)
+        logger.info(f"Deleting API key for user {current_user.id}, provider {provider}")
+        deleted = await db_crud.api_keys.delete_user_key(db, current_user.id, provider)
+        logger.info(f"Delete result: rows_deleted={deleted}")
         # Commit the transaction to persist the deletion
         await db.commit()
+
+        if not deleted:
+            logger.warning(f"No API key found to delete for user {current_user.id}, provider {provider}")
+            # Still return success - the key doesn't exist, which is the desired state
     else:
-        # Fallback to global config
-        set_api_key(provider, "")
+        logger.warning(f"No authenticated user for delete request - this may be unexpected")
+        # Return an error instead of silently using global config
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required to delete API keys. Please log in and try again."
+        )
 
     return {
         "status": "success",
@@ -1160,6 +1206,82 @@ async def delete_api_key_endpoint(
         "provider": provider,
         "user_specific": current_user is not None
     }
+
+
+@app.get(
+    "/api/keys/debug",
+    tags=["config"],
+    summary="Debug API Key Configuration",
+    response_description="Diagnostic information about API key setup"
+)
+async def debug_api_keys(
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Debug endpoint to check API key configuration status.
+
+    Helps diagnose issues with API key setup by showing:
+    - Whether user is authenticated
+    - Which providers have keys configured
+    - Whether keys are active
+    - Whether system keys exist
+
+    Returns:
+        dict: Diagnostic information (no actual key values exposed)
+    """
+    result = {
+        "authenticated": current_user is not None,
+        "user_id": str(current_user.id) if current_user else None,
+        "providers": {}
+    }
+
+    providers = ["openrouter", "openai", "anthropic", "google", "deepseek", "mistralai", "cohere", "qwen", "perplexity"]
+
+    if current_user:
+        from sqlalchemy import select
+        from .database.models import UserAPIKey
+
+        # Check each provider
+        for provider in providers:
+            provider_info = {"has_user_key": False, "is_active": None, "has_system_key": False, "has_env_key": False}
+
+            # Check user key
+            key_result = await db.execute(
+                select(UserAPIKey).where(
+                    UserAPIKey.user_id == current_user.id,
+                    UserAPIKey.provider == provider
+                )
+            )
+            key_record = key_result.scalar_one_or_none()
+            if key_record:
+                provider_info["has_user_key"] = True
+                provider_info["is_active"] = key_record.is_active
+
+            # Check system key
+            system_key = await db_crud.api_keys.get_system_key(db, provider)
+            provider_info["has_system_key"] = system_key is not None
+
+            # Check env key (only for openrouter)
+            if provider == "openrouter":
+                provider_info["has_env_key"] = bool(os.getenv("OPENROUTER_API_KEY"))
+
+            result["providers"][provider] = provider_info
+    else:
+        # Not authenticated - check for env/system keys only
+        for provider in providers:
+            provider_info = {"has_user_key": False, "is_active": None, "has_system_key": False, "has_env_key": False}
+
+            # Check system key
+            system_key = await db_crud.api_keys.get_system_key(db, provider)
+            provider_info["has_system_key"] = system_key is not None
+
+            if provider == "openrouter":
+                provider_info["has_env_key"] = bool(os.getenv("OPENROUTER_API_KEY"))
+
+            result["providers"][provider] = provider_info
+
+    return result
 
 
 @app.get(
@@ -1681,6 +1803,7 @@ class FeaturesRequest(BaseModel):
     deep_search: Optional[bool] = None
     code_execution: Optional[bool] = None
     memory: Optional[bool] = None
+    auto_preference: Optional[Literal["quality", "speed", "cost"]] = None
 
 
 @app.get(
@@ -1689,7 +1812,10 @@ class FeaturesRequest(BaseModel):
     summary="Get Enhanced Features Configuration",
     response_description="Current feature toggle states"
 )
-async def get_features():
+async def get_features(
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Get enhanced features configuration.
 
@@ -1701,7 +1827,14 @@ async def get_features():
     Returns:
         dict: Feature configuration with boolean flags
     """
-    return get_enhanced_features()
+    default_features = get_enhanced_features()
+    if current_user:
+        settings = await db_crud.settings.get_by_user_id(db, current_user.id)
+        if settings and settings.enhanced_features:
+            user_features = settings.enhanced_features
+            merged = {**default_features, **user_features}
+            return merged
+    return default_features
 
 
 @app.post(
@@ -1710,7 +1843,11 @@ async def get_features():
     summary="Update Enhanced Features",
     response_description="Updated feature configuration"
 )
-async def update_features(request: FeaturesRequest):
+async def update_features(
+    request: FeaturesRequest,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
     """
     Update enhanced features configuration.
 
@@ -1732,8 +1869,16 @@ async def update_features(request: FeaturesRequest):
         updates["code_execution"] = request.code_execution
     if request.memory is not None:
         updates["memory"] = request.memory
+    if request.auto_preference is not None:
+        updates["auto_preference"] = request.auto_preference
 
     if updates:
+        if current_user:
+            settings = await db_crud.settings.get_by_user_id(db, current_user.id)
+            base_features = settings.enhanced_features if settings else get_enhanced_features()
+            merged = {**base_features, **updates}
+            await db_crud.settings.set_enhanced_features(db, current_user.id, merged)
+            return merged
         set_enhanced_features(updates)
 
     return get_enhanced_features()
@@ -2034,7 +2179,7 @@ async def run_agent_task_stream(task_id: str, max_steps: int = 10):
     async def event_generator():
         try:
             # Send initial status
-            yield f"data: {json.dumps({'type': 'started', 'task_id': task_id})}\n\n"
+            yield f"data: {_json_sse({'type': 'started', 'task_id': task_id})}\n\n"
 
             def on_step(step):
                 # This callback is called after each step
@@ -2067,7 +2212,7 @@ async def run_agent_task_stream(task_id: str, max_steps: int = 10):
                             "status": last_step.status
                         }
                     }
-                    yield f"data: {json.dumps(step_event)}\n\n"
+                    yield f"data: {_json_sse(step_event)}\n\n"
 
                 if task.status == AgentStatus.COMPLETED:
                     break
@@ -2083,14 +2228,14 @@ async def run_agent_task_stream(task_id: str, max_steps: int = 10):
                 "type": "complete",
                 "task": task_to_dict(task)
             }
-            yield f"data: {json.dumps(completion_event)}\n\n"
+            yield f"data: {_json_sse(completion_event)}\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {_json_sse({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -3216,14 +3361,43 @@ async def tool_perplexity_search(request: SearchRequest):
         HTTPException 500: If search fails
     """
     from .config import get_perplexity_api_key, get_perplexity_models
-    from .tools import perplexity_search
+    from .tools import perplexity_search, web_search
 
     api_key = get_perplexity_api_key()
     if not api_key:
-        raise HTTPException(
-            status_code=403,
-            detail="Perplexity API key not configured. Add it in Settings or set PERPLEXITY_API_KEY env var."
-        )
+        search_result = await web_search(request.query, request.num_results)
+        if isinstance(search_result, dict):
+            if search_result.get("error"):
+                return {
+                    "query": request.query,
+                    "summary": "",
+                    "citations": [],
+                    "results": [],
+                    "model": "duckduckgo",
+                    "provider": "duckduckgo",
+                    "error": True,
+                    "message": search_result.get(
+                        "message",
+                        "DuckDuckGo search unavailable. Proceeding without web context."
+                    ),
+                    "fallback_used": True,
+                }
+            results = search_result.get("results", [])
+            message = search_result.get("message", "DuckDuckGo results")
+        else:
+            results = search_result or []
+            message = "DuckDuckGo results"
+        return {
+            "query": request.query,
+            "summary": "",
+            "citations": [],
+            "results": results,
+            "model": "duckduckgo",
+            "provider": "duckduckgo",
+            "error": False,
+            "message": message,
+            "fallback_used": True,
+        }
 
     try:
         models = get_perplexity_models()
@@ -3239,7 +3413,11 @@ async def tool_perplexity_search(request: SearchRequest):
             "summary": result.get("summary", ""),
             "citations": result.get("citations", []),
             "results": result.get("results", []),
-            "model": models["search"]
+            "model": models["search"],
+            "provider": "perplexity",
+            "error": False,
+            "message": "Perplexity search results",
+            "fallback_used": False
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -3832,11 +4010,16 @@ async def send_message(
     if is_first_message:
         title = await generate_conversation_title(request.content, user_id=user_id, db=db)
         await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
+
+    # Extract project_id from conversation for context injection
+    project_id = conversation.get("project_id")
+
     stage1_results, stage2_results, stage3_result, metadata = await run_full_council(
         request.content,
         conversation_context=conversation_context,
         conversation_id=conversation_id,
         attached_files=request.attached_files,
+        project_id=project_id,
         web_search=request.web_search,
         deep_search=request.deep_search,
         user_id=user_id,
@@ -3901,8 +4084,9 @@ async def send_message_stream(
     # Check if conversation exists
     user_id = current_user.id if current_user else None
     conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
-    if conversation is None and current_user:
-        conversation = await storage.get_conversation(conversation_id, user_id=None, db=db)
+    # Fallback: try without user scoping if not found (handles user mismatch scenarios)
+    if conversation is None:
+        conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db, allow_any_user=True)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -3935,8 +4119,11 @@ async def send_message_stream(
             stage3_result = None
             metadata = None
 
+            # Extract project_id for context injection
+            project_id = conversation.get("project_id")
+
             # Stream the council process with real-time token updates (using user-specific API keys)
-            logger.info(f"Council request: fast_mode={request.fast_mode}, web_search={request.web_search}, deep_search={request.deep_search}, files={request.attached_files}")
+            logger.info(f"Council request: fast_mode={request.fast_mode}, web_search={request.web_search}, deep_search={request.deep_search}, files={request.attached_files}, project_id={project_id}")
             async for event in run_full_council_stream(
                 request.content,
                 conversation_context,
@@ -3946,17 +4133,18 @@ async def send_message_stream(
                 db=db,
                 fast_mode=request.fast_mode,
                 conversation_id=conversation_id,
-                attached_files=request.attached_files
+                attached_files=request.attached_files,
+                project_id=project_id
             ):
                 # Check for cancellation
                 if cancel_event.is_set():
                     cancelled = True
                     logger.info("stream_cancellation_detected", conversation_id=conversation_id)
-                    yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Stream cancelled by user', 'partial': True})}\n\n"
+                    yield f"data: {_json_sse({'type': 'cancelled', 'message': 'Stream cancelled by user', 'partial': True})}\n\n"
                     break
 
                 # Forward all events to client
-                yield f"data: {json.dumps(event)}\n\n"
+                yield f"data: {_json_sse(event)}\n\n"
 
                 # Capture final results for storage
                 if event.get("type") == "stage1_complete":
@@ -3977,7 +4165,7 @@ async def send_message_stream(
             if title_task and not cancelled:
                 title = await title_task
                 await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                yield f"data: {_json_sse({'type': 'title_complete', 'data': {'title': title}})}\n\n"
             elif title_task and cancelled:
                 # Cancel the title task if stream was cancelled
                 title_task.cancel()
@@ -3995,7 +4183,7 @@ async def send_message_stream(
         except Exception as e:
             await db.rollback()
             # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {_json_sse({'type': 'error', 'message': str(e)})}\n\n"
             raise
         finally:
             # Always clean up the stream registration
@@ -4003,7 +4191,7 @@ async def send_message_stream(
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -4074,13 +4262,13 @@ async def send_quick_mode(
         HTTPException 404: Conversation not found
         HTTPException 400: Invalid model specified
     """
+    user_id = current_user.id if current_user else None
     # Check if conversation exists
-    conversation = await storage.get_conversation(conversation_id, user_id=current_user.id if current_user else None, db=db)
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     # Get user-specific chairman model if available
-    user_id = current_user.id if current_user else None
     if user_id:
         settings = await db_crud.settings.get_by_user_id(db, user_id)
         if settings and settings.chairman_model:
@@ -4138,18 +4326,18 @@ async def send_quick_mode(
                 if cancel_event.is_set():
                     cancelled = True
                     logger.info("quick_stream_cancellation_detected", conversation_id=conversation_id)
-                    yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Stream cancelled by user', 'partial_content': full_content})}\n\n"
+                    yield f"data: {_json_sse({'type': 'cancelled', 'message': 'Stream cancelled by user', 'partial_content': full_content})}\n\n"
                     break
 
                 if chunk.get("error"):
-                    yield f"data: {json.dumps({'type': 'error', 'message': chunk.get('message', 'Unknown error')})}\n\n"
+                    yield f"data: {_json_sse({'type': 'error', 'message': chunk.get('message', 'Unknown error')})}\n\n"
                     return
 
                 if chunk.get("chunk"):
                     # Send incremental token chunk
                     text_chunk = chunk["chunk"]
                     full_content += text_chunk
-                    yield f"data: {json.dumps({'type': 'chunk', 'data': text_chunk})}\n\n"
+                    yield f"data: {_json_sse({'type': 'chunk', 'data': text_chunk})}\n\n"
 
                 if chunk.get("done"):
                     # Extract final metadata
@@ -4160,7 +4348,7 @@ async def send_quick_mode(
             if title_task and not cancelled:
                 title = await title_task
                 await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                yield f"data: {_json_sse({'type': 'title_complete', 'data': {'title': title}})}\n\n"
             elif title_task and cancelled:
                 title_task.cancel()
 
@@ -4187,12 +4375,12 @@ async def send_quick_mode(
                 if thinking:
                     completion_data["data"]["thinking"] = thinking
 
-                yield f"data: {json.dumps(completion_data)}\n\n"
+                yield f"data: {_json_sse(completion_data)}\n\n"
 
         except Exception as e:
             await db.rollback()
             # Send error event
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {_json_sse({'type': 'error', 'message': str(e)})}\n\n"
             raise
         finally:
             # Always clean up the stream registration
@@ -4200,7 +4388,7 @@ async def send_quick_mode(
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -4245,7 +4433,16 @@ async def send_quick_message(
         HTTPException 400: Invalid model specified
     """
     # Check if conversation exists
-    conversation = await storage.get_conversation(conversation_id, user_id=current_user.id if current_user else None, db=db)
+    user_id = current_user.id if current_user else None
+    conversation = await storage.get_conversation(conversation_id, user_id=user_id, db=db)
+    # Fallback: try without user scoping if not found (handles user mismatch scenarios)
+    if conversation is None:
+        conversation = await storage.get_conversation(
+            conversation_id,
+            user_id=user_id,
+            db=db,
+            allow_any_user=True
+        )
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -4316,18 +4513,21 @@ async def send_quick_message(
                     image_files = [f for f in request.attached_files if file_utils.is_image_file(f)]
                     text_files = [f for f in request.attached_files if not file_utils.is_image_file(f)]
 
-                    # Add text files to context
+                    # Add text files to context (ranked by relevance to user query)
                     if text_files:
                         file_context = file_utils.format_files_for_context(
                             conversation_id,
-                            text_files
+                            text_files,
+                            query=request.content
                         )
                         if file_context:
                             context_sections.append(file_context)
 
                     # Prepare images for vision models
                     if image_files:
-                        image_content = file_utils.format_files_for_vision(conversation_id, image_files)
+                        image_content = file_utils.format_files_for_vision(
+                            conversation_id, image_files, query=request.content
+                        )
                 except Exception as err:
                     logger.warning(
                         "quick_message_file_context_error",
@@ -4382,18 +4582,18 @@ async def send_quick_message(
                 if cancel_event.is_set():
                     cancelled = True
                     logger.info("quick_message_stream_cancelled", conversation_id=conversation_id)
-                    yield f"data: {json.dumps({'type': 'cancelled', 'message': 'Stream cancelled by user', 'partial_content': full_content})}\n\n"
+                    yield f"data: {_json_sse({'type': 'cancelled', 'message': 'Stream cancelled by user', 'partial_content': full_content})}\n\n"
                     break
 
                 if chunk.get("error"):
-                    yield f"data: {json.dumps({'type': 'error', 'message': chunk.get('message', 'Unknown error')})}\n\n"
+                    yield f"data: {_json_sse({'type': 'error', 'message': chunk.get('message', 'Unknown error')})}\n\n"
                     return
 
                 if chunk.get("chunk"):
                     # Send incremental chunk
                     text_chunk = chunk["chunk"]
                     full_content += text_chunk
-                    yield f"data: {json.dumps({'type': 'chunk', 'data': text_chunk})}\n\n"
+                    yield f"data: {_json_sse({'type': 'chunk', 'data': text_chunk})}\n\n"
 
                 if chunk.get("done"):
                     # Extract final metadata
@@ -4404,7 +4604,7 @@ async def send_quick_message(
             if title_task and not cancelled:
                 title = await title_task
                 await storage.update_conversation_title(conversation_id, title, user_id=user_id, db=db)
-                yield f"data: {json.dumps({'type': 'title_complete', 'data': {'title': title}})}\n\n"
+                yield f"data: {_json_sse({'type': 'title_complete', 'data': {'title': title}})}\n\n"
             elif title_task and cancelled:
                 title_task.cancel()
 
@@ -4431,7 +4631,7 @@ async def send_quick_message(
                 if thinking:
                     completion_data["data"]["thinking"] = thinking
 
-                yield f"data: {json.dumps(completion_data)}\n\n"
+                yield f"data: {_json_sse(completion_data)}\n\n"
 
         except Exception as e:
             await db.rollback()
@@ -4440,7 +4640,7 @@ async def send_quick_message(
             # In development, include more details
             if os.getenv("ENVIRONMENT", "development").lower() != "production":
                 error_message = f"{type(e).__name__}: {error_message}"
-            yield f"data: {json.dumps({'type': 'error', 'message': error_message})}\n\n"
+            yield f"data: {_json_sse({'type': 'error', 'message': error_message})}\n\n"
             raise
         finally:
             # Always clean up the stream registration
@@ -4448,7 +4648,7 @@ async def send_quick_message(
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
@@ -5030,18 +5230,34 @@ async def delete_conversation_file(
     summary="List All Projects",
     response_description="List of project metadata"
 )
-async def list_all_projects():
+async def list_all_projects(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    List all projects (metadata only).
+    List all projects for the current user (metadata only).
 
-    Returns a list of all projects with their basic information,
+    Returns a list of all projects owned by the authenticated user,
     not including full knowledge base content.
 
     Returns:
         dict: Project list containing:
             - projects: List of project metadata (id, name, description, created_at)
     """
-    return projects.list_projects()
+    project_list = await projects_crud.list_by_user(db, current_user.id)
+    return {
+        "projects": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "description": p.description,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                "conversation_count": len(p.conversations) if hasattr(p, 'conversations') and p.conversations else 0
+            }
+            for p in project_list
+        ]
+    }
 
 
 @app.post(
@@ -5050,9 +5266,13 @@ async def list_all_projects():
     summary="Create Project",
     response_description="Created project details"
 )
-async def create_new_project(request: CreateProjectRequest):
+async def create_new_project(
+    request: CreateProjectRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
-    Create a new project workspace.
+    Create a new project workspace for the current user.
 
     Projects provide isolated workspaces with their own knowledge base,
     system prompts, and council configuration.
@@ -5074,14 +5294,33 @@ async def create_new_project(request: CreateProjectRequest):
             - knowledge_base: Empty knowledge base array
             - created_at: Creation timestamp
     """
-    project = projects.create_project(
+    council_config = None
+    if request.council_models or request.chairman_model:
+        council_config = {
+            "council_models": request.council_models,
+            "chairman_model": request.chairman_model
+        }
+
+    project = await projects_crud.create(
+        db,
+        user_id=current_user.id,
         name=request.name,
         description=request.description or "",
         system_prompt=request.system_prompt or "",
-        council_models=request.council_models,
-        chairman_model=request.chairman_model
+        council_config=council_config
     )
-    return project
+    await db.commit()
+
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "description": project.description,
+        "system_prompt": project.system_prompt,
+        "knowledge_base": project.knowledge_base or [],
+        "memory": project.memory or {"facts": [], "decisions": [], "preferences": {}},
+        "council_config": project.council_config,
+        "created_at": project.created_at.isoformat() if project.created_at else None
+    }
 
 
 @app.get(
@@ -5090,11 +5329,16 @@ async def create_new_project(request: CreateProjectRequest):
     summary="Get Project Details",
     response_description="Full project information"
 )
-async def get_project_details(project_id: str):
+async def get_project_details(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Get a specific project with all details.
 
     Retrieves complete project information including knowledge base entries.
+    Only returns projects owned by the authenticated user.
 
     Args:
         project_id: The unique project identifier
@@ -5110,12 +5354,29 @@ async def get_project_details(project_id: str):
             - council_config: Custom council configuration (if set)
 
     Raises:
-        HTTPException 404: If project not found
+        HTTPException 404: If project not found or not owned by user
     """
-    project = projects.get_project(project_id)
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    project = await projects_crud.get_with_conversations(db, project_uuid, current_user.id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "description": project.description,
+        "system_prompt": project.system_prompt,
+        "knowledge_base": project.knowledge_base or [],
+        "memory": project.memory or {"facts": [], "decisions": [], "preferences": {}},
+        "council_config": project.council_config,
+        "conversations": [str(c.id) for c in project.conversations] if project.conversations else [],
+        "created_at": project.created_at.isoformat() if project.created_at else None,
+        "updated_at": project.updated_at.isoformat() if project.updated_at else None
+    }
 
 
 @app.put(
@@ -5124,11 +5385,17 @@ async def get_project_details(project_id: str):
     summary="Update Project",
     response_description="Updated project details"
 )
-async def update_existing_project(project_id: str, request: UpdateProjectRequest):
+async def update_existing_project(
+    project_id: str,
+    request: UpdateProjectRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Update a project's configuration.
 
     Updates specified fields of a project. Only provided fields are updated.
+    Only the project owner can update their project.
 
     Args:
         project_id: The unique project identifier
@@ -5142,8 +5409,13 @@ async def update_existing_project(project_id: str, request: UpdateProjectRequest
         dict: Updated project with all fields
 
     Raises:
-        HTTPException 404: If project not found
+        HTTPException 404: If project not found or not owned by user
     """
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
     updates = {}
     if request.name is not None:
         updates["name"] = request.name
@@ -5154,10 +5426,22 @@ async def update_existing_project(project_id: str, request: UpdateProjectRequest
     if request.council_config is not None:
         updates["council_config"] = request.council_config
 
-    project = projects.update_project(project_id, updates)
+    project = await projects_crud.update_project(db, project_uuid, current_user.id, **updates)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return project
+
+    await db.commit()
+
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "description": project.description,
+        "system_prompt": project.system_prompt,
+        "knowledge_base": project.knowledge_base or [],
+        "memory": project.memory or {"facts": [], "decisions": [], "preferences": {}},
+        "council_config": project.council_config,
+        "updated_at": project.updated_at.isoformat() if project.updated_at else None
+    }
 
 
 @app.delete(
@@ -5166,12 +5450,16 @@ async def update_existing_project(project_id: str, request: UpdateProjectRequest
     summary="Delete Project",
     response_description="Deletion confirmation"
 )
-async def delete_existing_project(project_id: str):
+async def delete_existing_project(
+    project_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Delete a project and its knowledge base.
 
     Permanently removes a project. Linked conversations are not deleted
-    but will be unlinked from the project.
+    but will be unlinked from the project. Only the project owner can delete.
 
     Args:
         project_id: The unique project identifier
@@ -5180,11 +5468,18 @@ async def delete_existing_project(project_id: str):
         dict: Deletion confirmation with status: "deleted"
 
     Raises:
-        HTTPException 404: If project not found
+        HTTPException 404: If project not found or not owned by user
     """
-    success = projects.delete_project(project_id)
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    success = await projects_crud.delete_project(db, project_uuid, current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Project not found")
+
+    await db.commit()
     return {"status": "deleted"}
 
 
@@ -5194,12 +5489,17 @@ async def delete_existing_project(project_id: str):
     summary="Add Knowledge Base Entry",
     response_description="Created knowledge base entry"
 )
-async def add_knowledge_to_project(project_id: str, request: AddKnowledgeRequest):
+async def add_knowledge_to_project(
+    project_id: str,
+    request: AddKnowledgeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Add a file to the project's knowledge base.
 
     Knowledge base entries provide context that can be included
-    in conversations within this project.
+    in conversations within this project. Only the project owner can add.
 
     Args:
         project_id: The unique project identifier
@@ -5216,17 +5516,36 @@ async def add_knowledge_to_project(project_id: str, request: AddKnowledgeRequest
             - created_at: Creation timestamp
 
     Raises:
-        HTTPException 404: If project not found
+        HTTPException 404: If project not found or not owned by user
     """
-    kb_entry = projects.add_to_knowledge_base(
-        project_id=project_id,
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    file_id = str(uuid.uuid4())
+    project = await projects_crud.add_to_knowledge_base(
+        db,
+        project_id=project_uuid,
+        user_id=current_user.id,
+        file_id=file_id,
         filename=request.filename,
         content=request.content,
         file_type=request.file_type or "text"
     )
-    if kb_entry is None:
+    if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
-    return kb_entry
+
+    await db.commit()
+
+    # Find the newly added entry
+    kb_entry = None
+    for item in project.knowledge_base or []:
+        if item.get("id") == file_id:
+            kb_entry = item
+            break
+
+    return kb_entry or {"id": file_id, "filename": request.filename, "file_type": request.file_type or "text"}
 
 
 @app.delete(
@@ -5235,11 +5554,17 @@ async def add_knowledge_to_project(project_id: str, request: AddKnowledgeRequest
     summary="Remove Knowledge Base Entry",
     response_description="Deletion confirmation"
 )
-async def remove_knowledge_from_project(project_id: str, file_id: str):
+async def remove_knowledge_from_project(
+    project_id: str,
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Remove a file from the project's knowledge base.
 
     Permanently removes a knowledge base entry from the project.
+    Only the project owner can remove entries.
 
     Args:
         project_id: The unique project identifier
@@ -5249,11 +5574,18 @@ async def remove_knowledge_from_project(project_id: str, file_id: str):
         dict: Deletion confirmation with status: "deleted"
 
     Raises:
-        HTTPException 404: If project or file not found
+        HTTPException 404: If project or file not found or not owned by user
     """
-    success = projects.remove_from_knowledge_base(project_id, file_id)
-    if not success:
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    project = await projects_crud.remove_from_knowledge_base(db, project_uuid, current_user.id, file_id)
+    if project is None:
         raise HTTPException(status_code=404, detail="Project or file not found")
+
+    await db.commit()
     return {"status": "deleted"}
 
 
@@ -5263,11 +5595,17 @@ async def remove_knowledge_from_project(project_id: str, file_id: str):
     summary="Get Knowledge Base Content",
     response_description="Knowledge base file content"
 )
-async def get_knowledge_file_content(project_id: str, file_id: str):
+async def get_knowledge_file_content(
+    project_id: str,
+    file_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Get the content of a knowledge base file.
 
     Retrieves the full content of a specific knowledge base entry.
+    Only the project owner can access.
 
     Args:
         project_id: The unique project identifier
@@ -5278,12 +5616,18 @@ async def get_knowledge_file_content(project_id: str, file_id: str):
             - content: The full file content
 
     Raises:
-        HTTPException 404: If file not found
+        HTTPException 404: If file not found or not owned by user
     """
-    content = projects.get_knowledge_base_content(project_id, file_id)
-    if content is None:
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    kb_file = await projects_crud.get_knowledge_base_file(db, project_uuid, current_user.id, file_id)
+    if kb_file is None:
         raise HTTPException(status_code=404, detail="File not found")
-    return {"content": content}
+
+    return {"content": kb_file.get("content", "")}
 
 
 @app.post(
@@ -5294,7 +5638,7 @@ async def get_knowledge_file_content(project_id: str, file_id: str):
 )
 async def create_conversation_in_project(
     project_id: str,
-    current_user: User = Depends(get_current_user_optional),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -5302,6 +5646,7 @@ async def create_conversation_in_project(
 
     Creates a conversation that is automatically linked to the project,
     inheriting the project's system prompt and knowledge base context.
+    Only the project owner can create conversations.
 
     Args:
         project_id: The unique project identifier
@@ -5312,24 +5657,28 @@ async def create_conversation_in_project(
             - project_id: The project this conversation belongs to
 
     Raises:
-        HTTPException 404: If project not found
+        HTTPException 404: If project not found or not owned by user
     """
-    # Verify project exists
-    project = projects.get_project(project_id)
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    # Verify project exists and user owns it
+    project = await projects_crud.get_by_id_for_user(db, project_uuid, current_user.id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Create conversation with user association
-    conversation_id = str(uuid.uuid4())
-    user_id = current_user.id if current_user else None
+    # Create conversation linked to project
+    conversation_id = uuid.uuid4()
     conversation = await storage.create_conversation(
-        conversation_id,
-        user_id=user_id,
+        str(conversation_id),
+        user_id=current_user.id,
         db=db,
+        project_id=project_uuid
     )
 
-    # Link to project
-    projects.add_conversation_to_project(project_id, conversation_id)
+    await db.commit()
 
     return {
         "conversation": conversation,
@@ -5356,12 +5705,18 @@ class ProjectMemoryRequest(BaseModel):
     summary="Project Memory Operations",
     response_description="Memory operation results"
 )
-async def project_memory(project_id: str, request: ProjectMemoryRequest):
+async def project_memory(
+    project_id: str,
+    request: ProjectMemoryRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Perform project-specific memory operations.
 
     Stores facts, decisions, and preferences specific to a project that
     persist across conversations within that project.
+    Only the project owner can modify memory.
 
     Supported Actions:
     - add_fact: Store a fact with optional category
@@ -5379,41 +5734,54 @@ async def project_memory(project_id: str, request: ProjectMemoryRequest):
         dict: Operation result with action type and outcome
 
     Raises:
-        HTTPException 404: Project not found
+        HTTPException 404: Project not found or not owned by user
         HTTPException 400: Missing required fields for action
     """
-    project = projects.get_project(project_id)
+    try:
+        project_uuid = uuid.UUID(project_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid project ID format")
+
+    # Verify ownership
+    project = await projects_crud.get_by_id_for_user(db, project_uuid, current_user.id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     if request.action == "add_fact":
         if not request.content:
             raise HTTPException(status_code=400, detail="Content required")
-        success = projects.add_project_fact(project_id, request.content, request.category or "general")
-        return {"success": success, "action": "add_fact"}
+        result = await projects_crud.add_fact(db, project_uuid, current_user.id, request.content)
+        await db.commit()
+        return {"success": result is not None, "action": "add_fact"}
 
     elif request.action == "add_decision":
         if not request.question or not request.decision:
             raise HTTPException(status_code=400, detail="Question and decision required")
-        success = projects.add_project_decision(project_id, request.question, request.decision, request.reasoning or "")
-        return {"success": success, "action": "add_decision"}
+        decision_text = f"{request.question} → {request.decision}"
+        if request.reasoning:
+            decision_text += f" (Reasoning: {request.reasoning})"
+        result = await projects_crud.add_decision(db, project_uuid, current_user.id, decision_text, request.reasoning)
+        await db.commit()
+        return {"success": result is not None, "action": "add_decision"}
 
     elif request.action == "set_preference":
         if not request.key:
             raise HTTPException(status_code=400, detail="Key required")
-        success = projects.set_project_preference(project_id, request.key, request.value)
-        return {"success": success, "action": "set_preference"}
+        result = await projects_crud.set_preference(db, project_uuid, current_user.id, request.key, request.value)
+        await db.commit()
+        return {"success": result is not None, "action": "set_preference"}
 
     elif request.action == "get_context":
-        context = projects.get_project_memory_context(project_id)
+        context = projects_crud.get_project_context(project)
         return {"context": context, "action": "get_context"}
 
     elif request.action == "clear":
-        success = projects.clear_project_memory(project_id)
-        return {"success": success, "action": "clear"}
+        result = await projects_crud.clear_memory(db, project_uuid, current_user.id)
+        await db.commit()
+        return {"success": result is not None, "action": "clear"}
 
     elif request.action == "stats":
-        stats = projects.get_project_memory_stats(project_id)
+        stats = await projects_crud.get_memory_stats(db, project_uuid, current_user.id)
         return {"stats": stats, "action": "stats"}
 
     else:

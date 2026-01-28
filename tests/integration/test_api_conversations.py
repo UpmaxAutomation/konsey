@@ -124,12 +124,24 @@ class TestConfigEndpoints:
         with patch("backend.main.get_council_models", return_value=["model-a", "model-b"]):
             with patch("backend.main.get_chairman_model", return_value="model-c"):
                 with patch("backend.main.get_all_models", return_value={"model-a": {}, "model-b": {}, "model-c": {}}):
-                    response = client.get("/api/config")
+                    with patch(
+                        "backend.main.get_enhanced_features",
+                        return_value={
+                            "web_search": True,
+                            "deep_search": False,
+                            "code_execution": True,
+                            "memory": True,
+                            "auto_preference": "quality",
+                        },
+                    ):
+                        response = client.get("/api/config")
 
         assert response.status_code == 200
         data = response.json()
         assert "council_models" in data
         assert "chairman_model" in data
+        assert "enhanced_features" in data
+        assert data["enhanced_features"]["auto_preference"] == "quality"
 
     def test_update_config(self, client):
         """Test updating configuration."""
@@ -194,6 +206,38 @@ class TestPresetEndpoints:
             response = client.post("/api/presets/nonexistent/apply")
 
         assert response.status_code == 404
+
+
+class TestToolSearchEndpoints:
+    """Tests for tools search endpoints."""
+
+    def test_perplexity_search_fallback_without_key(self, client):
+        """Perplexity search falls back to DuckDuckGo when key missing."""
+        with patch("backend.config.get_perplexity_api_key", return_value=""):
+            with patch(
+                "backend.tools.web_search",
+                new_callable=AsyncMock,
+                return_value={
+                    "error": False,
+                    "results": [
+                        {"title": "Example", "url": "https://example.com", "snippet": "Sample"}
+                    ],
+                    "message": "Found 1 results",
+                },
+            ):
+                response = client.post(
+                    "/api/tools/perplexity-search",
+                    json={"query": "test query", "num_results": 1},
+                )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "duckduckgo"
+        assert data["model"] == "duckduckgo"
+        assert data["fallback_used"] is True
+        assert data["results"] == [
+            {"title": "Example", "url": "https://example.com", "snippet": "Sample"}
+        ]
 
 
 class TestUsageEndpoints:
