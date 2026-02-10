@@ -565,6 +565,193 @@
   padding: 20px;
 }
 
+.file-card-layer-select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #f8f8f8;
+  color: #555;
+  cursor: pointer;
+  outline: none;
+}
+
+.file-card-layer-select:focus {
+  border-color: #d4a373;
+}
+
+/* Knowledge Layers Section */
+.layer-form {
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.layer-form-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 13px;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.layer-form-input:focus {
+  border-color: #d4a373;
+}
+
+.layer-color-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.layer-color-option {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.layer-color-option:hover {
+  transform: scale(1.15);
+}
+
+.layer-color-option.selected {
+  border-color: #1a1a1a;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(0, 0, 0, 0.15);
+}
+
+.layer-form-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  resize: vertical;
+  min-height: 48px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.layer-form-textarea:focus {
+  border-color: #d4a373;
+}
+
+.layer-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.layer-item {
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+  transition: border-color 0.15s;
+}
+
+.layer-item:hover {
+  border-color: #d0d0d0;
+}
+
+.layer-item-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.layer-item-header:hover {
+  background: #fafafa;
+}
+
+.layer-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.layer-item-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-doc-count {
+  font-size: 11px;
+  color: #888;
+  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.layer-toggle-btn,
+.layer-delete-btn {
+  padding: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.layer-toggle-btn:hover {
+  background: #f0f0f0;
+  color: #1a1a1a;
+}
+
+.layer-delete-btn:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.layer-item-details {
+  padding: 0 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.layers-empty {
+  font-size: 14px;
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  padding: 12px;
+}
+
 /* Dark mode */
 [data-theme="dark"] .project-view {
   background: #1a1a1a;
@@ -640,7 +827,9 @@
 
 [data-theme="dark"] .memory-content,
 [data-theme="dark"] .instructions-content,
-[data-theme="dark"] .file-card {
+[data-theme="dark"] .file-card,
+[data-theme="dark"] .layer-form,
+[data-theme="dark"] .layer-item {
   background: #1a1a1a;
   border-color: #333;
 }
@@ -652,10 +841,40 @@
 }
 
 [data-theme="dark"] .memory-add-row input,
-[data-theme="dark"] .instructions-edit textarea {
+[data-theme="dark"] .instructions-edit textarea,
+[data-theme="dark"] .layer-form-input,
+[data-theme="dark"] .layer-form-textarea {
   background: #1a1a1a;
   border-color: #444;
   color: #e5e5e5;
+}
+
+[data-theme="dark"] .layer-item-name {
+  color: #e5e5e5;
+}
+
+[data-theme="dark"] .layer-item-header:hover {
+  background: #252525;
+}
+
+[data-theme="dark"] .layer-doc-count {
+  background: #333;
+  color: #aaa;
+}
+
+[data-theme="dark"] .layer-color-option.selected {
+  border-color: #e5e5e5;
+  box-shadow: 0 0 0 2px #1a1a1a, 0 0 0 4px rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="dark"] .layer-item-details {
+  border-top-color: #333;
+}
+
+[data-theme="dark"] .file-card-layer-select {
+  background: #252525;
+  border-color: #444;
+  color: #ccc;
 }
 
 [data-theme="dark"] .capacity-bar {

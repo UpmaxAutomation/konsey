@@ -20,6 +20,7 @@ from ..database.crud import tags as tags_crud
 from ..database.crud import snapshots as snapshots_crud
 from ..database.crud import mentions as mentions_crud
 from ..auth.dependencies import get_current_user
+from ..collaboration.manager import manager as collab_manager
 
 MENTION_PATTERN = re.compile(r'\[\[([^|\]]+)\|([a-f0-9-]+)\]\]')
 
@@ -478,6 +479,11 @@ async def create_card_endpoint(
         extra=request.extra,
     )
     await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        uuid.UUID(board_id),
+        {"type": "card_created", "card_id": str(card.id), "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
     return _serialize_card(card)
 
 
@@ -533,6 +539,11 @@ async def update_card_endpoint(
         await mentions_crud.sync_mentions(db, uuid.UUID(card_id), board.id, mention_uuids)
 
     await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        uuid.UUID(board_id),
+        {"type": "card_updated", "card_id": str(card_id), "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
     return _serialize_card(card)
 
 
@@ -567,6 +578,11 @@ async def delete_card_endpoint(
     if not deleted:
         raise HTTPException(status_code=404, detail="Card not found")
     await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        uuid.UUID(board_id),
+        {"type": "card_deleted", "card_id": card_id, "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
     return {"status": "deleted"}
 
 
@@ -672,6 +688,11 @@ async def create_edge_endpoint(
         target_handle=request.target_handle,
     )
     await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        uuid.UUID(board_id),
+        {"type": "edge_created", "edge_id": str(edge.id), "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
     return _serialize_edge(edge)
 
 
@@ -731,6 +752,11 @@ async def delete_edge_endpoint(
     if not deleted:
         raise HTTPException(status_code=404, detail="Edge not found")
     await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        uuid.UUID(board_id),
+        {"type": "edge_deleted", "edge_id": edge_id, "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
     return {"status": "deleted"}
 
 
@@ -894,6 +920,11 @@ async def update_section_endpoint(
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
     await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        uuid.UUID(board_id),
+        {"type": "section_updated", "section_id": str(section_id), "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
     return _serialize_section(section)
 
 @router.delete("/{board_id}/sections/{section_id}")

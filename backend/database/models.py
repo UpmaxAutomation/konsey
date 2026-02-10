@@ -545,6 +545,7 @@ class WorkflowStep(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     prompt_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
+    model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     input_card_ids: Mapped[list] = mapped_column(JSON, default=list)
     output_card_ids: Mapped[list] = mapped_column(JSON, default=list)
@@ -557,7 +558,7 @@ class WorkflowStep(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "step_type IN ('council_query', 'ai_transform', 'combine', 'human_review')",
+            "step_type IN ('council_query', 'ai_transform', 'combine', 'human_review', 'conditional')",
             name="ck_step_type"
         ),
         CheckConstraint(
@@ -738,3 +739,59 @@ class CardMention(Base):
     target_card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"))
     board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CollaborationSession(Base):
+    """Tracks WebSocket collaboration sessions for analytics."""
+    __tablename__ = "collaboration_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    connected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    disconnected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class UserFlowTemplate(Base):
+    """User-created workflow templates that can be reused."""
+    __tablename__ = "user_flow_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon: Mapped[str] = mapped_column(String(50), default="zap")
+    category: Mapped[str] = mapped_column(String(50), default="custom")
+    steps: Mapped[dict] = mapped_column(JSON, nullable=False)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_user_flow_templates_user", "user_id"),
+    )
+
+
+class WorkflowRun(Base):
+    """Execution log entry for a workflow run."""
+    __tablename__ = "workflow_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="CASCADE"), index=True)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="running")
+    initial_input: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    step_count: Mapped[int] = mapped_column(Integer, default=0)
+    output_card_ids: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_workflow_runs_workflow", "workflow_id"),
+    )

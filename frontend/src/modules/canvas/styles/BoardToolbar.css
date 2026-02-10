@@ -266,3 +266,34 @@
   outline-offset: -2px;
   background: rgba(99, 102, 241, 0.08);
 }
+
+.board-toolbar__presence {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+}
+
+.board-toolbar__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  border: 2px solid white;
+  margin-left: -6px;
+  cursor: default;
+}
+
+.board-toolbar__avatar:first-child {
+  margin-left: 0;
+}
+
+.board-toolbar__avatar--more {
+  background-color: #95a5a6;
+  font-size: 10px;
+}

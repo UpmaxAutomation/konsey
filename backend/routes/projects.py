@@ -45,6 +45,7 @@ class AddKnowledgeRequest(BaseModel):
     filename: str
     content: str
     file_type: Optional[str] = "text"
+    layer_id: Optional[str] = None
 
 
 class ProjectMemoryRequest(BaseModel):
@@ -374,6 +375,18 @@ async def add_knowledge_to_project(
 
     await db.commit()
 
+    # Auto-embed for RAG
+    try:
+        from .. import rag
+        layer_uuid = uuid.UUID(request.layer_id) if request.layer_id else None
+        await rag.embed_document(
+            db, project_uuid, file_id, request.filename,
+            request.content, request.file_type or "text", current_user.id,
+            layer_id=layer_uuid,
+        )
+    except Exception as e:
+        logger.warning(f"Auto-embed failed for {request.filename}: {e}")
+
     # Find the newly added entry
     kb_entry = None
     for item in project.knowledge_base or []:
@@ -421,6 +434,14 @@ async def remove_knowledge_from_project(
         raise HTTPException(status_code=404, detail="Project or file not found")
 
     await db.commit()
+
+    # Remove RAG embeddings
+    try:
+        from .. import rag
+        await rag.remove_document_embeddings(db, project_uuid, file_id)
+    except Exception as e:
+        logger.warning(f"Failed to remove embeddings for {file_id}: {e}")
+
     return {"status": "deleted"}
 
 

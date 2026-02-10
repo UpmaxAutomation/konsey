@@ -2,11 +2,12 @@
 
 Executes workflow steps sequentially as an async generator, yielding SSE events
 for real-time progress updates. Supports council_query, ai_transform, combine,
-and human_review step types.
+human_review, and conditional step types.
 """
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ async def _execute_ai_transform(
     from ..database.crud import boards as boards_crud
 
     prompt = _build_prompt(step.prompt_template, input_text)
-    model = (step.config or {}).get("model", DEFAULT_MODEL)
+    model = getattr(step, 'model', None) or (step.config or {}).get("model", DEFAULT_MODEL)
 
     yield {"event": "step_progress", "message": f"Running AI transform with {model}..."}
 
@@ -331,7 +332,7 @@ async def _execute_combine(
 
     combined_input = "\n\n---\n\n".join(card_contents)
     prompt = _build_prompt(step.prompt_template, combined_input)
-    model = (step.config or {}).get("model", DEFAULT_MODEL)
+    model = getattr(step, 'model', None) or (step.config or {}).get("model", DEFAULT_MODEL)
 
     yield {"event": "step_progress", "message": f"Combining with {model}..."}
 
@@ -374,6 +375,76 @@ async def _execute_combine(
     }
 
 
+async def _execute_conditional(
+    step,
+    input_text: str,
+    board_id: uuid.UUID,
+    user_id: uuid.UUID,
+    db,
+    base_y: float,
+    step_offset_y: float,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Execute a conditional step that evaluates input and returns TRUE or FALSE.
+
+    Uses an LLM to evaluate the input against a prompt template, producing a
+    boolean decision. The decision can influence downstream step routing via
+    true_step_index / false_step_index in the step config.
+    """
+    from ..llm.client import query_model
+    from ..database.crud import boards as boards_crud
+
+    model = getattr(step, 'model', None) or (step.config or {}).get("model", DEFAULT_MODEL)
+    default_template = "Evaluate the following and respond with only TRUE or FALSE:\n\n{{input}}"
+    prompt = _build_prompt(step.prompt_template or default_template, input_text)
+
+    yield {"event": "step_progress", "message": f"Evaluating condition with {model}..."}
+
+    messages = [{"role": "user", "content": prompt}]
+    result = await query_model(model, messages, user_id=user_id, db=db)
+
+    if result is None:
+        raise RuntimeError(
+            f"Conditional step failed: model {model} returned no response. "
+            "Check API keys in Settings."
+        )
+
+    response_text = result.get("content", "")
+    decision = "TRUE" if "TRUE" in response_text.upper() else "FALSE"
+    config = step.config or {}
+
+    step_y = base_y + step_offset_y
+    output_card = await boards_crud.create_card(
+        db,
+        board_id,
+        card_type="note",
+        title=f"Condition: {step.name}",
+        content=f"Decision: {decision}\n\n{response_text[:4000]}",
+        position_x=CENTERED_X,
+        position_y=step_y,
+        width=DEFAULT_CARD_WIDTH,
+        height=DEFAULT_CARD_HEIGHT,
+        color="#fce4ec" if decision == "FALSE" else "#e8f5e9",
+        extra={
+            "model": model,
+            "workflow_step": step.name,
+            "step_type": "conditional",
+            "decision": decision,
+            "true_step_index": config.get("true_step_index"),
+            "false_step_index": config.get("false_step_index"),
+            "workflow_output": True,
+        },
+    )
+    yield {"event": "step_card_created", "card": _serialize_card(output_card)}
+    yield {
+        "event": "done",
+        "output_text": response_text,
+        "output_card_ids": [str(output_card.id)],
+        "decision": decision,
+        "true_step_index": config.get("true_step_index"),
+        "false_step_index": config.get("false_step_index"),
+    }
+
+
 async def execute_workflow(
     workflow_id: uuid.UUID,
     board_id: uuid.UUID,
@@ -403,6 +474,7 @@ async def execute_workflow(
     """
     from ..database.crud import boards as boards_crud
     from ..database.crud import workflows as workflows_crud
+    from ..database.crud import workflow_runs as runs_crud
 
     # ------------------------------------------------------------------
     # 1. Load workflow with steps
@@ -426,8 +498,11 @@ async def execute_workflow(
         return
 
     # ------------------------------------------------------------------
-    # 2. Update workflow status to 'running'
+    # 2. Create run record and update workflow status to 'running'
     # ------------------------------------------------------------------
+    run = await runs_crud.create_run(db, workflow_id, board_id, user_id, initial_input)
+    run_start_time = datetime.now(timezone.utc)
+
     await workflows_crud.update_workflow(
         db, workflow_id, board_id, status="running"
     )
@@ -559,6 +634,27 @@ async def execute_workflow(
                         step_output_text = event["output_text"]
                         step_output_card_ids = event["output_card_ids"]
 
+            elif step.step_type == "conditional":
+                async for event in _execute_conditional(
+                    step, input_text, board_id, user_id, db,
+                    base_y, step_offset_y,
+                ):
+                    if event.get("event") == "step_card_created":
+                        yield {
+                            "type": "step_card_created",
+                            "step_index": i,
+                            "card": event["card"],
+                        }
+                    elif event.get("event") == "step_progress":
+                        yield {
+                            "type": "step_progress",
+                            "step_index": i,
+                            "message": event["message"],
+                        }
+                    elif event.get("event") == "done":
+                        step_output_text = event["output_text"]
+                        step_output_card_ids = event["output_card_ids"]
+
             elif step.step_type == "human_review":
                 await workflows_crud.update_step(
                     db, step.id, workflow_id, status="waiting_review"
@@ -567,6 +663,16 @@ async def execute_workflow(
                     db, workflow_id, board_id,
                     status="paused",
                     current_step_index=step.step_index,
+                )
+                await db.commit()
+
+                # Update run as paused (not failed, not completed)
+                elapsed = (datetime.now(timezone.utc) - run_start_time).total_seconds()
+                await runs_crud.update_run(
+                    db, run.id,
+                    status="paused",
+                    duration_seconds=int(elapsed),
+                    step_count=i + 1,
                 )
                 await db.commit()
 
@@ -630,6 +736,17 @@ async def execute_workflow(
                 status="failed",
                 error=f"Step {i} ({step.name}) failed: {exc}"[:2000],
             )
+
+            # Update run record with failure
+            elapsed = (datetime.now(timezone.utc) - run_start_time).total_seconds()
+            await runs_crud.update_run(
+                db, run.id,
+                status="failed",
+                completed_at=datetime.now(timezone.utc),
+                duration_seconds=int(elapsed),
+                step_count=i + 1,
+                error=str(exc)[:2000],
+            )
             await db.commit()
 
             yield {
@@ -644,6 +761,17 @@ async def execute_workflow(
     # ------------------------------------------------------------------
     await workflows_crud.update_workflow(
         db, workflow_id, board_id, status="completed"
+    )
+
+    # Update run record with success
+    elapsed = (datetime.now(timezone.utc) - run_start_time).total_seconds()
+    await runs_crud.update_run(
+        db, run.id,
+        status="completed",
+        completed_at=datetime.now(timezone.utc),
+        duration_seconds=int(elapsed),
+        step_count=len(steps),
+        output_card_ids=[str(cid) for cid in all_output_card_ids],
     )
     await db.commit()
 

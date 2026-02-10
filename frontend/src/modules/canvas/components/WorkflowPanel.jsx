@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import WorkflowTemplateGallery from './WorkflowTemplateGallery.jsx';
 import WorkflowBuilder from './WorkflowBuilder.jsx';
+import FlowGraph from './FlowGraph.jsx';
+import { useWorkflowRuns, useCreateFlowTemplate } from '../../../api/queries/flowTemplateQueries.js';
 import '../styles/WorkflowPanel.css';
 
 const STATUS_CONFIG = {
@@ -74,6 +76,26 @@ export default function WorkflowPanel({
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [savingBuilder, setSavingBuilder] = useState(false);
+  const [detailTab, setDetailTab] = useState('steps');
+
+  const { data: runsData } = useWorkflowRuns(boardId, activeWorkflow?.id);
+  const runs = runsData?.runs || [];
+
+  const createTemplateMutation = useCreateFlowTemplate();
+
+  const handleSaveAsTemplate = useCallback(async (workflowData) => {
+    try {
+      await createTemplateMutation.mutateAsync({
+        name: workflowData.name,
+        steps: workflowData.steps,
+        description: workflowData.description || null,
+        icon: 'zap',
+        category: 'custom',
+      });
+    } catch (err) {
+      console.error('Failed to save as template:', err);
+    }
+  }, [createTemplateMutation]);
 
   const handleRun = useCallback(() => {
     if (!activeWorkflow || running) return;
@@ -181,10 +203,12 @@ export default function WorkflowPanel({
                 step_type: s.step_type || 'ai_transform',
                 name: s.name || '',
                 prompt_template: s.prompt_template || '',
+                model: s.model || '',
               })) || []
             }
             onSave={handleBuilderSave}
             onCancel={handleBuilderCancel}
+            onSaveAsTemplate={handleSaveAsTemplate}
             saving={savingBuilder}
           />
         </div>
@@ -219,7 +243,31 @@ export default function WorkflowPanel({
             <StatusBadge status={activeWorkflow.status || 'draft'} />
           </div>
 
+          {/* Flow graph visualization */}
+          {activeWorkflow.steps?.length > 0 && (
+            <div className="workflow-panel__flow-graph">
+              <FlowGraph steps={activeWorkflow.steps} />
+            </div>
+          )}
+
+          {/* Tabs: Steps / History */}
+          <div className="workflow-panel__tabs">
+            <button
+              className={`workflow-panel__tab${detailTab === 'steps' ? ' workflow-panel__tab--active' : ''}`}
+              onClick={() => setDetailTab('steps')}
+            >
+              Steps
+            </button>
+            <button
+              className={`workflow-panel__tab${detailTab === 'history' ? ' workflow-panel__tab--active' : ''}`}
+              onClick={() => setDetailTab('history')}
+            >
+              History
+            </button>
+          </div>
+
           {/* Step list */}
+          {detailTab === 'steps' && (
           <div className="workflow-panel__steps">
             <div className="workflow-panel__steps-label">Steps</div>
             {activeWorkflow.steps?.length > 0 ? (
@@ -246,6 +294,47 @@ export default function WorkflowPanel({
               </div>
             )}
           </div>
+          )}
+
+          {/* Run history */}
+          {detailTab === 'history' && (
+            <div className="workflow-panel__runs">
+              <div className="workflow-panel__steps-label">Run History</div>
+              {runs.length === 0 ? (
+                <div className="workflow-panel__empty">No runs yet.</div>
+              ) : (
+                <div className="workflow-panel__run-list">
+                  {runs.map((run) => (
+                    <div key={run.id} className="workflow-panel__run-item">
+                      <div className="workflow-panel__run-top">
+                        <StatusBadge status={run.status} />
+                        {run.duration_seconds != null && (
+                          <span className="workflow-panel__run-duration">
+                            {run.duration_seconds.toFixed(1)}s
+                          </span>
+                        )}
+                      </div>
+                      <div className="workflow-panel__run-meta">
+                        {run.started_at && (
+                          <span className="workflow-panel__run-date">
+                            {new Date(run.started_at).toLocaleString()}
+                          </span>
+                        )}
+                        {run.step_count != null && (
+                          <span className="workflow-panel__run-steps">
+                            {run.step_count} step{run.step_count !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      {run.error && (
+                        <div className="workflow-panel__run-error">{run.error}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Initial input */}
           {!running && activeWorkflow.status !== 'completed' && (

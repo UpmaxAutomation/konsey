@@ -26,6 +26,8 @@ import AgentPanel from './AgentPanel';
 import CardChatPanel from './CardChatPanel';
 import BoardBreadcrumbs from './BoardBreadcrumbs';
 import VersionHistoryPanel from './VersionHistoryPanel';
+import useCollaboration from '../hooks/useCollaboration.js';
+import CollaborationOverlay from './CollaborationOverlay.jsx';
 import ViewContainer from '../../views/ViewContainer.jsx';
 import PropertyPanel from '../../properties/PropertyPanel.jsx';
 import { usePropertyStore } from '../../../stores/propertyStore.js';
@@ -70,6 +72,9 @@ function BoardViewInner({ boardId, onBack }) {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const reactFlow = useReactFlow();
   const navigate = useNavigate();
+
+  // Real-time collaboration
+  const { connected: collabConnected, boardUsers, remoteCursors, handleMouseMove: handleCollabMouseMove } = useCollaboration(boardId);
 
   // Undo/redo from history store
   const undo = useHistoryStore((s) => s.undo);
@@ -586,6 +591,7 @@ function BoardViewInner({ boardId, onBack }) {
         onBack={onBack}
         onRenameBoard={handleRenameBoard}
         selectedCount={selectedNodes.length}
+        boardUsers={boardUsers}
         onRunCouncil={() => setShowCouncilModal(true)}
         onDeleteSelected={selectedNodes.length > 0 || selectedEdges.length > 0 ? handleDeleteSelected : undefined}
         onToggleSearch={() => { setShowSearch((p) => !p); if (showSearch) searchReset(); }}
@@ -643,6 +649,7 @@ function BoardViewInner({ boardId, onBack }) {
             onNodeDoubleClick={handleNodeDoubleClick}
             onNodeContextMenu={handleNodeContextMenu}
             onPaneClick={handleCloseContextMenu}
+            onPaneMouseMove={(e) => handleCollabMouseMove(e, reactFlow.getViewport())}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             defaultViewport={defaultViewport}
@@ -657,6 +664,7 @@ function BoardViewInner({ boardId, onBack }) {
             <Controls />
             <MiniMap nodeColor={minimapNodeColor} maskColor="var(--bg-overlay)" />
           </ReactFlow>
+          <CollaborationOverlay remoteCursors={remoteCursors} viewport={reactFlow.getViewport()} />
           </BoardContext.Provider>
         </div>
       ) : (

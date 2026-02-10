@@ -516,3 +516,103 @@
   flex: 1;
   overflow-y: auto;
 }
+
+/* ── Flow Graph ── */
+
+.workflow-panel__flow-graph {
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+/* ── Tabs ── */
+
+.workflow-panel__tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.workflow-panel__tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  min-height: auto;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.workflow-panel__tab:hover {
+  color: var(--text-primary);
+}
+
+.workflow-panel__tab--active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+/* ── Run History ── */
+
+.workflow-panel__runs {
+  padding: 12px 16px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.workflow-panel__run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-panel__run-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.workflow-panel__run-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workflow-panel__run-duration {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.workflow-panel__run-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workflow-panel__run-date,
+.workflow-panel__run-steps {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.workflow-panel__run-error {
+  font-size: 11px;
+  color: var(--error, #ef4444);
+  padding: 4px 8px;
+  background: var(--error-light, #fef2f2);
+  border-radius: 4px;
+  margin-top: 2px;
+  line-height: 1.4;
+}

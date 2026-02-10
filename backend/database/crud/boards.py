@@ -9,7 +9,7 @@ from sqlalchemy import select, update, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ..models import Board, Card, Edge, Section
+from ..models import Board, Card, Edge, Section, PropertyDefinition
 
 
 # ──────────────────────────────────────────────
@@ -43,6 +43,7 @@ async def get_board_with_contents(
             selectinload(Board.cards),
             selectinload(Board.edges),
             selectinload(Board.sections),
+            selectinload(Board.property_definitions),
         )
         .where(
             Board.id == board_id,
@@ -96,7 +97,7 @@ async def update_board(
     **kwargs
 ) -> Optional[Board]:
     """Update board fields."""
-    allowed_fields = {"name", "description", "project_id", "memory", "parent_board_id", "depth", "icon"}
+    allowed_fields = {"name", "description", "project_id", "memory", "parent_board_id", "depth", "icon", "view_config"}
     update_data = {k: v for k, v in kwargs.items() if k in allowed_fields}
     if not update_data:
         return await get_board_by_id(db, board_id, user_id)

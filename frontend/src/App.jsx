@@ -131,16 +131,6 @@ function MainApp() {
     };
   }, [navigate]);
 
-  // Listen for "Discuss in Chat" events from canvas cards
-  useEffect(() => {
-    const handler = (e) => {
-      navigate('/');
-      // Card detail (nodeId, cardType) available via e.detail for future pre-fill support
-    };
-    window.addEventListener('discussCardInChat', handler);
-    return () => window.removeEventListener('discussCardInChat', handler);
-  }, [navigate]);
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {

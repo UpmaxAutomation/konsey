@@ -610,6 +610,37 @@ async def run_full_council(
     if project_context:
         context_sections.append(project_context)
 
+    # RAG: layer-aware knowledge retrieval
+    if project_id and db:
+        try:
+            from . import rag
+            from .database.crud import knowledge_layers as kl_crud
+
+            _pid = uuid.UUID(project_id) if isinstance(project_id, str) else project_id
+            layers = await kl_crud.list_layers(db, _pid)
+            active_layers = [l for l in layers if l.is_active]
+
+            if active_layers:
+                for layer in active_layers:
+                    layer_chunks = await rag.search_project(
+                        db, project_id, user_query, user_id,
+                        top_k=3, layer_id=layer.id
+                    )
+                    if layer_chunks:
+                        layer_context = rag.format_layer_context(layer_chunks, layer)
+                        if layer_context:
+                            context_sections.append(layer_context)
+            else:
+                rag_chunks = await rag.search_project(
+                    db, project_id, user_query, user_id, top_k=5
+                )
+                if rag_chunks:
+                    rag_context = rag.format_rag_context(rag_chunks)
+                    if rag_context:
+                        context_sections.append(rag_context)
+        except Exception as e:
+            logger.warning(f"RAG retrieval failed: {e}")
+
     # Add attached files (most relevant to the query)
     # Separate images for vision models vs text files for all models
     image_content = []
@@ -802,6 +833,47 @@ async def run_full_council_stream(
     # Add project context first (highest priority - defines the project scope)
     if project_context:
         context_sections.append(project_context)
+
+    # RAG: layer-aware knowledge retrieval
+    if project_id and db:
+        try:
+            from . import rag
+            from .database.crud import knowledge_layers as kl_crud
+
+            _pid = uuid.UUID(project_id) if isinstance(project_id, str) else project_id
+            layers = await kl_crud.list_layers(db, _pid)
+            active_layers = [l for l in layers if l.is_active]
+
+            if active_layers:
+                layer_results = []
+                all_docs = set()
+                total_chunks = 0
+                for layer in active_layers:
+                    layer_chunks = await rag.search_project(
+                        db, project_id, user_query, user_id,
+                        top_k=3, layer_id=layer.id
+                    )
+                    if layer_chunks:
+                        layer_context = rag.format_layer_context(layer_chunks, layer)
+                        if layer_context:
+                            context_sections.append(layer_context)
+                        layer_results.append({"name": layer.name, "color": layer.color, "chunk_count": len(layer_chunks)})
+                        all_docs.update(c["filename"] for c in layer_chunks)
+                        total_chunks += len(layer_chunks)
+                if layer_results:
+                    yield {"type": "rag_context", "chunk_count": total_chunks, "documents": list(all_docs)}
+                    yield {"type": "rag_layers", "layers": layer_results}
+            else:
+                rag_chunks = await rag.search_project(
+                    db, project_id, user_query, user_id, top_k=5
+                )
+                if rag_chunks:
+                    rag_context = rag.format_rag_context(rag_chunks)
+                    if rag_context:
+                        context_sections.append(rag_context)
+                    yield {"type": "rag_context", "chunk_count": len(rag_chunks), "documents": list(set(c["filename"] for c in rag_chunks))}
+        except Exception as e:
+            logger.warning(f"RAG retrieval failed: {e}")
 
     # Handle attached files (images and text files)
     image_content = []

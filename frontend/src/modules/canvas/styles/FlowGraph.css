@@ -1,0 +1,74 @@
+.flow-graph {
+  width: 100%;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fafafa;
+}
+
+.flow-graph-node {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-left: 4px solid #95a5a6;
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-width: 180px;
+  font-size: 13px;
+}
+
+.flow-graph-node__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.flow-graph-node__index {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+}
+
+.flow-graph-node__name {
+  font-weight: 500;
+  color: #333;
+}
+
+.flow-graph-node__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flow-graph-node__type {
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.flow-graph-node__model {
+  font-size: 10px;
+  color: #999;
+}
+
+.flow-graph-node__status {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.flow-graph-node__status--completed { color: #2ecc71; }
+.flow-graph-node__status--running { color: #3498db; }
+.flow-graph-node__status--failed { color: #e74c3c; }
+.flow-graph-node__status--waiting_review { color: #f39c12; }

@@ -308,6 +308,70 @@
   line-height: 1.4;
 }
 
+/* ── Conditional config ── */
+
+.wf-builder__conditional-config {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(231, 76, 60, 0.04);
+  border: 1px solid rgba(231, 76, 60, 0.15);
+  border-radius: 6px;
+}
+
+.wf-builder__conditional-row {
+  display: flex;
+  gap: 8px;
+}
+
+.wf-builder__conditional-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.wf-builder__conditional-field input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: center;
+  background: var(--bg-input, var(--bg-primary));
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.wf-builder__conditional-field input:focus {
+  border-color: var(--accent-primary);
+}
+
+/* ── Template save button ── */
+
+.wf-builder__template-btn {
+  width: 100%;
+  background: none;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border-primary);
+  margin-top: 4px;
+}
+
+.wf-builder__template-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.wf-builder__template-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Add step button ── */
 
 .wf-builder__add-step {
@@ -389,6 +453,45 @@
 .wf-builder__btn:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
+}
+
+/* ── Save as Template button ── */
+
+.wf-builder__template-btn {
+  width: 100%;
+  padding: 8px 16px;
+  border: 1px dashed var(--border-primary);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: auto;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.wf-builder__template-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.wf-builder__template-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wf-builder__template-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ── Model select ── */
+
+.workflow-builder__model-select {
+  width: 100%;
 }
 
 /* ── Dark mode ── */

@@ -315,6 +315,30 @@ function CanvasCard({ data, selected }) {
         </div>
       )}
 
+      {!collapsed && !isEditing && data.propertyBadges?.length > 0 && (
+        <div className="canvas-card__badges">
+          {data.propertyBadges.map((badge) => (
+            <span key={badge.id} className="canvas-card__badge" title={badge.name}>
+              {badge.display}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!collapsed && !isEditing && data.tags?.length > 0 && (
+        <div className="canvas-card__tags">
+          {data.tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="canvas-card__tag"
+              style={{ '--tag-color': tag.color || '#94a3b8' }}
+            >
+              {tag.name}
+            </span>
+          ))}
+        </div>
+      )}
+
       {!collapsed && backlinks.length > 0 && (
         <div className="canvas-card__backlinks">
           <button

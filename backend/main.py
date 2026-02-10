@@ -54,6 +54,12 @@ from .routes import (
     workflows_router,
     workflow_templates_router,
     agents_router,
+    properties_router,
+    tags_router,
+    rag_router,
+    layers_router,
+    collaboration_router,
+    flow_templates_router,
 )
 
 # Setup structured logging
@@ -104,10 +110,18 @@ async def lifespan(app: FastAPI):
         logger.warning("models_fallback", error=str(e), message="Using fallback models")
         _dynamic_models = AVAILABLE_MODELS.copy()
 
+    # Initialize collaboration manager
+    from .collaboration.manager import manager as collab_manager
+    logger.info("collaboration_ready", message="Collaboration manager initialized")
+
     yield  # Application runs here
 
     # Shutdown: cleanup
     logger.info("shutdown", message="Shutting down LLM Council API")
+
+    # Disconnect all collaboration sessions
+    await collab_manager.disconnect_all()
+    logger.info("collaboration_closed", message="All collaboration sessions closed")
 
     # Close shared HTTP client
     from .http_client import close_client
@@ -248,6 +262,12 @@ app.include_router(misc_router)
 app.include_router(workflows_router)
 app.include_router(workflow_templates_router)
 app.include_router(agents_router)
+app.include_router(properties_router)
+app.include_router(tags_router)
+app.include_router(rag_router)
+app.include_router(layers_router)
+app.include_router(collaboration_router)
+app.include_router(flow_templates_router)
 
 
 # ============ Health Endpoints ============

@@ -6,6 +6,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import { useToast } from '../shared/components/Toast';
+import { useRAGStatus, useEmbedAll } from '../api/queries/ragQueries.js';
+import {
+  useProjectLayers,
+  useCreateLayer,
+  useUpdateLayer,
+  useDeleteLayer,
+  useAssignDocuments,
+} from '../api/queries/layerQueries.js';
 import ChatInterface from '../modules/chat/components/ChatInterface';
 import './ProjectView.css';
 
@@ -34,10 +42,40 @@ export default function ProjectView({
   const [expandedSections, setExpandedSections] = useState({
     memory: true,
     instructions: true,
+    layers: true,
     files: true,
+  });
+  const [newLayerForm, setNewLayerForm] = useState(false);
+  const [editingLayerId, setEditingLayerId] = useState(null);
+  const [newLayerData, setNewLayerData] = useState({
+    name: '',
+    description: '',
+    color: 'blue',
+    icon: 'book',
+    persona_prompt: '',
+    methodology_prompt: '',
   });
   const toast = useToast();
   const inputRef = useRef(null);
+  const { data: ragStatus } = useRAGStatus(project?.id);
+  const embedAllMutation = useEmbedAll();
+  const { data: layers } = useProjectLayers(project?.id);
+  const createLayerMutation = useCreateLayer();
+  const updateLayerMutation = useUpdateLayer();
+  const deleteLayerMutation = useDeleteLayer();
+  const assignDocumentsMutation = useAssignDocuments();
+
+  const LAYER_COLORS = ['blue', 'green', 'red', 'purple', 'orange', 'yellow', 'pink', 'teal'];
+  const LAYER_COLOR_MAP = {
+    blue: '#3b82f6',
+    green: '#22c55e',
+    red: '#ef4444',
+    purple: '#a855f7',
+    orange: '#f97316',
+    yellow: '#eab308',
+    pink: '#ec4899',
+    teal: '#14b8a6',
+  };
 
   // Load memory when project changes
   useEffect(() => {
@@ -101,6 +139,80 @@ export default function ProjectView({
       console.error('Failed to remove file:', err);
       toast.error('Failed to remove file');
     }
+  };
+
+  const handleEmbedAll = async () => {
+    try {
+      await embedAllMutation.mutateAsync({ projectId: project.id });
+      toast.success('All documents embedded for RAG');
+    } catch (err) {
+      console.error('Failed to embed documents:', err);
+      toast.error('Failed to embed documents');
+    }
+  };
+
+  const handleCreateLayer = async () => {
+    if (!newLayerData.name.trim()) return;
+    try {
+      await createLayerMutation.mutateAsync({
+        project_id: project.id,
+        name: newLayerData.name.trim(),
+        description: newLayerData.description.trim() || null,
+        color: newLayerData.color,
+        icon: newLayerData.icon.trim() || 'book',
+        persona_prompt: newLayerData.persona_prompt.trim() || null,
+        methodology_prompt: newLayerData.methodology_prompt.trim() || null,
+      });
+      setNewLayerForm(false);
+      setNewLayerData({ name: '', description: '', color: 'blue', icon: 'book', persona_prompt: '', methodology_prompt: '' });
+      toast.success('Layer created');
+    } catch (err) {
+      console.error('Failed to create layer:', err);
+      toast.error('Failed to create layer');
+    }
+  };
+
+  const handleUpdateLayer = async (layerId, updates) => {
+    try {
+      await updateLayerMutation.mutateAsync({ layerId, updates });
+      setEditingLayerId(null);
+      toast.success('Layer updated');
+    } catch (err) {
+      console.error('Failed to update layer:', err);
+      toast.error('Failed to update layer');
+    }
+  };
+
+  const handleDeleteLayer = async (layerId) => {
+    if (!confirm('Delete this knowledge layer?')) return;
+    try {
+      await deleteLayerMutation.mutateAsync(layerId);
+      toast.success('Layer deleted');
+    } catch (err) {
+      console.error('Failed to delete layer:', err);
+      toast.error('Failed to delete layer');
+    }
+  };
+
+  const handleAssignFileToLayer = async (fileId, layerId) => {
+    try {
+      await assignDocumentsMutation.mutateAsync({
+        layerId,
+        documentIds: [fileId],
+        projectId: project.id,
+      });
+      toast.success('File assigned to layer');
+    } catch (err) {
+      console.error('Failed to assign file:', err);
+      toast.error('Failed to assign file to layer');
+    }
+  };
+
+  const getLayerDocumentCount = (layerId) => {
+    if (!ragStatus?.documents) return 0;
+    return Object.values(ragStatus.documents).filter(
+      (doc) => doc.layer_id === layerId
+    ).length;
   };
 
   const toggleSection = (section) => {
@@ -331,11 +443,262 @@ export default function ProjectView({
           )}
         </div>
 
+        {/* Knowledge Layers Section */}
+        <div className="project-section">
+          <button className="project-section-header" onClick={() => toggleSection('layers')}>
+            <span className="section-title">Knowledge Layers</span>
+            <div className="section-header-right">
+              <button
+                className="section-add-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNewLayerForm(true);
+                  setExpandedSections((prev) => ({ ...prev, layers: true }));
+                }}
+                title="Add layer"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </button>
+              <svg
+                className={`section-chevron ${expandedSections.layers ? 'expanded' : ''}`}
+                width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              >
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </div>
+          </button>
+          {expandedSections.layers && (
+            <div className="project-section-content">
+              {/* Add Layer Form */}
+              {newLayerForm && (
+                <div className="layer-form">
+                  <input
+                    type="text"
+                    className="layer-form-input"
+                    value={newLayerData.name}
+                    onChange={(e) => setNewLayerData((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="Layer name..."
+                    autoFocus
+                  />
+                  <textarea
+                    className="layer-form-textarea"
+                    value={newLayerData.description}
+                    onChange={(e) => setNewLayerData((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Description (optional) - What is this layer about?"
+                    rows={2}
+                  />
+                  <div className="layer-form-row">
+                    <input
+                      type="text"
+                      className="layer-form-input layer-form-icon-input"
+                      value={newLayerData.icon}
+                      onChange={(e) => setNewLayerData((prev) => ({ ...prev, icon: e.target.value }))}
+                      placeholder="Icon (e.g. book, legal, code)"
+                    />
+                  </div>
+                  <div className="layer-color-picker">
+                    {LAYER_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        className={`layer-color-option ${newLayerData.color === color ? 'selected' : ''}`}
+                        style={{ backgroundColor: LAYER_COLOR_MAP[color] }}
+                        onClick={() => setNewLayerData((prev) => ({ ...prev, color }))}
+                        title={color}
+                        type="button"
+                      />
+                    ))}
+                  </div>
+                  <textarea
+                    className="layer-form-textarea"
+                    value={newLayerData.persona_prompt}
+                    onChange={(e) => setNewLayerData((prev) => ({ ...prev, persona_prompt: e.target.value }))}
+                    placeholder="Persona prompt (optional) - How should the AI behave with this layer?"
+                    rows={2}
+                  />
+                  <textarea
+                    className="layer-form-textarea"
+                    value={newLayerData.methodology_prompt}
+                    onChange={(e) => setNewLayerData((prev) => ({ ...prev, methodology_prompt: e.target.value }))}
+                    placeholder="Methodology prompt (optional) - What approach should be used?"
+                    rows={2}
+                  />
+                  <div className="layer-form-actions">
+                    <button
+                      className="btn-cancel"
+                      onClick={() => {
+                        setNewLayerForm(false);
+                        setNewLayerData({ name: '', description: '', color: 'blue', icon: 'book', persona_prompt: '', methodology_prompt: '' });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn-save"
+                      onClick={handleCreateLayer}
+                      disabled={!newLayerData.name.trim() || createLayerMutation.isPending}
+                    >
+                      {createLayerMutation.isPending ? 'Saving...' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Layer List */}
+              {layers?.length > 0 ? (
+                <div className="layer-list">
+                  {layers.map((layer) => (
+                    <div key={layer.id} className="layer-item">
+                      <div
+                        className="layer-item-header"
+                        onClick={() => setEditingLayerId(editingLayerId === layer.id ? null : layer.id)}
+                      >
+                        <span
+                          className="layer-color-dot"
+                          style={{ backgroundColor: LAYER_COLOR_MAP[layer.color] || layer.color }}
+                        />
+                        <span className="layer-item-name">{layer.name}</span>
+                        <span className="layer-doc-count">{getLayerDocumentCount(layer.id)}</span>
+                        <button
+                          className="layer-toggle-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUpdateLayer(layer.id, { is_active: !layer.is_active });
+                          }}
+                          title={layer.is_active ? 'Deactivate layer' : 'Activate layer'}
+                        >
+                          {layer.is_active !== false ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                              <line x1="1" y1="1" x2="23" y2="23"/>
+                            </svg>
+                          )}
+                        </button>
+                        <button
+                          className="layer-delete-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteLayer(layer.id);
+                          }}
+                          title="Delete layer"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12"/>
+                          </svg>
+                        </button>
+                      </div>
+                      {editingLayerId === layer.id && (
+                        <div className="layer-item-details">
+                          <input
+                            type="text"
+                            className="layer-form-input"
+                            defaultValue={layer.name}
+                            onBlur={(e) => {
+                              if (e.target.value.trim() && e.target.value !== layer.name) {
+                                handleUpdateLayer(layer.id, { name: e.target.value.trim() });
+                              }
+                            }}
+                            placeholder="Layer name"
+                          />
+                          <textarea
+                            className="layer-form-textarea"
+                            defaultValue={layer.description || ''}
+                            onBlur={(e) => {
+                              if (e.target.value !== (layer.description || '')) {
+                                handleUpdateLayer(layer.id, { description: e.target.value.trim() || null });
+                              }
+                            }}
+                            placeholder="Description..."
+                            rows={2}
+                          />
+                          <div className="layer-form-row">
+                            <input
+                              type="text"
+                              className="layer-form-input layer-form-icon-input"
+                              defaultValue={layer.icon || 'book'}
+                              onBlur={(e) => {
+                                if (e.target.value.trim() !== (layer.icon || 'book')) {
+                                  handleUpdateLayer(layer.id, { icon: e.target.value.trim() || 'book' });
+                                }
+                              }}
+                              placeholder="Icon (e.g. book, legal, code)"
+                            />
+                          </div>
+                          <div className="layer-color-picker">
+                            {LAYER_COLORS.map((color) => (
+                              <button
+                                key={color}
+                                className={`layer-color-option ${layer.color === color ? 'selected' : ''}`}
+                                style={{ backgroundColor: LAYER_COLOR_MAP[color] }}
+                                onClick={() => handleUpdateLayer(layer.id, { color })}
+                                title={color}
+                                type="button"
+                              />
+                            ))}
+                          </div>
+                          <textarea
+                            className="layer-form-textarea"
+                            defaultValue={layer.persona_prompt || ''}
+                            onBlur={(e) => {
+                              if (e.target.value !== (layer.persona_prompt || '')) {
+                                handleUpdateLayer(layer.id, { persona_prompt: e.target.value.trim() || null });
+                              }
+                            }}
+                            placeholder="Persona prompt..."
+                            rows={2}
+                          />
+                          <textarea
+                            className="layer-form-textarea"
+                            defaultValue={layer.methodology_prompt || ''}
+                            onBlur={(e) => {
+                              if (e.target.value !== (layer.methodology_prompt || '')) {
+                                handleUpdateLayer(layer.id, { methodology_prompt: e.target.value.trim() || null });
+                              }
+                            }}
+                            placeholder="Methodology prompt..."
+                            rows={2}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : !newLayerForm ? (
+                <p className="layers-empty">No knowledge layers yet</p>
+              ) : null}
+            </div>
+          )}
+        </div>
+
         {/* Files Section */}
         <div className="project-section">
           <button className="project-section-header" onClick={() => toggleSection('files')}>
             <span className="section-title">Files</span>
             <div className="section-header-right">
+              <button
+                className="section-add-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEmbedAll();
+                }}
+                title="Embed all files for RAG"
+                disabled={embedAllMutation.isPending || !project.knowledge_base?.length}
+              >
+                {embedAllMutation.isPending ? (
+                  <span className="embed-spinner">...</span>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                )}
+              </button>
               <button
                 className="section-add-btn"
                 onClick={(e) => {
@@ -377,6 +740,38 @@ export default function ProjectView({
                       <div className="file-card-name">{file.filename}</div>
                       <div className="file-card-meta">{file.lines || Math.ceil((file.size || 0) / 50)} lines</div>
                       <div className="file-card-type">{getFileExtension(file.filename)}</div>
+                      {ragStatus?.documents?.[file.id] ? (
+                        <div className="file-card-embedded" title="Embedded for RAG">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="file-card-not-embedded" title="Not embedded" style={{opacity: 0.3}}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                          </svg>
+                        </div>
+                      )}
+                      {layers?.length > 0 && (
+                        <select
+                          className="file-card-layer-select"
+                          value={ragStatus?.documents?.[file.id]?.layer_id || ''}
+                          onChange={(e) => {
+                            const layerId = e.target.value;
+                            if (layerId) handleAssignFileToLayer(file.id, layerId);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="">No layer</option>
+                          {layers.map((layer) => (
+                            <option key={layer.id} value={layer.id}>
+                              {layer.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   ))}
                 </div>

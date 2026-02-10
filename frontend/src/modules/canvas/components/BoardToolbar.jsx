@@ -29,6 +29,7 @@ export default function BoardToolbar({
   onUndo,
   onRedo,
   onToggleHistory,
+  boardUsers = [],
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
@@ -421,6 +422,25 @@ export default function BoardToolbar({
         </div>
 
       <div className="board-toolbar__right">
+        {boardUsers.length > 0 && (
+          <div className="board-toolbar__presence">
+            {boardUsers.slice(0, 4).map((user) => (
+              <div
+                key={user.user_id}
+                className="board-toolbar__avatar"
+                style={{ backgroundColor: user.color || '#4a90e2' }}
+                title={user.name || 'User'}
+              >
+                {(user.name || 'U')[0].toUpperCase()}
+              </div>
+            ))}
+            {boardUsers.length > 4 && (
+              <div className="board-toolbar__avatar board-toolbar__avatar--more">
+                +{boardUsers.length - 4}
+              </div>
+            )}
+          </div>
+        )}
         {selectedCount > 0 && (
           <>
             <span className="board-toolbar__selection">{selectedCount} selected</span>

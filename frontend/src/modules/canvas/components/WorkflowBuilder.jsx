@@ -6,11 +6,21 @@ const STEP_TYPES = [
   { value: 'ai_transform', label: 'AI Transform' },
   { value: 'combine', label: 'Combine' },
   { value: 'human_review', label: 'Human Review' },
+  { value: 'conditional', label: 'Conditional' },
+];
+
+const MODEL_OPTIONS = [
+  { value: '', label: 'Default model' },
+  { value: 'openai/gpt-4o', label: 'GPT-4o' },
+  { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+  { value: 'anthropic/claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
+  { value: 'anthropic/claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  { value: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0 Flash' },
 ];
 
 const DEFAULT_STEP = { step_type: 'ai_transform', name: '', prompt_template: '' };
 
-export default function WorkflowBuilder({ initialSteps = [], onSave, onCancel, workflowName = '', saving = false }) {
+export default function WorkflowBuilder({ initialSteps = [], onSave, onCancel, onSaveAsTemplate, workflowName = '', saving = false }) {
   const [name, setName] = useState(workflowName);
   const [steps, setSteps] = useState(
     initialSteps.length > 0 ? initialSteps : [{ ...DEFAULT_STEP }]
@@ -52,6 +62,8 @@ export default function WorkflowBuilder({ initialSteps = [], onSave, onCancel, w
         step_type: s.step_type,
         name: s.name,
         prompt_template: s.prompt_template,
+        model: s.model || undefined,
+        config: s.config || undefined,
       })),
     });
   };
@@ -143,6 +155,20 @@ export default function WorkflowBuilder({ initialSteps = [], onSave, onCancel, w
                 </label>
                 {step.step_type !== 'human_review' && (
                   <label className="wf-builder__field">
+                    <span className="wf-builder__field-label">Model</span>
+                    <select
+                      value={step.model || ''}
+                      onChange={(e) => updateStep(index, 'model', e.target.value)}
+                      className="workflow-builder__model-select"
+                    >
+                      {MODEL_OPTIONS.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {step.step_type !== 'human_review' && (
+                  <label className="wf-builder__field">
                     <span className="wf-builder__field-label">Prompt template</span>
                     <textarea
                       value={step.prompt_template}
@@ -154,6 +180,44 @@ export default function WorkflowBuilder({ initialSteps = [], onSave, onCancel, w
                       Use {"{{input}}"} to reference output from the previous step
                     </span>
                   </label>
+                )}
+                {step.step_type === 'conditional' && (
+                  <div className="wf-builder__conditional-config">
+                    <span className="wf-builder__field-label">Branch targets</span>
+                    <div className="wf-builder__conditional-row">
+                      <label className="wf-builder__conditional-field">
+                        <span>If TRUE, go to step #</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={steps.length}
+                          value={step.config?.true_step_index != null ? step.config.true_step_index + 1 : ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseInt(e.target.value, 10) - 1 : undefined;
+                            updateStep(index, 'config', { ...(step.config || {}), true_step_index: val });
+                          }}
+                          placeholder="-"
+                        />
+                      </label>
+                      <label className="wf-builder__conditional-field">
+                        <span>If FALSE, go to step #</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={steps.length}
+                          value={step.config?.false_step_index != null ? step.config.false_step_index + 1 : ''}
+                          onChange={(e) => {
+                            const val = e.target.value ? parseInt(e.target.value, 10) - 1 : undefined;
+                            updateStep(index, 'config', { ...(step.config || {}), false_step_index: val });
+                          }}
+                          placeholder="-"
+                        />
+                      </label>
+                    </div>
+                    <span className="wf-builder__hint">
+                      Leave empty to continue to the next step sequentially
+                    </span>
+                  </div>
                 )}
               </div>
             )}
@@ -175,6 +239,26 @@ export default function WorkflowBuilder({ initialSteps = [], onSave, onCancel, w
           {saving ? 'Saving...' : 'Save Workflow'}
         </button>
       </div>
+      {onSaveAsTemplate && (
+        <button
+          type="button"
+          className="wf-builder__btn wf-builder__template-btn"
+          onClick={() => onSaveAsTemplate({
+            name: name.trim(),
+            steps: steps.filter((s) => s.name.trim()).map((s, i) => ({
+              step_index: i,
+              step_type: s.step_type,
+              name: s.name,
+              prompt_template: s.prompt_template,
+              model: s.model || undefined,
+              config: s.config || undefined,
+            })),
+          })}
+          disabled={!name.trim() || steps.every((s) => !s.name.trim())}
+        >
+          Save as Template
+        </button>
+      )}
     </div>
   );
 }

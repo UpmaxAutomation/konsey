@@ -1,0 +1,125 @@
+.tag-selector {
+  margin-top: 8px;
+}
+
+.tag-selector__current {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.tag-selector__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--bg-secondary, #f0f0f0);
+  border-left: 3px solid #4a90e2;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.tag-selector__remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  color: var(--text-muted, #888);
+  line-height: 1;
+}
+
+.tag-selector__remove:hover {
+  color: var(--text-primary, #333);
+}
+
+.tag-selector__add-btn {
+  background: none;
+  border: 1px dashed var(--border-color, #ddd);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-muted, #888);
+}
+
+.tag-selector__add-btn:hover {
+  border-color: var(--accent, #4a90e2);
+  color: var(--accent, #4a90e2);
+}
+
+.tag-selector__picker {
+  margin-top: 6px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  padding: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tag-selector__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tag-selector__option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: left;
+  width: 100%;
+}
+
+.tag-selector__option:hover {
+  background: var(--bg-secondary, #f0f0f0);
+}
+
+.tag-selector__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tag-selector__create {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color, #eee);
+}
+
+.tag-selector__input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #333);
+}
+
+.tag-selector__create-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent, #4a90e2);
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tag-selector__create-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

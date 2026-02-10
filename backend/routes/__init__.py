@@ -17,6 +17,12 @@ from .misc import router as misc_router
 from .workflows import router as workflows_router
 from .workflows import templates_router as workflow_templates_router
 from .agents import router as agents_router
+from .properties import router as properties_router
+from .tags import router as tags_router
+from .rag import router as rag_router
+from .layers import router as layers_router
+from .collaboration import router as collaboration_router
+from .flow_templates import router as flow_templates_router
 
 __all__ = [
     "auth_router",
@@ -36,4 +42,10 @@ __all__ = [
     "workflows_router",
     "workflow_templates_router",
     "agents_router",
+    "properties_router",
+    "tags_router",
+    "rag_router",
+    "layers_router",
+    "collaboration_router",
+    "flow_templates_router",
 ]

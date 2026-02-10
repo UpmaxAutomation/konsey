@@ -12,7 +12,7 @@ const useUiStore = create((set, get) => ({
   showCommandPalette: false,
   openTabs: [], // Array of { type, id, title }
   activeTabId: null,
-  rightPanel: null, // null | 'journal' | 'inbox' | 'cardInfo'
+  rightPanel: null, // null | 'journal' | 'inbox' | 'cardInfo' | 'properties'
 
   // ---- actions ----
 

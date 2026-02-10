@@ -379,6 +379,67 @@ async def _run_column_migrations() -> None:
         """),
         ("card_mentions.idx_target", "CREATE INDEX IF NOT EXISTS idx_card_mentions_target ON card_mentions(target_card_id)"),
         ("card_mentions.idx_board", "CREATE INDEX IF NOT EXISTS idx_card_mentions_board ON card_mentions(board_id)"),
+        # v10: collaboration_sessions tracking
+        ("collaboration_sessions.create_table", """
+            CREATE TABLE IF NOT EXISTS collaboration_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                connected_at TIMESTAMPTZ DEFAULT now(),
+                disconnected_at TIMESTAMPTZ,
+                duration_seconds INTEGER
+            )
+        """),
+        ("collaboration_sessions.idx_board", "CREATE INDEX IF NOT EXISTS idx_collab_sessions_board ON collaboration_sessions(board_id)"),
+        # v11: user flow templates
+        ("user_flow_templates.create_table", """
+            CREATE TABLE IF NOT EXISTS user_flow_templates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                icon VARCHAR(50) DEFAULT 'zap',
+                category VARCHAR(50) DEFAULT 'custom',
+                steps JSONB NOT NULL,
+                config JSONB DEFAULT '{}',
+                is_public BOOLEAN DEFAULT false,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """),
+        ("user_flow_templates.idx_user", "CREATE INDEX IF NOT EXISTS idx_user_flow_templates_user ON user_flow_templates(user_id)"),
+        # v11: workflow execution log
+        ("workflow_runs.create_table", """
+            CREATE TABLE IF NOT EXISTS workflow_runs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+                board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                status VARCHAR(30) NOT NULL DEFAULT 'running',
+                initial_input TEXT,
+                started_at TIMESTAMPTZ DEFAULT now(),
+                completed_at TIMESTAMPTZ,
+                duration_seconds INTEGER,
+                step_count INTEGER DEFAULT 0,
+                output_card_ids JSONB DEFAULT '[]',
+                error TEXT
+            )
+        """),
+        ("workflow_runs.idx_workflow", "CREATE INDEX IF NOT EXISTS idx_workflow_runs_workflow ON workflow_runs(workflow_id)"),
+        # v11: per-step model selection
+        ("workflow_steps.add_model", "ALTER TABLE workflow_steps ADD COLUMN IF NOT EXISTS model VARCHAR(100)"),
+        # v11: update step_type check constraint to include 'conditional'
+        ("workflow_steps.update_step_type_check", """
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_step_type') THEN
+                    ALTER TABLE workflow_steps DROP CONSTRAINT ck_step_type;
+                END IF;
+                ALTER TABLE workflow_steps ADD CONSTRAINT ck_step_type CHECK (
+                    step_type IN ('council_query', 'ai_transform', 'combine', 'human_review', 'conditional')
+                );
+            END $$;
+        """),
     ]
 
     async with AsyncSessionLocal() as session:

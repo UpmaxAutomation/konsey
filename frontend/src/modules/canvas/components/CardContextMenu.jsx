@@ -10,7 +10,7 @@ const AI_ACTIONS = [
   { key: 'mind_map', label: 'Mind Map', icon: '🗺️' },
 ];
 
-export default function CardContextMenu({ x, y, nodeId, cardType, isKnowledge, onAction, onDelete, onToggleKnowledge, onClose, onEdit, onColorChange }) {
+export default function CardContextMenu({ x, y, nodeId, cardType, isKnowledge, onAction, onDelete, onToggleKnowledge, onClose, onEdit, onColorChange, onDiscuss }) {
   const [showCustomPrompt, setShowCustomPrompt] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const menuRef = useRef(null);
@@ -146,12 +146,7 @@ export default function CardContextMenu({ x, y, nodeId, cardType, isKnowledge, o
       <div className="card-context-menu__divider" />
       <button
         className="card-context-menu__item"
-        onClick={() => {
-          window.dispatchEvent(new CustomEvent('discussCardInChat', {
-            detail: { nodeId, cardType }
-          }));
-          onClose();
-        }}
+        onClick={() => { onDiscuss?.(nodeId); onClose(); }}
       >
         <span className="card-context-menu__item-icon">💬</span>
         Discuss in Chat

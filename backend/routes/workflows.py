@@ -16,6 +16,7 @@ from ..database.models import User
 from ..database import crud as db_crud
 from ..workflows.templates import list_templates, get_template
 from ..database.crud import workflows as workflows_crud
+from ..database.crud import workflow_runs as runs_crud
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ def _serialize_step(step) -> dict:
         "input_card_ids": step.input_card_ids,
         "output_card_ids": step.output_card_ids,
         "error": step.error,
+        "model": getattr(step, 'model', None),
     }
 
 
@@ -295,6 +297,49 @@ async def cancel_workflow(
     )
     await db.commit()
     return _serialize_workflow(workflow)
+
+
+# ──────────────────────────────────────────────
+# Workflow run history endpoints
+# ──────────────────────────────────────────────
+
+@router.get("/{workflow_id}/runs")
+async def list_workflow_runs(
+    board_id: str,
+    workflow_id: str,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List execution history for a workflow."""
+    board = await _get_board(board_id, current_user.id, db)
+    try:
+        wid = uuid.UUID(workflow_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid workflow_id format")
+
+    workflow = await db_crud.workflows.get_workflow_by_id(db, wid, board.id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    runs = await runs_crud.list_runs(db, wid, limit=min(limit, 100))
+    return {
+        "runs": [
+            {
+                "id": str(r.id),
+                "workflow_id": str(r.workflow_id),
+                "status": r.status,
+                "initial_input": r.initial_input,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+                "duration_seconds": r.duration_seconds,
+                "step_count": r.step_count,
+                "output_card_ids": r.output_card_ids,
+                "error": r.error,
+            }
+            for r in runs
+        ]
+    }
 
 
 # ──────────────────────────────────────────────
