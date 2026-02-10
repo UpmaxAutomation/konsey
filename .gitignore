@@ -17,6 +17,7 @@ env/
 # Keys and secrets
 .env
 .env.local
+.env.bak*
 *.pem
 *.key
 
