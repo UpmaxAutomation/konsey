@@ -1,0 +1,67 @@
+.stage3 {
+  background: var(--bg-stage3);
+  border-color: var(--border-stage3);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.stage3 .stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.stage3 .stage-header .stage-title {
+  margin: 0;
+}
+
+.final-response {
+  background: var(--bg-primary);
+  padding: 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border-stage3);
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.chairman-label {
+  color: var(--accent-green);
+  font-size: 12px;
+  font-family: monospace;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.final-text {
+  color: var(--text-primary);
+  line-height: 1.7;
+  font-size: 15px;
+}
+
+.stage-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pin-to-board-wrapper {
+  position: relative;
+}
+
+.pin-to-board-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pin-to-board-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}

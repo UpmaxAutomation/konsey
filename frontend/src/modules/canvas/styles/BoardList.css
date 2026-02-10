@@ -1,0 +1,304 @@
+.board-list {
+  padding: 24px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.board-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.board-list__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0;
+}
+
+.board-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.board-list__create-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent-primary, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.board-list__create-btn:hover {
+  background: var(--accent-hover);
+}
+
+.board-list__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+}
+
+.board-list__close-btn:hover {
+  background: var(--bg-secondary, #f1f5f9);
+}
+
+/* Create form */
+.board-list__create-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.board-list__create-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm, 8px);
+  font-size: 14px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.board-list__create-input:focus {
+  border-color: var(--accent-primary, #6366f1);
+}
+
+.board-list__create-confirm {
+  padding: 8px 16px;
+  background: var(--accent-primary, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.board-list__create-cancel {
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-secondary, #64748b);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Loading & empty */
+.board-list__loading {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-secondary, #64748b);
+}
+
+.board-list__empty {
+  text-align: center;
+  padding: 48px;
+  color: var(--text-secondary, #64748b);
+}
+
+.board-list__empty-icon {
+  margin-bottom: 12px;
+}
+
+.board-list__empty p {
+  margin: 0 0 16px;
+  font-size: 14px;
+}
+
+/* Grid */
+.board-list__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.board-list__card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: var(--radius-md, 12px);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+
+.board-list__card:hover {
+  border-color: var(--accent-primary, #6366f1);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.1));
+}
+
+.board-list__card-icon {
+  color: var(--text-secondary, #64748b);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.board-list__card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.board-list__card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-list__card-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #64748b);
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-list__card-date {
+  font-size: 11px;
+  color: var(--text-tertiary, #94a3b8);
+}
+
+.board-list__card-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.board-list__card:hover .board-list__card-delete {
+  opacity: 1;
+}
+
+.board-list__card-delete:hover {
+  background: var(--error-light);
+  color: var(--error);
+}
+
+/* Error message */
+.board-list__error {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--error-light, #fef2f2);
+  color: var(--error, #ef4444);
+  font-size: 13px;
+  border-radius: var(--radius-sm, 8px);
+  margin-top: 4px;
+}
+
+/* Hierarchy: group wrapper */
+.board-list__group {
+  display: contents;
+}
+
+/* Child count badge */
+.board-list__child-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-primary, #6366f1);
+  background: var(--accent-light, #eef2ff);
+  border-radius: 9px;
+  vertical-align: middle;
+}
+
+/* Emoji icon in card */
+.board-list__card-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+/* Expand/collapse button on parent boards */
+.board-list__expand-btn {
+  position: absolute;
+  top: 8px;
+  right: 38px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 8px);
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.board-list__card:hover .board-list__expand-btn {
+  opacity: 1;
+}
+
+.board-list__expand-btn:hover {
+  background: var(--bg-hover, #f1f5f9);
+}
+
+/* Child boards container */
+.board-list__children {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+  padding-left: 24px;
+  margin-top: -4px;
+}
+
+/* Child card styling */
+.board-list__card--child {
+  padding: 12px;
+  border-style: dashed;
+}
+
+.board-list__card--child .board-list__card-emoji {
+  font-size: 18px;
+}

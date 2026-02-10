@@ -1,0 +1,86 @@
+/* ==========================================================================
+   BubbleToolbar.css — Floating formatting toolbar for Tiptap editor
+
+   Appears on text selection. Dark background by default (dark theme),
+   light background for light mode.
+   ========================================================================== */
+
+.bubble-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--bg-primary, #18181b);
+  border: 1px solid var(--border-primary, #27272a);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .bubble-toolbar,
+:root:not([data-theme="dark"]) .bubble-toolbar {
+  background: #fff;
+  border-color: #e4e4e7;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   Toolbar buttons
+   --------------------------------------------------------------------------- */
+.bubble-toolbar__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #a1a1aa);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  transition: background 0.1s, color 0.1s;
+}
+
+.bubble-toolbar__btn:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+}
+
+.bubble-toolbar__btn--active {
+  background: var(--card-accent, #6366f1);
+  color: #fff;
+}
+
+.bubble-toolbar__btn--active:hover {
+  opacity: 0.9;
+}
+
+/* ---------------------------------------------------------------------------
+   Divider between button groups
+   --------------------------------------------------------------------------- */
+.bubble-toolbar__divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-primary, #27272a);
+  margin: 0 3px;
+}
+
+/* ---------------------------------------------------------------------------
+   Accessibility
+   --------------------------------------------------------------------------- */
+.bubble-toolbar__btn:focus-visible {
+  outline: 2px solid var(--card-accent, #6366f1);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .bubble-toolbar__btn {
+    transition: none;
+  }
+}

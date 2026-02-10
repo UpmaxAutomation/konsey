@@ -1,0 +1,456 @@
+/* AgentPanel.css - AI Agent Interface Styles */
+
+.agent-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #ffffff);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+}
+
+.agent-header {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  color: white;
+  position: relative;
+}
+
+.agent-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.agent-icon {
+  font-size: 1.75rem;
+}
+
+.agent-description {
+  margin: 8px 0 0 0;
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.agent-header .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.agent-header .close-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.agent-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Form Styles */
+.agent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-row select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-secondary, #f8fafc);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.form-row textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-row textarea:focus,
+.form-row select:focus {
+  outline: none;
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.run-btn {
+  flex: 1;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.run-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
+.run-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  padding: 12px 24px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+  background: #dc2626;
+}
+
+/* Error Message */
+.agent-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md, 8px);
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.agent-error button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 1.25rem;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Current Task */
+.current-task {
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-md, 8px);
+  padding: 16px;
+}
+
+.task-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.task-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary, #1e293b);
+}
+
+.task-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+}
+
+.task-query {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: white;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.task-query strong {
+  color: var(--text-secondary, #64748b);
+}
+
+/* Steps Container */
+.steps-container {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-step {
+  background: white;
+  border-radius: var(--radius-sm, 6px);
+  padding: 12px;
+  border-left: 3px solid #e2e8f0;
+}
+
+.agent-step.completed {
+  border-left-color: #10b981;
+}
+
+.agent-step.failed {
+  border-left-color: #ef4444;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.step-number {
+  width: 24px;
+  height: 24px;
+  background: #8b5cf6;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.step-icon {
+  font-size: 1.25rem;
+}
+
+.step-label {
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.step-status {
+  margin-left: auto;
+  font-size: 0.9rem;
+}
+
+.step-status.completed {
+  color: #10b981;
+}
+
+.step-status.failed {
+  color: #ef4444;
+}
+
+.step-input,
+.step-output {
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.step-input strong,
+.step-output strong {
+  color: var(--text-secondary, #64748b);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.step-input pre,
+.step-output pre {
+  margin: 0;
+  padding: 8px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-sm, 6px);
+  overflow-x: auto;
+  font-size: 0.8rem;
+  font-family: 'Fira Code', 'Monaco', monospace;
+  max-height: 150px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.step-error {
+  margin-top: 8px;
+  padding: 8px;
+  background: #fef2f2;
+  border-radius: var(--radius-sm, 6px);
+  color: #dc2626;
+  font-size: 0.85rem;
+}
+
+/* Loading State */
+.step-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: white;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-secondary, #64748b);
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #8b5cf6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Final Answer */
+.final-answer {
+  margin-top: 16px;
+  padding: 16px;
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid #a7f3d0;
+}
+
+.final-answer h4 {
+  margin: 0 0 12px 0;
+  color: #059669;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.answer-content {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text-primary, #1e293b);
+  white-space: pre-wrap;
+}
+
+/* Task History */
+.task-history {
+  border-top: 1px solid var(--border-primary, #e2e8f0);
+  padding-top: 20px;
+}
+
+.task-history h3 {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.history-item:hover {
+  background: #e2e8f0;
+}
+
+.history-item.active {
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+}
+
+.history-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.history-query {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-primary, #1e293b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-steps {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #64748b);
+  flex-shrink: 0;
+}
+
+.history-item .delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 1rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.history-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.history-item .delete-btn:hover {
+  color: #ef4444;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .agent-content {
+    padding: 16px;
+  }
+
+  .steps-container {
+    max-height: 300px;
+  }
+}

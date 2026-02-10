@@ -1,0 +1,473 @@
+/* IntegrationsPanel.css */
+
+.integrations-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary, #ffffff);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+}
+
+.ip-header {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  position: relative;
+}
+
+.ip-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.ip-header .ip-icon {
+  font-size: 1.75rem;
+}
+
+.ip-description {
+  margin: 8px 0 0 0;
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.ip-header .close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+
+/* Tabs */
+.ip-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-primary, #e2e8f0);
+  padding: 0 16px;
+}
+
+.ip-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.ip-tab:hover:not(.disabled) {
+  color: #6366f1;
+}
+
+.ip-tab.active {
+  color: #6366f1;
+  border-bottom-color: #6366f1;
+}
+
+.ip-tab.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ip-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.ip-status-dot.active {
+  background: #10b981;
+}
+
+.ip-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Error */
+.ip-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 16px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md, 8px);
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.ip-error button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #dc2626;
+  cursor: pointer;
+  font-size: 1.25rem;
+}
+
+/* Not Configured */
+.ip-not-configured {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  text-align: center;
+}
+
+.ip-not-configured .ip-icon {
+  font-size: 4rem;
+  margin-bottom: 16px;
+}
+
+.ip-not-configured h3 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary, #1e293b);
+}
+
+.ip-not-configured p {
+  margin: 0 0 20px 0;
+  color: var(--text-secondary, #64748b);
+  max-width: 400px;
+}
+
+.ip-connect-btn {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ip-connect-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* GitHub Panel */
+.ip-github {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.ip-sidebar {
+  width: 280px;
+  border-right: 1px solid var(--border-primary, #e2e8f0);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.ip-sidebar h3 {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ip-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-repo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ip-repo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-md, 8px);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ip-repo-item:hover {
+  background: #e2e8f0;
+}
+
+.ip-repo-item.active {
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+}
+
+.ip-repo-icon {
+  font-size: 1.25rem;
+}
+
+.ip-repo-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ip-repo-name {
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ip-repo-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-lang {
+  padding: 2px 6px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.ip-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.ip-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-placeholder span {
+  font-size: 3rem;
+  margin-bottom: 12px;
+}
+
+.ip-repo-header {
+  margin-bottom: 24px;
+}
+
+.ip-repo-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 1.25rem;
+}
+
+.ip-repo-header p {
+  margin: 0 0 12px 0;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-repo-header a {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.ip-repo-header a:hover {
+  text-decoration: underline;
+}
+
+.ip-repo-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.ip-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-issue-list,
+.ip-pr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ip-issue-item,
+.ip-pr-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: var(--radius-md, 8px);
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.ip-issue-item:hover,
+.ip-pr-item:hover {
+  background: #e2e8f0;
+}
+
+.ip-issue-number,
+.ip-pr-number {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-issue-title,
+.ip-pr-title {
+  color: var(--text-primary, #1e293b);
+  font-weight: 500;
+}
+
+.ip-issue-labels {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ip-label {
+  padding: 2px 8px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 12px;
+  font-size: 0.75rem;
+}
+
+.ip-pr-branch {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #64748b);
+  font-family: monospace;
+}
+
+.ip-empty {
+  color: var(--text-secondary, #64748b);
+  font-size: 0.9rem;
+  padding: 12px;
+}
+
+/* Slack Panel */
+.ip-slack {
+  padding: 20px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.ip-slack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ip-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ip-form-group label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+
+.ip-form-group select,
+.ip-form-group textarea {
+  padding: 12px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.ip-form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.ip-form-group select:focus,
+.ip-form-group textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+}
+
+.ip-send-btn {
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md, 8px);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ip-send-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.ip-send-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ip-success {
+  padding: 12px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius-md, 8px);
+  color: #059669;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .ip-github {
+    flex-direction: column;
+  }
+
+  .ip-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-primary, #e2e8f0);
+    max-height: 200px;
+  }
+
+  .ip-repo-sections {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,66 @@
+/* ChartRenderer Styles */
+
+.chart-container {
+  width: 100%;
+  margin: 16px 0;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+}
+
+.chart-title {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.chart-error {
+  padding: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+}
+
+.chart-error span {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #ef4444;
+}
+
+.chart-error pre {
+  margin: 0;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  overflow-x: auto;
+  max-height: 100px;
+}
+
+/* Recharts customizations */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border-primary);
+}
+
+.recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+}
+
+.recharts-tooltip-wrapper {
+  font-size: 13px;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .chart-container {
+  background: var(--bg-secondary);
+}
+
+[data-theme="dark"] .recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+}

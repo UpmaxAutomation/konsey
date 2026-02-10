@@ -1,0 +1,117 @@
+.board-search {
+  padding: 8px 16px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.board-search__inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.board-search__icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.board-search__input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.board-search__input::placeholder {
+  color: var(--text-muted);
+}
+
+.board-search__filter {
+  padding: 3px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.board-search__count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.board-search__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.board-search__close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.board-search__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.board-search__nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.board-search__nav-btn:hover {
+  background: var(--bg-hover, rgba(0,0,0,0.06));
+  color: var(--text-primary, #1e293b);
+}
+
+.board-search__count--empty {
+  color: var(--text-tertiary, #94a3b8);
+  font-style: italic;
+}
+
+/* Accessibility */
+.board-search__input:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: -1px;
+}
+
+.board-search__filter:focus-visible,
+.board-search__nav-btn:focus-visible,
+.board-search__close:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+  border-radius: 4px;
+}

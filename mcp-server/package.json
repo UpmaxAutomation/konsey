@@ -1,0 +1,16 @@
+{
+  "name": "llm-council-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for LLM Council - query multiple LLMs and get synthesized answers",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "llm-council-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  }
+}

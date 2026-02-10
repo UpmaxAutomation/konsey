@@ -5,17 +5,44 @@ build/
 dist/
 wheels/
 *.egg-info
+.coverage
+.pytest_cache/
+htmlcov/
 
 # Virtual environments
 .venv
+venv/
+env/
 
 # Keys and secrets
 .env
+.env.local
+*.pem
+*.key
 
 # Data files
 data/
+*.log
+backend.log
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.env
+
+# IDE
+.cursor/
+.vscode/
+.idea/
+
+# Temp files
+.tmp/
+*.tmp
+.DS_Store
+
+# Test files
+test-connection.html
+.vercel
+frontend/playwright-report/
+frontend/test-results/

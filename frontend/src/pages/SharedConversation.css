@@ -1,0 +1,264 @@
+.shared-loading,
+.shared-error {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--bg-secondary);
+}
+
+.shared-loading .spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-primary);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.shared-error {
+  text-align: center;
+}
+
+.error-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.shared-error h1 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--text-primary);
+}
+
+.shared-error p {
+  color: var(--text-secondary);
+  margin: 8px 0 24px;
+}
+
+.back-link {
+  padding: 12px 24px;
+  background: var(--accent-primary);
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.back-link:hover {
+  background: var(--accent-primary-hover);
+}
+
+.shared-conversation {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+}
+
+.shared-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.shared-branding {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.shared-branding .logo {
+  font-size: 24px;
+}
+
+.shared-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shared-title h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-primary);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shared-badge {
+  padding: 4px 8px;
+  background: var(--accent-primary-alpha);
+  color: var(--accent-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.try-council-btn {
+  padding: 8px 16px;
+  background: var(--accent-primary);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.try-council-btn:hover {
+  background: var(--accent-primary-hover);
+}
+
+.shared-messages {
+  flex: 1;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+  width: 100%;
+}
+
+.shared-message {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.shared-message .message-avatar {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  border-radius: 50%;
+  font-size: 20px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-primary);
+}
+
+.shared-message .message-body {
+  flex: 1;
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--border-primary);
+}
+
+.shared-message.user .message-body {
+  background: var(--accent-primary-alpha);
+  border-color: var(--accent-primary);
+}
+
+.final-response {
+  line-height: 1.6;
+}
+
+.stage-details {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-primary);
+  padding-top: 16px;
+}
+
+.stage-details summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.stage-details summary:hover {
+  color: var(--text-primary);
+}
+
+.stage1-responses {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.model-response {
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.model-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  margin-bottom: 8px;
+}
+
+.shared-footer {
+  padding: 24px;
+  text-align: center;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+}
+
+.shared-footer p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.shared-footer a {
+  color: var(--accent-primary);
+  text-decoration: none;
+}
+
+.shared-footer a:hover {
+  text-decoration: underline;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .shared-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .shared-title {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .shared-title h1 {
+    max-width: 100%;
+  }
+
+  .shared-messages {
+    padding: 16px;
+  }
+
+  .shared-message {
+    gap: 12px;
+  }
+
+  .shared-message .message-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 16px;
+  }
+}

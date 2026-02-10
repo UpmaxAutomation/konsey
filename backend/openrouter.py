@@ -1,79 +1,55 @@
-"""OpenRouter API client for making LLM requests."""
+"""OpenRouter API client for making LLM requests.
 
-import httpx
-from typing import List, Dict, Any, Optional
-from .config import OPENROUTER_API_KEY, OPENROUTER_API_URL
+BACKWARDS COMPATIBILITY SHIM: This module re-exports everything from
+backend.llm for existing code that imports from backend.openrouter.
 
+New code should import directly from backend.llm:
+    from backend.llm import query_model, query_model_stream, query_models_parallel
+"""
 
-async def query_model(
-    model: str,
-    messages: List[Dict[str, str]],
-    timeout: float = 120.0
-) -> Optional[Dict[str, Any]]:
-    """
-    Query a single model via OpenRouter API.
+# Re-export everything from the new llm package for backwards compatibility
+from .llm import (
+    # Core query functions
+    query_model,
+    query_model_stream,
+    stream_model_response,
+    query_models_parallel,
+    # Cache functions
+    get_cached_response as _get_cached_response,
+    cache_response as _cache_response,
+    get_cache_stats,
+    clear_cache,
+    # Usage functions
+    get_session_usage,
+    reset_session_usage,
+    get_user_session_usage,
+    reset_user_session_usage,
+    record_usage as _record_usage,
+    calculate_cost,
+)
 
-    Args:
-        model: OpenRouter model identifier (e.g., "openai/gpt-4o")
-        messages: List of message dicts with 'role' and 'content'
-        timeout: Request timeout in seconds
+# Also import the cache/usage module internals for tests that access _response_cache etc.
+from .llm.cache import _response_cache, CACHE_TTL_SECONDS, CACHE_MAX_SIZE
+from .llm.usage import _session_usage
 
-    Returns:
-        Response dict with 'content' and optional 'reasoning_details', or None if failed
-    """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": model,
-        "messages": messages,
-    }
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                OPENROUTER_API_URL,
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
-
-            data = response.json()
-            message = data['choices'][0]['message']
-
-            return {
-                'content': message.get('content'),
-                'reasoning_details': message.get('reasoning_details')
-            }
-
-    except Exception as e:
-        print(f"Error querying model {model}: {e}")
-        return None
-
-
-async def query_models_parallel(
-    models: List[str],
-    messages: List[Dict[str, str]]
-) -> Dict[str, Optional[Dict[str, Any]]]:
-    """
-    Query multiple models in parallel.
-
-    Args:
-        models: List of OpenRouter model identifiers
-        messages: List of message dicts to send to each model
-
-    Returns:
-        Dict mapping model identifier to response dict (or None if failed)
-    """
-    import asyncio
-
-    # Create tasks for all models
-    tasks = [query_model(model, messages) for model in models]
-
-    # Wait for all to complete
-    responses = await asyncio.gather(*tasks)
-
-    # Map models to their responses
-    return {model: response for model, response in zip(models, responses)}
+__all__ = [
+    "query_model",
+    "query_model_stream",
+    "stream_model_response",
+    "query_models_parallel",
+    "get_cache_stats",
+    "clear_cache",
+    "get_session_usage",
+    "reset_session_usage",
+    "get_user_session_usage",
+    "reset_user_session_usage",
+    "calculate_cost",
+    # Internal names for backward compat
+    "_get_cached_response",
+    "_cache_response",
+    "_record_usage",
+    "_response_cache",
+    "_session_usage",
+    "CACHE_TTL_SECONDS",
+    "CACHE_MAX_SIZE",
+]
