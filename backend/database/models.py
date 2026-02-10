@@ -767,6 +767,9 @@ class UserFlowTemplate(Base):
     steps: Mapped[dict] = mapped_column(JSON, nullable=False)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+    avg_rating: Mapped[float] = mapped_column(Float, default=0.0)
+    rating_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -794,4 +797,100 @@ class WorkflowRun(Base):
 
     __table_args__ = (
         Index("idx_workflow_runs_workflow", "workflow_id"),
+    )
+
+
+# ============ v12: AI Images + Asset Library ============
+
+class GeneratedImageDB(Base):
+    """Persisted generated image record."""
+    __tablename__ = "generated_images"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    revised_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    provider: Mapped[str] = mapped_column(String(30), nullable=False)
+    model: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    size: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    quality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    style: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_data: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_gen_images_project", "project_id"),
+        Index("idx_gen_images_user", "user_id"),
+    )
+
+
+class AssetLibraryItem(Base):
+    """Asset library item (images, documents, exports)."""
+    __tablename__ = "asset_library"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    asset_type: Mapped[str] = mapped_column(String(30), nullable=False, default="image")
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="generated")
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    thumbnail_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    tags: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_asset_lib_project", "project_id"),
+    )
+
+
+# ============ v13: Templates & Marketplace ============
+
+class BoardTemplate(Base):
+    """Board template for marketplace."""
+    __tablename__ = "board_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(50), default="general")
+    icon: Mapped[str] = mapped_column(String(50), default="layout")
+    preview_data: Mapped[dict] = mapped_column(JSON, default=dict)
+    template_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+    avg_rating: Mapped[float] = mapped_column(Float, default=0.0)
+    rating_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_board_templates_user", "user_id"),
+        Index("idx_board_templates_public", "is_public", postgresql_where=text("is_public = true")),
+    )
+
+
+class TemplateRating(Base):
+    """Rating for any template type (board, workflow, prompt)."""
+    __tablename__ = "template_ratings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    template_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    template_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    review: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "template_type", "template_id", name="uq_user_template_rating"),
+        Index("idx_template_ratings_template", "template_type", "template_id"),
     )

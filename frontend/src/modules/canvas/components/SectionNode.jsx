@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, memo } from 'react';
 import { NodeResizer, Handle, Position } from '@xyflow/react';
 import ColorPicker from './ColorPicker';
 import '../styles/SectionNode.css';
@@ -19,7 +19,7 @@ const SECTION_COLORS = {
  * Supports inline title editing, color picking, resizing, and deletion.
  * @param {{ data: object, selected: boolean }} props
  */
-export default function SectionNode({ data, selected }) {
+function SectionNode({ data, selected }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.title || '');
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -166,4 +166,7 @@ export default function SectionNode({ data, selected }) {
   );
 }
 
+export default memo(SectionNode, (prev, next) =>
+  prev.data === next.data && prev.selected === next.selected
+);
 export { SECTION_COLORS };

@@ -28,7 +28,7 @@ const STYLE_OPTIONS = [
   { value: 'natural', label: 'Natural' },
 ];
 
-export default function ImageGenerator({ onClose }) {
+export default function ImageGenerator({ onClose, projectId, boardId, onPlaceOnBoard }) {
   const [prompt, setPrompt] = useState('');
   const [provider, setProvider] = useState('dalle-3');
   const [size, setSize] = useState('1024x1024');
@@ -74,13 +74,17 @@ export default function ImageGenerator({ onClose }) {
     setIsGenerating(true);
 
     try {
-      const result = await api.generateImage({
+      const payload = {
         prompt: prompt.trim(),
         provider,
         size,
         quality,
         style,
-      });
+      };
+      if (projectId) {
+        payload.project_id = projectId;
+      }
+      const result = await api.generateImage(payload);
 
       setCurrentImage(result);
       setImageHistory(prev => [result, ...prev]);
@@ -257,6 +261,14 @@ export default function ImageGenerator({ onClose }) {
                 </button>
               </div>
             </div>
+            {projectId && onPlaceOnBoard && (
+              <button
+                className="ig-place-btn"
+                onClick={() => onPlaceOnBoard(currentImage)}
+              >
+                Place on Board
+              </button>
+            )}
             {currentImage.revised_prompt && (
               <div className="ig-revised-prompt">
                 <strong>Revised prompt:</strong> {currentImage.revised_prompt}

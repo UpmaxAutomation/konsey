@@ -30,6 +30,10 @@ export default function BoardToolbar({
   onRedo,
   onToggleHistory,
   boardUsers = [],
+  onToggleAssets,
+  onToggleMarketplace,
+  onToggleExport,
+  onToggleIntegrations,
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
@@ -380,6 +384,67 @@ export default function BoardToolbar({
             <polyline points="12 6 12 12 16 14" />
           </svg>
           History
+        </button>
+
+        <div className="board-toolbar__divider" />
+
+        {/* v12: Assets */}
+        <button
+          className="board-toolbar__btn"
+          onClick={onToggleAssets}
+          title="Asset library"
+          aria-label="Asset library"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          Assets
+        </button>
+
+        {/* v13: Marketplace */}
+        <button
+          className="board-toolbar__btn"
+          onClick={onToggleMarketplace}
+          title="Template marketplace"
+          aria-label="Template marketplace"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 2L3 7v13a2 2 0 002 2h14a2 2 0 002-2V7l-3-5z" />
+            <line x1="3" y1="7" x2="21" y2="7" />
+            <path d="M16 11a4 4 0 01-8 0" />
+          </svg>
+          Marketplace
+        </button>
+
+        {/* v14: Export */}
+        <button
+          className="board-toolbar__btn"
+          onClick={onToggleExport}
+          title="Export board"
+          aria-label="Export board"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Export
+        </button>
+
+        {/* v14: Integrations */}
+        <button
+          className="board-toolbar__btn"
+          onClick={onToggleIntegrations}
+          title="Integrations"
+          aria-label="Integrations"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M15 7h3a5 5 0 010 10h-3M9 17H6a5 5 0 010-10h3" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+          Integrations
         </button>
       </div>
 

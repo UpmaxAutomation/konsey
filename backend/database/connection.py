@@ -440,6 +440,96 @@ async def _run_column_migrations() -> None:
                 );
             END $$;
         """),
+        # ============ v12: AI Images + Asset Library ============
+        ("generated_images.create_table", """
+            CREATE TABLE IF NOT EXISTS generated_images (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                prompt TEXT NOT NULL,
+                revised_prompt TEXT,
+                provider VARCHAR(30) NOT NULL,
+                model VARCHAR(50),
+                size VARCHAR(20),
+                quality VARCHAR(20),
+                style VARCHAR(20),
+                image_url TEXT,
+                image_data TEXT,
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """),
+        ("generated_images.idx_project", "CREATE INDEX IF NOT EXISTS idx_gen_images_project ON generated_images(project_id)"),
+        ("generated_images.idx_user", "CREATE INDEX IF NOT EXISTS idx_gen_images_user ON generated_images(user_id)"),
+        ("asset_library.create_table", """
+            CREATE TABLE IF NOT EXISTS asset_library (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                asset_type VARCHAR(30) NOT NULL DEFAULT 'image',
+                source VARCHAR(30) NOT NULL DEFAULT 'generated',
+                url TEXT,
+                thumbnail_url TEXT,
+                file_size INTEGER,
+                mime_type VARCHAR(100),
+                tags TEXT[] DEFAULT '{}',
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT ck_asset_type CHECK (asset_type IN ('image', 'document', 'video', 'audio', 'other')),
+                CONSTRAINT ck_asset_source CHECK (source IN ('generated', 'uploaded', 'exported', 'external'))
+            )
+        """),
+        ("asset_library.idx_project", "CREATE INDEX IF NOT EXISTS idx_asset_lib_project ON asset_library(project_id)"),
+        ("cards.ck_card_type_v12", """
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_card_type') THEN
+                    ALTER TABLE cards DROP CONSTRAINT ck_card_type;
+                END IF;
+                ALTER TABLE cards ADD CONSTRAINT ck_card_type CHECK (
+                    card_type IN ('note','query','council_response','council_synthesis','file_ref','link','board_ref','workflow_output','knowledge','image')
+                );
+            END $$;
+        """),
+        # ============ v13: Templates & Marketplace ============
+        ("board_templates.create_table", """
+            CREATE TABLE IF NOT EXISTS board_templates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                category VARCHAR(50) DEFAULT 'general',
+                icon VARCHAR(50) DEFAULT 'layout',
+                preview_data JSONB DEFAULT '{}',
+                template_data JSONB NOT NULL,
+                is_public BOOLEAN DEFAULT false,
+                use_count INTEGER DEFAULT 0,
+                avg_rating FLOAT DEFAULT 0,
+                rating_count INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                updated_at TIMESTAMPTZ DEFAULT now()
+            )
+        """),
+        ("board_templates.idx_user", "CREATE INDEX IF NOT EXISTS idx_board_templates_user ON board_templates(user_id)"),
+        ("board_templates.idx_public", "CREATE INDEX IF NOT EXISTS idx_board_templates_public ON board_templates(is_public) WHERE is_public = true"),
+        ("template_ratings.create_table", """
+            CREATE TABLE IF NOT EXISTS template_ratings (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                template_type VARCHAR(30) NOT NULL,
+                template_id UUID NOT NULL,
+                rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+                review TEXT,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT ck_template_type CHECK (template_type IN ('board', 'workflow', 'prompt')),
+                CONSTRAINT uq_user_template_rating UNIQUE (user_id, template_type, template_id)
+            )
+        """),
+        ("template_ratings.idx_template", "CREATE INDEX IF NOT EXISTS idx_template_ratings_template ON template_ratings(template_type, template_id)"),
+        ("user_flow_templates.add_use_count", "ALTER TABLE user_flow_templates ADD COLUMN IF NOT EXISTS use_count INTEGER DEFAULT 0"),
+        ("user_flow_templates.add_avg_rating", "ALTER TABLE user_flow_templates ADD COLUMN IF NOT EXISTS avg_rating FLOAT DEFAULT 0"),
+        ("user_flow_templates.add_rating_count", "ALTER TABLE user_flow_templates ADD COLUMN IF NOT EXISTS rating_count INTEGER DEFAULT 0"),
     ]
 
     async with AsyncSessionLocal() as session:

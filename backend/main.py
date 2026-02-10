@@ -21,6 +21,7 @@ from typing import Dict, Any
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -60,6 +61,9 @@ from .routes import (
     layers_router,
     collaboration_router,
     flow_templates_router,
+    assets_router,
+    board_templates_router,
+    export_router,
 )
 
 # Setup structured logging
@@ -204,6 +208,18 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(RequestLoggingMiddleware)
 
 
+@app.middleware("http")
+async def response_time_middleware(request: Request, call_next):
+    """Add X-Response-Time header and log slow queries (>500ms)."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Response-Time"] = f"{duration_ms:.1f}ms"
+    if duration_ms > 500:
+        logger.warning("slow_request", path=request.url.path, method=request.method, duration_ms=round(duration_ms, 1))
+    return response
+
+
 # Global exception handler for better error messages
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -268,6 +284,9 @@ app.include_router(rag_router)
 app.include_router(layers_router)
 app.include_router(collaboration_router)
 app.include_router(flow_templates_router)
+app.include_router(assets_router)
+app.include_router(board_templates_router)
+app.include_router(export_router)
 
 
 # ============ Health Endpoints ============

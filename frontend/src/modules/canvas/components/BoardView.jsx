@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import {
   ReactFlow,
   Background,
@@ -20,9 +20,6 @@ import CardContextMenu from './CardContextMenu';
 import BoardMemoryPanel from './BoardMemoryPanel';
 import JournalPanel from './JournalPanel';
 import InboxPanel from './InboxPanel';
-import WorkflowPanel from './WorkflowPanel';
-import WorkflowRunner from './WorkflowRunner';
-import AgentPanel from './AgentPanel';
 import CardChatPanel from './CardChatPanel';
 import BoardBreadcrumbs from './BoardBreadcrumbs';
 import VersionHistoryPanel from './VersionHistoryPanel';
@@ -48,6 +45,16 @@ import useAgent from '../hooks/useAgent.js';
 import { useHistoryStore } from '../../../stores/historyStore';
 import '../styles/BoardView.css';
 
+// v15: Lazy-load heavy panels
+const WorkflowPanel = lazy(() => import('./WorkflowPanel'));
+const WorkflowRunner = lazy(() => import('./WorkflowRunner'));
+const AgentPanel = lazy(() => import('./AgentPanel'));
+const AssetBrowser = lazy(() => import('./AssetBrowser'));
+const ExportDialog = lazy(() => import('./ExportDialog'));
+const TemplateMarketplace = lazy(() => import('./TemplateMarketplace'));
+const IntegrationPanel = lazy(() => import('./IntegrationPanel'));
+
+// v15: Memoize nodeTypes/edgeTypes to prevent ReactFlow re-registration
 const nodeTypes = { canvasCard: CanvasCard, sectionNode: SectionNode };
 const edgeTypes = { animatedEdge: AnimatedEdge };
 
@@ -70,6 +77,10 @@ function BoardViewInner({ boardId, onBack }) {
   const [editingCardId, setEditingCardId] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showAssetBrowser, setShowAssetBrowser] = useState(false);
+  const [showMarketplace, setShowMarketplace] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showIntegrations, setShowIntegrations] = useState(false);
   const reactFlow = useReactFlow();
   const navigate = useNavigate();
 
@@ -611,6 +622,10 @@ function BoardViewInner({ boardId, onBack }) {
         onUndo={undo}
         onRedo={redo}
         onToggleHistory={() => setShowVersionHistory((p) => !p)}
+        onToggleAssets={() => setShowAssetBrowser((p) => !p)}
+        onToggleMarketplace={() => setShowMarketplace((p) => !p)}
+        onToggleExport={() => setShowExportDialog((p) => !p)}
+        onToggleIntegrations={() => setShowIntegrations((p) => !p)}
       />
 
       {breadcrumbs.length > 0 && (
@@ -654,6 +669,7 @@ function BoardViewInner({ boardId, onBack }) {
             edgeTypes={edgeTypes}
             defaultViewport={defaultViewport}
             connectionMode="loose"
+            nodeDragThreshold={2}
             snapToGrid
             snapGrid={[16, 16]}
             fitView={!board?.viewport}
@@ -743,6 +759,7 @@ function BoardViewInner({ boardId, onBack }) {
       )}
 
       {showWorkflowPanel && (
+        <Suspense fallback={<div className="board-view__panel-loading">Loading...</div>}>
         <WorkflowPanel
           boardId={boardId}
           workflows={wf.workflows}
@@ -761,18 +778,22 @@ function BoardViewInner({ boardId, onBack }) {
           onClose={() => setShowWorkflowPanel(false)}
           onRefresh={wf.fetchWorkflows}
         />
+        </Suspense>
       )}
 
       {wf.running && (
+        <Suspense fallback={null}>
         <WorkflowRunner
           currentStep={wf.currentStep}
           waitingReview={wf.waitingReview}
           onApprove={() => wf.approveStep(wf.activeWorkflow?.id)}
           onCancel={() => wf.cancelWorkflow(wf.activeWorkflow?.id)}
         />
+        </Suspense>
       )}
 
       {showAgentPanel && (
+        <Suspense fallback={<div className="board-view__panel-loading">Loading...</div>}>
         <AgentPanel
           boardId={boardId}
           running={agent.running}
@@ -789,6 +810,7 @@ function BoardViewInner({ boardId, onBack }) {
           onRefreshRuns={agent.fetchRuns}
           onClose={() => setShowAgentPanel(false)}
         />
+        </Suspense>
       )}
 
       {chatPanelCard && (
@@ -823,6 +845,54 @@ function BoardViewInner({ boardId, onBack }) {
             clearHistory();
           }}
         />
+      )}
+
+      {showAssetBrowser && (
+        <Suspense fallback={<div className="board-view__panel-loading">Loading...</div>}>
+          <AssetBrowser
+            projectId={board?.project_id}
+            onClose={() => setShowAssetBrowser(false)}
+            onPlaceOnBoard={(asset) => {
+              handleAddCard('image', {
+                title: asset.name,
+                content: asset.url ? `![${asset.name}](${asset.url})` : asset.name,
+              });
+              setShowAssetBrowser(false);
+            }}
+          />
+        </Suspense>
+      )}
+
+      {showMarketplace && (
+        <Suspense fallback={<div className="board-view__panel-loading">Loading...</div>}>
+          <TemplateMarketplace
+            boardId={boardId}
+            onClose={() => setShowMarketplace(false)}
+            onApplyTemplate={() => {
+              // Refresh board after template applied
+              window.location.reload();
+            }}
+          />
+        </Suspense>
+      )}
+
+      {showExportDialog && (
+        <Suspense fallback={<div className="board-view__panel-loading">Loading...</div>}>
+          <ExportDialog
+            boardId={boardId}
+            boardName={board?.name}
+            onClose={() => setShowExportDialog(false)}
+          />
+        </Suspense>
+      )}
+
+      {showIntegrations && (
+        <Suspense fallback={<div className="board-view__panel-loading">Loading...</div>}>
+          <IntegrationPanel
+            boardId={boardId}
+            onClose={() => setShowIntegrations(false)}
+          />
+        </Suspense>
       )}
 
       {actionError && (

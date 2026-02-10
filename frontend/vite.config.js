@@ -12,11 +12,13 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
+    target: 'es2020',
+    cssCodeSplit: true,
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
         manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-react': ['react', 'react-dom', 'react-router-dom', 'zustand'],
           'vendor-charts': ['recharts'],
           'vendor-syntax': ['react-syntax-highlighter'],
           'vendor-markdown': ['react-markdown', 'remark-gfm'],

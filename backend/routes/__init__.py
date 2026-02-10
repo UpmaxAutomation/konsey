@@ -23,6 +23,9 @@ from .rag import router as rag_router
 from .layers import router as layers_router
 from .collaboration import router as collaboration_router
 from .flow_templates import router as flow_templates_router
+from .assets import router as assets_router
+from .board_templates import router as board_templates_router
+from .export import router as export_router
 
 __all__ = [
     "auth_router",
@@ -48,4 +51,7 @@ __all__ = [
     "layers_router",
     "collaboration_router",
     "flow_templates_router",
+    "assets_router",
+    "board_templates_router",
+    "export_router",
 ]

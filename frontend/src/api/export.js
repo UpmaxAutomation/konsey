@@ -87,3 +87,30 @@ export async function getSharedConversation(token) {
   }
   return response.json();
 }
+
+// ============ BOARD EXPORT & SHARING API ============
+
+export async function exportBoard(boardId, format = 'md') {
+  const res = await fetch(`${API_BASE}/api/boards/${boardId}/export?format=${format}`, {
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('Failed to export board');
+  return res.blob();
+}
+
+export async function shareBoard(boardId) {
+  const res = await fetch(`${API_BASE}/api/boards/${boardId}/share`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('Failed to share board');
+  return res.json();
+}
+
+export async function getSharedBoard(token) {
+  const res = await fetch(`${API_BASE}/api/shared/boards/${token}`, {
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('Shared board not found');
+  return res.json();
+}

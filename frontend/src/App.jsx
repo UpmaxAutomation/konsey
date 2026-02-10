@@ -10,8 +10,14 @@ import { useToast } from './shared/components/Toast';
 import { api, API_BASE } from './api';
 import { getUserFriendlyMessage, NetworkError } from './utils/errors';
 import useUiStore from './stores/uiStore';
+import { initSentry, reportWebVitals } from './utils/monitoring';
 import './App.css';
 import './pages/Auth.css';
+
+// Initialize Sentry for error + performance monitoring
+initSentry();
+// Report Core Web Vitals
+reportWebVitals();
 
 // Lazy load heavy components for code splitting
 const Login = lazy(() => import('./pages/Login'));

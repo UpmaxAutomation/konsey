@@ -11,9 +11,20 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth.dependencies import get_current_user, get_current_user_optional
-from ..database.connection import get_db
+from ..database.connection import get_db, USE_DATABASE, ANONYMOUS_USER_ID
 from ..database.models import User
 from ..database import crud as db_crud
+from ..database.crud import generated_images as img_crud
+from ..database.crud import assets as assets_crud
+
+
+async def _get_db_optional():
+    """Yield a DB session if database is enabled, otherwise None."""
+    if not USE_DATABASE:
+        yield None
+        return
+    async for session in get_db():
+        yield session
 from ..config import (
     get_enhanced_features, set_enhanced_features,
 )
@@ -76,6 +87,7 @@ class ImageGenerationRequest(BaseModel):
     size: str = Field(default="1024x1024", max_length=20)
     quality: str = Field(default="standard", max_length=20)
     style: Optional[str] = "vivid"
+    project_id: Optional[str] = Field(default=None, description="Optional project ID to link image to")
 
 
 class TTSRequest(BaseModel):
@@ -565,7 +577,10 @@ async def delete_agent_task(task_id: str):
     summary="Generate AI Image",
     response_description="Generated image with URL and metadata"
 )
-async def generate_image_endpoint(request: ImageGenerationRequest):
+async def generate_image_endpoint(
+    request: ImageGenerationRequest,
+    db: Optional[AsyncSession] = Depends(_get_db_optional),
+):
     """
     Generate an image using AI image generation providers.
 
@@ -587,6 +602,7 @@ async def generate_image_endpoint(request: ImageGenerationRequest):
             - size: Image dimensions (default: "1024x1024")
             - quality: "standard" or "hd" for DALL-E 3
             - style: "vivid" or "natural" for DALL-E 3
+            - project_id: Optional project to link image to
 
     Returns:
         dict: Generated image containing:
@@ -610,7 +626,48 @@ async def generate_image_endpoint(request: ImageGenerationRequest):
     if image.error:
         raise HTTPException(status_code=500, detail=image.error)
 
-    return image_to_dict(image)
+    result = image_to_dict(image)
+
+    # Persist to database when enabled
+    if USE_DATABASE and db is not None:
+        import uuid as _uuid
+        user_id = _uuid.UUID(ANONYMOUS_USER_ID)
+        project_uuid = _uuid.UUID(request.project_id) if request.project_id else None
+        try:
+            db_img = await img_crud.create_image(
+                db,
+                user_id=user_id,
+                prompt=request.prompt,
+                provider=request.provider,
+                project_id=project_uuid,
+                revised_prompt=image.revised_prompt,
+                model=request.provider,
+                size=request.size,
+                quality=request.quality,
+                style=request.style,
+                image_url=image.url,
+                image_data=image.base64_data,
+            )
+            result["db_id"] = str(db_img.id)
+
+            # Auto-create asset if project_id is provided
+            if project_uuid:
+                await assets_crud.create_asset(
+                    db,
+                    project_id=project_uuid,
+                    user_id=user_id,
+                    name=request.prompt[:100],
+                    asset_type="image",
+                    source="generated",
+                    url=image.url,
+                    thumbnail_url=image.url,
+                    mime_type="image/png",
+                    metadata={"image_id": str(db_img.id), "provider": request.provider, "prompt": request.prompt},
+                )
+        except Exception as e:
+            logger.warning(f"Failed to persist image to DB: {e}")
+
+    return result
 
 
 @router.get(
@@ -639,7 +696,10 @@ async def list_image_providers():
     summary="List Generated Images",
     response_description="List of generated images"
 )
-async def list_generated_images(limit: int = 50):
+async def list_generated_images(
+    limit: int = 50,
+    db: Optional[AsyncSession] = Depends(_get_db_optional),
+):
     """
     List all previously generated images.
 
@@ -653,6 +713,26 @@ async def list_generated_images(limit: int = 50):
             - images: List of generated images with metadata
             - count: Total number of images returned
     """
+    if USE_DATABASE and db is not None:
+        import uuid as _uuid
+        user_id = _uuid.UUID(ANONYMOUS_USER_ID)
+        try:
+            db_images = await img_crud.list_images(db, user_id, limit=limit)
+            items = []
+            for img in db_images:
+                items.append({
+                    "id": str(img.id),
+                    "prompt": img.prompt,
+                    "revised_prompt": img.revised_prompt,
+                    "provider": img.provider,
+                    "size": img.size,
+                    "url": img.image_url,
+                    "has_base64": bool(img.image_data),
+                    "created_at": img.created_at.isoformat() if img.created_at else None,
+                })
+            return {"images": items, "count": len(items)}
+        except Exception as e:
+            logger.warning(f"Failed to list images from DB: {e}")
     return {"images": list_images(limit), "count": len(list_images(limit))}
 
 
@@ -662,7 +742,10 @@ async def list_generated_images(limit: int = 50):
     summary="Get Generated Image",
     response_description="Image details and URL"
 )
-async def get_generated_image(image_id: str):
+async def get_generated_image(
+    image_id: str,
+    db: Optional[AsyncSession] = Depends(_get_db_optional),
+):
     """
     Get a specific generated image by ID.
 
@@ -682,6 +765,23 @@ async def get_generated_image(image_id: str):
     Raises:
         HTTPException 404: If image not found
     """
+    if USE_DATABASE and db is not None:
+        import uuid as _uuid
+        try:
+            db_img = await img_crud.get_image(db, _uuid.UUID(image_id))
+            if db_img:
+                return {
+                    "id": str(db_img.id),
+                    "prompt": db_img.prompt,
+                    "revised_prompt": db_img.revised_prompt,
+                    "provider": db_img.provider,
+                    "size": db_img.size,
+                    "url": db_img.image_url,
+                    "has_base64": bool(db_img.image_data),
+                    "created_at": db_img.created_at.isoformat() if db_img.created_at else None,
+                }
+        except (ValueError, Exception) as e:
+            logger.debug(f"DB image lookup failed, falling back to in-memory: {e}")
     image = get_image(image_id)
     if image is None:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -694,7 +794,10 @@ async def get_generated_image(image_id: str):
     summary="Delete Generated Image",
     response_description="Deletion confirmation"
 )
-async def delete_generated_image(image_id: str):
+async def delete_generated_image(
+    image_id: str,
+    db: Optional[AsyncSession] = Depends(_get_db_optional),
+):
     """
     Delete a generated image.
 
@@ -712,6 +815,15 @@ async def delete_generated_image(image_id: str):
     Raises:
         HTTPException 404: If image not found
     """
+    if USE_DATABASE and db is not None:
+        import uuid as _uuid
+        user_id = _uuid.UUID(ANONYMOUS_USER_ID)
+        try:
+            deleted = await img_crud.delete_image(db, _uuid.UUID(image_id), user_id)
+            if deleted:
+                return {"status": "deleted", "image_id": image_id}
+        except (ValueError, Exception) as e:
+            logger.debug(f"DB image delete failed, falling back to in-memory: {e}")
     success = delete_image(image_id)
     if not success:
         raise HTTPException(status_code=404, detail="Image not found")

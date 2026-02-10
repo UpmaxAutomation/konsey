@@ -6,7 +6,7 @@
  *
  * @module canvas/editor/TiptapEditor
  */
-import { useEffect, useRef, useState, Component } from 'react';
+import { useEffect, useRef, useState, Component, memo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { buildExtensions } from './extensions';
 import BubbleToolbar from './BubbleToolbar';
@@ -34,7 +34,7 @@ class PluginBoundary extends Component {
  * @param {boolean} [props.autoFocus=true] - Focus editor on mount
  * @returns {JSX.Element}
  */
-export default function TiptapEditor({
+function TiptapEditor({
   content,
   onSave,
   onCancel,
@@ -185,3 +185,5 @@ export default function TiptapEditor({
     </div>
   );
 }
+
+export default memo(TiptapEditor);

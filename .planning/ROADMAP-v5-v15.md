@@ -407,6 +407,8 @@ SCALE (v13.0-v15.0) ── marketplace + mobile + offline + i18n
 | **v11.0** | 24-25 | **Multi-step AI Flows**: Flow builder, flow runner, flow templates | Workflow | 2 weeks |
 | **v12.0** | 26-27 | **AI images + asset library**: Generation, asset browser, image cards | Media | 2 weeks |
 
+> v12.0-v15.0 COMPLETED — see commit history for implementation details.
+
 ### Phase 4: Scale
 
 | Version | Sprint | What | Team | Duration |

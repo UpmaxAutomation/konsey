@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, Component } from 'react';
+import { useState, useRef, useEffect, useCallback, Component, memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import SafeMarkdown from '../../../shared/components/SafeMarkdown';
 import CardEditor from './CardEditor';
@@ -389,4 +389,6 @@ function CanvasCard({ data, selected }) {
   );
 }
 
-export default CanvasCard;
+export default memo(CanvasCard, (prev, next) =>
+  prev.data === next.data && prev.selected === next.selected
+);

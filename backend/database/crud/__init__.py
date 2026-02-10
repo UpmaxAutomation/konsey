@@ -21,5 +21,9 @@ from . import snapshots
 from . import mentions
 from . import flow_templates
 from . import workflow_runs
+from . import generated_images
+from . import assets
+from . import board_templates
+from . import template_ratings
 
-__all__ = ["users", "conversations", "settings", "api_keys", "folders", "usage", "memory", "email_verification", "projects", "boards", "sections", "agent_runs", "workflows", "properties", "tags", "document_chunks", "knowledge_layers", "snapshots", "mentions", "flow_templates", "workflow_runs"]
+__all__ = ["users", "conversations", "settings", "api_keys", "folders", "usage", "memory", "email_verification", "projects", "boards", "sections", "agent_runs", "workflows", "properties", "tags", "document_chunks", "knowledge_layers", "snapshots", "mentions", "flow_templates", "workflow_runs", "generated_images", "assets", "board_templates", "template_ratings"]

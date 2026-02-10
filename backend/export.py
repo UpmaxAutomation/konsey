@@ -272,3 +272,32 @@ def get_shared_conversation_id(token: str) -> Optional[str]:
             return None
 
     return share_info.get('conversation_id')
+
+
+# ---- Board sharing ----
+
+def create_board_share_link(board_id: str) -> dict:
+    """Generate a share token for a board."""
+    import hashlib
+    import time
+    token = hashlib.sha256(f"{board_id}-{time.time()}".encode()).hexdigest()[:16]
+
+    shares = load_shares()
+
+    shares[token] = {
+        "board_id": board_id,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+
+    save_shares(shares)
+
+    return {"token": token, "share_url": f"/shared/board/{token}"}
+
+
+def get_shared_board_id(token: str) -> Optional[str]:
+    """Validate a board share token and return the board_id."""
+    shares = load_shares()
+    entry = shares.get(token)
+    if entry and entry.get("board_id"):
+        return entry.get("board_id")
+    return None
