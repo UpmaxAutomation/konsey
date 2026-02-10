@@ -11,12 +11,17 @@ import Typography from '@tiptap/extension-typography';
 import Image from '@tiptap/extension-image';
 import CharacterCount from '@tiptap/extension-character-count';
 import { Markdown } from 'tiptap-markdown';
+import CardMentionNode from './card-mention';
+import Callout from './extensions/callout';
+import MathBlock from './extensions/math-block';
+import Embed from './extensions/embed';
+import './extensions/block-types.css';
 
 /**
  * Build the extension array for the card editor.
  *
- * SlashCommands and CardMention are disabled until the upstream
- * @tiptap/suggestion plugin is fixed (getState crash in v3.19).
+ * CardMention uses patched-suggestion.js to work around the
+ * @tiptap/suggestion v3.19 getState crash. Type [[ to trigger.
  *
  * @param {Object} opts
  * @param {string} [opts.placeholder] - Placeholder text for empty editor
@@ -49,5 +54,9 @@ export function buildExtensions({ placeholder = 'Start writing...' } = {}) {
       HTMLAttributes: { class: 'tiptap-image' },
     }),
     CharacterCount,
+    CardMentionNode,
+    Callout,
+    MathBlock,
+    Embed,
   ];
 }

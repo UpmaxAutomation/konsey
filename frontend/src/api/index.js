@@ -178,6 +178,26 @@ export {
   listTeamConversations,
 } from './projects.js';
 
+// Re-export all RAG functions
+export {
+  embedDocument,
+  embedAllDocuments,
+  semanticSearch,
+  getRAGStatus,
+  deleteDocumentEmbeddings,
+} from './rag.js';
+
+// Re-export all layers functions
+export {
+  createLayer,
+  listLayers,
+  getLayer,
+  updateLayer,
+  deleteLayer,
+  assignDocuments,
+  reorderLayers,
+} from './layers.js';
+
 // Re-export all ratings functions
 export {
   submitRating,
@@ -205,6 +225,21 @@ export {
   shareConversation,
   getSharedConversation,
 } from './export.js';
+
+// Re-export all mentions functions
+export {
+  getBacklinks,
+  getMentionGraph,
+} from './mentions.js';
+
+// Re-export all snapshots functions
+export {
+  listSnapshots,
+  createSnapshot,
+  getSnapshot,
+  restoreSnapshot,
+  deleteSnapshot,
+} from './snapshots.js';
 
 // Re-export all boards functions
 export {
@@ -248,6 +283,10 @@ import * as ratings from './ratings.js';
 import * as batch from './batch.js';
 import * as exportModule from './export.js';
 import * as boards from './boards.js';
+import * as rag from './rag.js';
+import * as layers from './layers.js';
+import * as mentions from './mentions.js';
+import * as snapshots from './snapshots.js';
 
 export const api = {
   // Conversations
@@ -438,4 +477,31 @@ export const api = {
   getBoardMemory: boards.getBoardMemory,
   boardMemoryAction: boards.boardMemoryAction,
   deleteBoardFact: boards.deleteBoardFact,
+
+  // RAG
+  embedDocument: rag.embedDocument,
+  embedAllDocuments: rag.embedAllDocuments,
+  semanticSearch: rag.semanticSearch,
+  getRAGStatus: rag.getRAGStatus,
+  deleteDocumentEmbeddings: rag.deleteDocumentEmbeddings,
+
+  // Layers
+  createLayer: layers.createLayer,
+  listLayers: layers.listLayers,
+  getLayer: layers.getLayer,
+  updateLayer: layers.updateLayer,
+  deleteLayer: layers.deleteLayer,
+  assignDocuments: layers.assignDocuments,
+  reorderLayers: layers.reorderLayers,
+
+  // Mentions
+  getBacklinks: mentions.getBacklinks,
+  getMentionGraph: mentions.getMentionGraph,
+
+  // Snapshots
+  listSnapshots: snapshots.listSnapshots,
+  createSnapshot: snapshots.createSnapshot,
+  getSnapshot: snapshots.getSnapshot,
+  restoreSnapshot: snapshots.restoreSnapshot,
+  deleteSnapshot: snapshots.deleteSnapshot,
 };

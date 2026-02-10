@@ -133,6 +133,13 @@ export default function TiptapEditor({
 
   editorRef.current = editor;
 
+  // Sync board cards into editor storage for card mention autocomplete
+  useEffect(() => {
+    if (editor && boardCards) {
+      editor.storage.cardMention = { cards: boardCards };
+    }
+  }, [editor, boardCards]);
+
   // Auto-focus the editor on mount
   useEffect(() => {
     if (!editor || !autoFocus) return;

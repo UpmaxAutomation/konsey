@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from typing import Optional, List, Any
 
@@ -15,7 +16,17 @@ from ..database.connection import get_db
 from ..database.models import User
 from ..database.crud import boards as boards_crud
 from ..database.crud import sections as sections_crud
+from ..database.crud import tags as tags_crud
+from ..database.crud import snapshots as snapshots_crud
+from ..database.crud import mentions as mentions_crud
 from ..auth.dependencies import get_current_user
+
+MENTION_PATTERN = re.compile(r'\[\[([^|\]]+)\|([a-f0-9-]+)\]\]')
+
+
+def extract_mention_ids(content: str) -> List[str]:
+    """Extract card IDs from [[title|uuid]] mention patterns."""
+    return [match.group(2) for match in MENTION_PATTERN.finditer(content or '')]
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +151,11 @@ class CreateInboxItemRequest(BaseModel):
     title: Optional[str] = None
 
 
+class CreateSnapshotRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
 # ──────────────────────────────────────────────
 # Serialization helpers
 # ──────────────────────────────────────────────
@@ -156,6 +172,7 @@ def _serialize_board(board, include_contents: bool = False) -> dict:
         "parent_board_id": str(board.parent_board_id) if getattr(board, 'parent_board_id', None) else None,
         "depth": getattr(board, 'depth', 0) or 0,
         "icon": getattr(board, 'icon', None),
+        "view_config": getattr(board, 'view_config', None) or {"active_view": "canvas", "table": {}, "kanban": {}},
         "created_at": board.created_at.isoformat() if board.created_at else None,
         "updated_at": board.updated_at.isoformat() if board.updated_at else None,
     }
@@ -163,6 +180,7 @@ def _serialize_board(board, include_contents: bool = False) -> dict:
         data["cards"] = [_serialize_card(c) for c in (board.cards or [])]
         data["edges"] = [_serialize_edge(e) for e in (board.edges or [])]
         data["sections"] = [_serialize_section(s) for s in (getattr(board, 'sections', None) or [])]
+        data["property_definitions"] = [_serialize_property_def(p) for p in (getattr(board, 'property_definitions', None) or [])]
     return data
 
 
@@ -216,6 +234,29 @@ def _serialize_section(section) -> dict:
         "width": section.width,
         "height": section.height,
         "created_at": section.created_at.isoformat() if section.created_at else None,
+    }
+
+
+def _serialize_property_def(prop) -> dict:
+    return {
+        "id": str(prop.id),
+        "board_id": str(prop.board_id),
+        "name": prop.name,
+        "property_type": prop.property_type,
+        "options": prop.options,
+        "sort_order": prop.sort_order,
+        "created_at": prop.created_at.isoformat() if prop.created_at else None,
+    }
+
+
+def _serialize_tag(tag) -> dict:
+    return {
+        "id": str(tag.id),
+        "user_id": str(tag.user_id),
+        "name": tag.name,
+        "color": tag.color,
+        "collection": tag.collection,
+        "created_at": tag.created_at.isoformat() if tag.created_at else None,
     }
 
 
@@ -484,8 +525,30 @@ async def update_card_endpoint(
     card = await boards_crud.update_card(db, uuid.UUID(card_id), board.id, **kwargs)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+
+    # Sync mentions when content changes
+    if 'content' in kwargs:
+        mention_ids = extract_mention_ids(kwargs.get('content', ''))
+        mention_uuids = [uuid.UUID(mid) for mid in mention_ids if mid]
+        await mentions_crud.sync_mentions(db, uuid.UUID(card_id), board.id, mention_uuids)
+
     await db.commit()
     return _serialize_card(card)
+
+
+@router.get("/{board_id}/cards/{card_id}/backlinks")
+async def get_card_backlinks(
+    board_id: str,
+    card_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all cards that mention this card (backlinks)."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    backlinks = await mentions_crud.get_backlinks(db, uuid.UUID(card_id))
+    return {"backlinks": backlinks}
 
 
 @router.delete("/{board_id}/cards/{card_id}")
@@ -505,6 +568,67 @@ async def delete_card_endpoint(
         raise HTTPException(status_code=404, detail="Card not found")
     await db.commit()
     return {"status": "deleted"}
+
+
+# ──────────────────────────────────────────────
+# Card-Tag endpoints
+# ──────────────────────────────────────────────
+
+class AddCardTagRequest(BaseModel):
+    tag_id: str
+
+
+@router.get("/{board_id}/cards/{card_id}/tags")
+async def get_card_tags(
+    board_id: str,
+    card_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all tags for a card."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    tags = await tags_crud.get_card_tags(db, uuid.UUID(card_id))
+    return {"tags": [_serialize_tag(t) for t in tags]}
+
+
+@router.post("/{board_id}/cards/{card_id}/tags", status_code=status.HTTP_201_CREATED)
+async def add_card_tag(
+    board_id: str,
+    card_id: str,
+    request: AddCardTagRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a tag to a card."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    await tags_crud.add_card_tag(db, uuid.UUID(card_id), uuid.UUID(request.tag_id))
+    tags = await tags_crud.get_card_tags(db, uuid.UUID(card_id))
+    return {"tags": [_serialize_tag(t) for t in tags]}
+
+
+@router.delete("/{board_id}/cards/{card_id}/tags/{tag_id}")
+async def remove_card_tag(
+    board_id: str,
+    card_id: str,
+    tag_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a tag from a card."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    removed = await tags_crud.remove_card_tag(db, uuid.UUID(card_id), uuid.UUID(tag_id))
+    if not removed:
+        raise HTTPException(status_code=404, detail="Tag not found on card")
+    return {"ok": True}
 
 
 # ──────────────────────────────────────────────
@@ -1702,3 +1826,157 @@ async def run_board_ai_action(
         "edges": [_serialize_edge(e) for e in created_edges],
         "color_updates": color_updates if color_updates else None,
     }
+
+
+# ──────────────────────────────────────────────
+# Snapshot / Version History endpoints
+# ──────────────────────────────────────────────
+
+def _serialize_snapshot(snap, include_data: bool = False) -> dict:
+    """Serialize a snapshot to a dict. Works with both full ORM objects and row tuples."""
+    if hasattr(snap, "snapshot_data"):
+        # Full ORM object
+        data = {
+            "id": str(snap.id),
+            "board_id": str(snap.board_id),
+            "user_id": str(snap.user_id),
+            "name": snap.name,
+            "description": snap.description,
+            "trigger": snap.trigger,
+            "card_count": snap.card_count,
+            "edge_count": snap.edge_count,
+            "section_count": snap.section_count,
+            "created_at": snap.created_at.isoformat() if snap.created_at else None,
+        }
+        if include_data:
+            data["snapshot_data"] = snap.snapshot_data
+        return data
+    else:
+        # Row tuple from list query (id, board_id, user_id, name, description, trigger, card_count, edge_count, section_count, created_at)
+        return {
+            "id": str(snap[0]),
+            "board_id": str(snap[1]),
+            "user_id": str(snap[2]),
+            "name": snap[3],
+            "description": snap[4],
+            "trigger": snap[5],
+            "card_count": snap[6],
+            "edge_count": snap[7],
+            "section_count": snap[8],
+            "created_at": snap[9].isoformat() if snap[9] else None,
+        }
+
+
+async def _maybe_auto_snapshot(
+    db: AsyncSession,
+    board_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> None:
+    """Create an auto snapshot if the last one was more than 5 minutes ago."""
+    from datetime import datetime, timedelta, timezone as tz
+    last_time = await snapshots_crud.get_last_auto_snapshot_time(db, board_id)
+    now = datetime.now(tz.utc)
+    if last_time is None or (now - last_time) > timedelta(minutes=5):
+        await snapshots_crud.capture_snapshot(db, board_id, user_id, trigger="auto")
+
+
+@router.get("/{board_id}/snapshots")
+async def list_snapshots_endpoint(
+    board_id: str,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List snapshots for a board (metadata only)."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    snaps = await snapshots_crud.list_snapshots(db, board.id, limit=limit)
+    return {"snapshots": [_serialize_snapshot(s) for s in snaps]}
+
+
+@router.post("/{board_id}/snapshots", status_code=status.HTTP_201_CREATED)
+async def create_snapshot_endpoint(
+    board_id: str,
+    request: CreateSnapshotRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a manual snapshot of the board."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    snap = await snapshots_crud.capture_snapshot(
+        db, board.id, current_user.id,
+        trigger="manual",
+        name=request.name,
+        description=request.description,
+    )
+    await db.commit()
+    return _serialize_snapshot(snap, include_data=False)
+
+
+@router.get("/{board_id}/snapshots/{snapshot_id}")
+async def get_snapshot_endpoint(
+    board_id: str,
+    snapshot_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a snapshot with full data."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    snap = await snapshots_crud.get_snapshot(db, uuid.UUID(snapshot_id))
+    if not snap or snap.board_id != board.id:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    return _serialize_snapshot(snap, include_data=True)
+
+
+@router.post("/{board_id}/snapshots/{snapshot_id}/restore")
+async def restore_snapshot_endpoint(
+    board_id: str,
+    snapshot_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore a board to a snapshot state. Creates a safety snapshot first."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    safety_snap = await snapshots_crud.restore_snapshot(
+        db, uuid.UUID(snapshot_id), board.id, current_user.id
+    )
+    if not safety_snap:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+
+    await db.commit()
+
+    return {
+        "status": "restored",
+        "safety_snapshot_id": str(safety_snap.id),
+    }
+
+
+@router.delete("/{board_id}/snapshots/{snapshot_id}")
+async def delete_snapshot_endpoint(
+    board_id: str,
+    snapshot_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a snapshot."""
+    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    deleted = await snapshots_crud.delete_snapshot(db, uuid.UUID(snapshot_id))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    await db.commit()
+    return {"status": "deleted"}

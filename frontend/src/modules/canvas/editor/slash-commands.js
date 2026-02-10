@@ -97,6 +97,33 @@ const commands = [
       }
     },
   },
+  {
+    title: 'Callout',
+    icon: '\u2139',
+    description: 'Colored callout box (info, warning, success, error)',
+    category: 'Advanced',
+    aliases: ['callout', 'admonition', 'alert', 'notice'],
+    command: (editor) => editor.chain().focus().setCallout({ type: 'info' }).run(),
+  },
+  {
+    title: 'Math',
+    icon: '\u2211',
+    description: 'Math formula block',
+    category: 'Advanced',
+    aliases: ['math', 'formula', 'equation', 'latex', 'katex'],
+    command: (editor) => editor.chain().focus().insertContent({ type: 'mathBlock', attrs: { content: 'E = mc^2' } }).run(),
+  },
+  {
+    title: 'Embed',
+    icon: '\u29C9',
+    description: 'Embed YouTube, Figma, or URL',
+    category: 'Advanced',
+    aliases: ['embed', 'iframe', 'youtube', 'video'],
+    command: (editor) => {
+      const url = window.prompt('Enter URL to embed:');
+      if (url) editor.chain().focus().insertContent({ type: 'embed', attrs: { url } }).run();
+    },
+  },
 ];
 
 /**

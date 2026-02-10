@@ -1,7 +1,8 @@
 import { useMemo, useCallback } from 'react';
 import { addEdge } from '@xyflow/react';
-import { createEdge as apiCreateEdge, createEdgesBatch, deleteEdge, deleteCard, deleteSection } from '../../../api/boards.js';
+import { createEdge as apiCreateEdge, createEdgesBatch, deleteEdge, deleteCard, createCard, createSection, deleteSection } from '../../../api/boards.js';
 import { edgeToFlow, normalizeHandle } from '../utils.js';
+import { useHistoryStore } from '../../../stores/historyStore';
 
 /**
  * Manages edge connections and deletion of selected nodes/edges.
@@ -16,6 +17,9 @@ import { edgeToFlow, normalizeHandle } from '../utils.js';
 export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges) {
   const selectedNodes = useMemo(() => nodes.filter((n) => n.selected), [nodes]);
   const selectedEdges = useMemo(() => edges.filter((e) => e.selected), [edges]);
+  const pushEntry = useHistoryStore((s) => s.pushEntry);
+  const isUndoing = useHistoryStore((s) => s.isUndoing);
+  const isRedoing = useHistoryStore((s) => s.isRedoing);
 
   // Handle new edge connection (supports section-to-section, card-to-section, section-to-card)
   const handleConnect = useCallback(async (connection) => {
@@ -50,6 +54,7 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
 
         const result = await createEdgesBatch(boardId, edgePairs);
         const flowEdges = (result.edges || []).map(edgeToFlow);
+        const batchEdgeIds = flowEdges.map((e) => e.id);
         setEdges((eds) => {
           let updated = eds;
           for (const fe of flowEdges) {
@@ -57,27 +62,65 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
           }
           return updated;
         });
+
+        if (!isUndoing && !isRedoing && flowEdges.length > 0) {
+          pushEntry({
+            type: 'connect_batch',
+            description: `Connect ${flowEdges.length} edges`,
+            undo: () => setEdges((eds) => eds.filter((e) => !batchEdgeIds.includes(e.id))),
+            redo: () => setEdges((eds) => {
+              let updated = eds;
+              for (const fe of flowEdges) { updated = addEdge(fe, updated); }
+              return updated;
+            }),
+            apiUndo: async () => {
+              for (const eid of batchEdgeIds) { try { await deleteEdge(boardId, eid); } catch {} }
+            },
+            apiRedo: () => createEdgesBatch(boardId, edgePairs),
+          });
+        }
       } else {
         // Normal card-to-card connection
         const srcHandle = normalizeHandle(connection.sourceHandle);
         const tgtHandle = normalizeHandle(connection.targetHandle);
-        const edge = await apiCreateEdge(boardId, {
+        const edgeData = {
           from_card_id: connection.source,
           to_card_id: connection.target,
           edge_type: 'related',
           source_handle: srcHandle,
           target_handle: tgtHandle,
-        });
+        };
+        const edge = await apiCreateEdge(boardId, edgeData);
         const flowEdge = edgeToFlow(edge);
         setEdges((eds) => addEdge(flowEdge, eds));
+
+        if (!isUndoing && !isRedoing) {
+          pushEntry({
+            type: 'connect',
+            description: `Connect ${connection.source} to ${connection.target}`,
+            undo: () => setEdges((eds) => eds.filter((e) => e.id !== edge.id)),
+            redo: () => setEdges((eds) => addEdge(flowEdge, eds)),
+            apiUndo: () => deleteEdge(boardId, edge.id),
+            apiRedo: () => apiCreateEdge(boardId, edgeData),
+          });
+        }
       }
     } catch (err) {
       console.error('Failed to create edge:', err);
     }
-  }, [boardId, nodes, setEdges]);
+  }, [boardId, nodes, setEdges, pushEntry, isUndoing, isRedoing]);
 
   // Delete selected nodes/edges
   const handleDeleteSelected = useCallback(async () => {
+    // Capture state before deletion for undo
+    const deletedEdgeSnapshots = selectedEdges.map((e) => ({ ...e }));
+    const deletedNodeSnapshots = selectedNodes.map((n) => ({ ...n, data: { ...n.data }, position: { ...n.position } }));
+    // Also capture orphaned edges (edges connected to nodes being deleted)
+    const deletedNodeIds = new Set(selectedNodes.map((n) => n.id));
+    const orphanedEdges = edges.filter(
+      (e) => !e.selected && (deletedNodeIds.has(e.source) || deletedNodeIds.has(e.target))
+    ).map((e) => ({ ...e }));
+
     for (const edge of selectedEdges) {
       try { await deleteEdge(boardId, edge.id); } catch (err) { console.error('Failed to delete edge:', err); }
     }
@@ -90,7 +133,6 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
         if (node.type === 'sectionNode') {
           const sectionId = node.id.replace('section-', '');
           sectionNodeIds.add(node.id);
-          // Backend delete converts child positions to absolute
           await deleteSection(boardId, sectionId);
         } else {
           await deleteCard(boardId, node.id);
@@ -99,7 +141,6 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
       } catch (err) { console.error('Failed to delete node:', err); }
     }
     setNodes((nds) => {
-      // For section deletions, convert child card positions to absolute
       const updated = nds.map((n) => {
         if (n.parentId && sectionNodeIds.has(n.parentId) && !deletedIds.has(n.id)) {
           const sectionNode = nds.find((s) => s.id === n.parentId);
@@ -121,7 +162,73 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
       return updated.filter((n) => !deletedIds.has(n.id));
     });
     setEdges((eds) => eds.filter((e) => !deletedIds.has(e.source) && !deletedIds.has(e.target)));
-  }, [boardId, selectedNodes, selectedEdges, setNodes, setEdges]);
+
+    if (!isUndoing && !isRedoing && (deletedNodeSnapshots.length > 0 || deletedEdgeSnapshots.length > 0)) {
+      const allDeletedEdges = [...deletedEdgeSnapshots, ...orphanedEdges];
+      pushEntry({
+        type: 'delete_selected',
+        description: `Delete ${deletedNodeSnapshots.length} nodes, ${allDeletedEdges.length} edges`,
+        undo: () => {
+          setNodes((nds) => [...nds, ...deletedNodeSnapshots]);
+          setEdges((eds) => [...eds, ...allDeletedEdges]);
+        },
+        redo: () => {
+          const nodeIds = new Set(deletedNodeSnapshots.map((n) => n.id));
+          const edgeIds = new Set(allDeletedEdges.map((e) => e.id));
+          setNodes((nds) => nds.filter((n) => !nodeIds.has(n.id)));
+          setEdges((eds) => eds.filter((e) => !edgeIds.has(e.id)));
+        },
+        apiUndo: async () => {
+          for (const node of deletedNodeSnapshots) {
+            try {
+              if (node.type === 'sectionNode') {
+                await createSection(boardId, {
+                  title: node.data.title,
+                  color: node.data.color,
+                  x: node.position.x,
+                  y: node.position.y,
+                  ...node.style,
+                });
+              } else {
+                await createCard(boardId, {
+                  card_type: node.data.card_type,
+                  title: node.data.title,
+                  content: node.data.content,
+                  color: node.data.color,
+                  position_x: node.position.x,
+                  position_y: node.position.y,
+                  extra: node.data.extra,
+                });
+              }
+            } catch {}
+          }
+          for (const edge of allDeletedEdges) {
+            try {
+              await apiCreateEdge(boardId, {
+                from_card_id: edge.source,
+                to_card_id: edge.target,
+                edge_type: edge.data?.edge_type || 'related',
+              });
+            } catch {}
+          }
+        },
+        apiRedo: async () => {
+          for (const edge of allDeletedEdges) {
+            try { await deleteEdge(boardId, edge.id); } catch {}
+          }
+          for (const node of deletedNodeSnapshots) {
+            try {
+              if (node.type === 'sectionNode') {
+                await deleteSection(boardId, node.id.replace('section-', ''));
+              } else {
+                await deleteCard(boardId, node.id);
+              }
+            } catch {}
+          }
+        },
+      });
+    }
+  }, [boardId, selectedNodes, selectedEdges, edges, setNodes, setEdges, pushEntry, isUndoing, isRedoing]);
 
   return {
     handleConnect,

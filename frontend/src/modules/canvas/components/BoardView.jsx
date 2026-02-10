@@ -23,7 +23,13 @@ import InboxPanel from './InboxPanel';
 import WorkflowPanel from './WorkflowPanel';
 import WorkflowRunner from './WorkflowRunner';
 import AgentPanel from './AgentPanel';
+import CardChatPanel from './CardChatPanel';
 import BoardBreadcrumbs from './BoardBreadcrumbs';
+import VersionHistoryPanel from './VersionHistoryPanel';
+import ViewContainer from '../../views/ViewContainer.jsx';
+import PropertyPanel from '../../properties/PropertyPanel.jsx';
+import { usePropertyStore } from '../../../stores/propertyStore.js';
+import { usePropertyDefinitions, useAllPropertyValues, useBulkSetCardProperties } from '../../../api/queries/propertyQueries.js';
 import { useNavigate } from 'react-router-dom';
 import { deleteCard, updateCard, runCouncilFromBoard, runBoardAIAction, createSection, updateSection, deleteSection, createChildBoard, getBoardBreadcrumbs, createCard, groupIntoSection, ungroupSection } from '../../../api/boards.js';
 import { cardToNode, edgeToFlow, sectionToNode } from '../utils.js';
@@ -37,6 +43,7 @@ import useBoardSearch from '../hooks/useBoardSearch.js';
 import useBacklinks from '../hooks/useBacklinks.js';
 import useWorkflows from '../hooks/useWorkflows.js';
 import useAgent from '../hooks/useAgent.js';
+import { useHistoryStore } from '../../../stores/historyStore';
 import '../styles/BoardView.css';
 
 const nodeTypes = { canvasCard: CanvasCard, sectionNode: SectionNode };
@@ -57,10 +64,19 @@ function BoardViewInner({ boardId, onBack }) {
   const [showInboxPanel, setShowInboxPanel] = useState(false);
   const [showWorkflowPanel, setShowWorkflowPanel] = useState(false);
   const [showAgentPanel, setShowAgentPanel] = useState(false);
+  const [chatPanelCard, setChatPanelCard] = useState(null);
   const [editingCardId, setEditingCardId] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const reactFlow = useReactFlow();
   const navigate = useNavigate();
+
+  // Undo/redo from history store
+  const undo = useHistoryStore((s) => s.undo);
+  const redo = useHistoryStore((s) => s.redo);
+  const canUndo = useHistoryStore((s) => s.canUndo());
+  const canRedo = useHistoryStore((s) => s.canRedo());
+  const clearHistory = useHistoryStore((s) => s.clearHistory);
 
   // -- Extracted hooks --
   const {
@@ -78,11 +94,52 @@ function BoardViewInner({ boardId, onBack }) {
     handleConnect, handleDeleteSelected, selectedNodes, selectedEdges,
   } = useEdgeActions(boardId, nodes, edges, setNodes, setEdges);
 
-  const { handleNodesChange, handleMoveEnd } = useDebouncedPositions(boardId, onNodesChange);
+  const { handleNodesChange, handleMoveEnd } = useDebouncedPositions(boardId, onNodesChange, setNodes);
 
   // Workflow & Agent hooks
   const wf = useWorkflows(boardId);
   const agent = useAgent(boardId);
+
+  // View switching + property data
+  const { activeView, setActiveView, selectedCardId, setSelectedCardId } = usePropertyStore();
+  const { data: propDefsData } = usePropertyDefinitions(boardId);
+  const { data: allValsData } = useAllPropertyValues(boardId);
+  const bulkSetMutation = useBulkSetCardProperties(boardId);
+  const propertyDefinitions = propDefsData?.properties || [];
+  const allPropertyValues = allValsData?.values || [];
+
+  // Build lookup: { cardId: { propId: value, ... } }
+  const propertyValuesByCard = useMemo(() => {
+    const map = {};
+    for (const pv of allPropertyValues) {
+      if (!map[pv.card_id]) map[pv.card_id] = {};
+      map[pv.card_id][pv.property_id] = pv.value;
+    }
+    return map;
+  }, [allPropertyValues]);
+
+  // Handle property value changes (for kanban drag-drop, table inline edit)
+  const handlePropertyChange = useCallback((cardId, propId, newValue) => {
+    const existing = propertyValuesByCard[cardId] || {};
+    bulkSetMutation.mutate({ cardId, values: { ...existing, [propId]: newValue } });
+  }, [propertyValuesByCard, bulkSetMutation]);
+
+  // Cards list for table/kanban views
+  const cardsList = useMemo(() => {
+    return nodes
+      .filter((n) => n.type !== 'sectionNode')
+      .map((n) => ({
+        id: n.id,
+        title: n.data.title,
+        card_type: n.data.card_type,
+        content: n.data.content,
+        created_at: n.data.extra?.created_at,
+      }));
+  }, [nodes]);
+
+  const handleViewCardSelect = useCallback((cardId) => {
+    setSelectedCardId(cardId);
+  }, [setSelectedCardId]);
 
   // SSE card/edge creation callback for workflows and agent
   const handleSSECardCreated = useCallback((card, edge) => {
@@ -97,6 +154,29 @@ function BoardViewInner({ boardId, onBack }) {
     setContextMenu(null);
     rawCardAIAction(cardId, action, customPrompt);
   }, [rawCardAIAction]);
+
+  // Discuss card in side chat panel
+  const handleDiscussCard = useCallback((nodeId) => {
+    const node = nodes.find((n) => n.id === nodeId);
+    if (!node) return;
+    // Close other panels (one-at-a-time UX)
+    setShowMemoryPanel(false);
+    setShowJournalPanel(false);
+    setShowInboxPanel(false);
+    setShowWorkflowPanel(false);
+    setShowAgentPanel(false);
+    setContextMenu(null);
+    setChatPanelCard({
+      id: node.id,
+      title: node.data.title,
+      content: node.data.content,
+      card_type: node.data.card_type,
+    });
+  }, [nodes]);
+
+  const handleChatCardCreated = useCallback((card) => {
+    setNodes((nds) => [...nds, cardToNode(card)]);
+  }, [setNodes]);
 
   // Section handlers
   const handleAddSection = useCallback(async () => {
@@ -222,6 +302,11 @@ function BoardViewInner({ boardId, onBack }) {
       .catch(() => setBreadcrumbs([]));
   }, [boardId]);
 
+  // Clear undo/redo history when switching boards
+  useEffect(() => {
+    clearHistory();
+  }, [boardId, clearHistory]);
+
   // Create sub-board with a board_ref card on the current board
   const handleCreateSubBoard = useCallback(async () => {
     try {
@@ -309,6 +394,28 @@ function BoardViewInner({ boardId, onBack }) {
     focusCard: stableFocusCard,
   }), [editingCardId, stableStartEditing, stableClearEditing, stableUpdateCard, stableFocusCard]);
 
+  // Build property badges for canvas cards
+  const propertyBadgesByCard = useMemo(() => {
+    const map = {};
+    const BADGE_TYPES = new Set(['select', 'multi_select', 'date', 'checkbox']);
+    for (const [cardId, vals] of Object.entries(propertyValuesByCard)) {
+      const badges = [];
+      for (const def of propertyDefinitions) {
+        if (!BADGE_TYPES.has(def.property_type)) continue;
+        const val = vals[def.id];
+        if (val == null || val === '') continue;
+        let display;
+        if (def.property_type === 'checkbox') display = val ? '\u2713' : null;
+        else if (def.property_type === 'date') display = new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        else if (def.property_type === 'multi_select' && Array.isArray(val)) display = val.join(', ');
+        else display = String(val);
+        if (display) badges.push({ id: def.id, name: def.name, display });
+      }
+      if (badges.length > 0) map[cardId] = badges;
+    }
+    return map;
+  }, [propertyValuesByCard, propertyDefinitions]);
+
   // Inject dynamic data into nodes when dependencies change
   useEffect(() => {
     setNodes((nds) => {
@@ -326,10 +433,11 @@ function BoardViewInner({ boardId, onBack }) {
           onClearEditing: stableClearEditing,
           onStartEditing: stableStartEditing,
           boardCards,
+          propertyBadges: propertyBadgesByCard[n.id] || [],
         },
       }));
     });
-  }, [backlinksMap, stableFocusCard, stableUpdateCard, highlightedCards, processingCards, editingCardId, stableClearEditing, stableStartEditing]);
+  }, [backlinksMap, stableFocusCard, stableUpdateCard, highlightedCards, processingCards, editingCardId, stableClearEditing, stableStartEditing, propertyBadgesByCard]);
 
   // Inject section callbacks
   useEffect(() => {
@@ -358,6 +466,8 @@ function BoardViewInner({ boardId, onBack }) {
     searchReset,
     onAddSection: handleAddSection,
     onAddSubBoard: handleCreateSubBoard,
+    onUndo: undo,
+    onRedo: redo,
   });
 
   // Double-click node to edit or navigate to sub-board
@@ -488,6 +598,13 @@ function BoardViewInner({ boardId, onBack }) {
         onToggleWorkflows={() => setShowWorkflowPanel((p) => !p)}
         onToggleAgent={() => setShowAgentPanel((p) => !p)}
         agentRunning={agent.running}
+        activeView={activeView}
+        onViewChange={setActiveView}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        onToggleHistory={() => setShowVersionHistory((p) => !p)}
       />
 
       {breadcrumbs.length > 0 && (
@@ -513,34 +630,46 @@ function BoardViewInner({ boardId, onBack }) {
         />
       )}
 
-      <div className="board-view__canvas">
-        <BoardContext.Provider value={boardContextValue}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={handleNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={handleConnect}
-          onMoveEnd={handleMoveEnd}
-          onNodeDoubleClick={handleNodeDoubleClick}
-          onNodeContextMenu={handleNodeContextMenu}
-          onPaneClick={handleCloseContextMenu}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          defaultViewport={defaultViewport}
-          connectionMode="loose"
-          snapToGrid
-          snapGrid={[16, 16]}
-          fitView={!board?.viewport}
-          deleteKeyCode={null}
-          multiSelectionKeyCode="Shift"
-        >
-          <Background gap={16} size={1} color="var(--border-primary)" />
-          <Controls />
-          <MiniMap nodeColor={minimapNodeColor} maskColor="var(--bg-overlay)" />
-        </ReactFlow>
-        </BoardContext.Provider>
-      </div>
+      {activeView === 'canvas' ? (
+        <div className="board-view__canvas">
+          <BoardContext.Provider value={boardContextValue}>
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={handleConnect}
+            onMoveEnd={handleMoveEnd}
+            onNodeDoubleClick={handleNodeDoubleClick}
+            onNodeContextMenu={handleNodeContextMenu}
+            onPaneClick={handleCloseContextMenu}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            defaultViewport={defaultViewport}
+            connectionMode="loose"
+            snapToGrid
+            snapGrid={[16, 16]}
+            fitView={!board?.viewport}
+            deleteKeyCode={null}
+            multiSelectionKeyCode="Shift"
+          >
+            <Background gap={16} size={1} color="var(--border-primary)" />
+            <Controls />
+            <MiniMap nodeColor={minimapNodeColor} maskColor="var(--bg-overlay)" />
+          </ReactFlow>
+          </BoardContext.Provider>
+        </div>
+      ) : (
+        <ViewContainer
+          activeView={activeView}
+          cards={cardsList}
+          propertyDefinitions={propertyDefinitions}
+          propertyValuesByCard={propertyValuesByCard}
+          onCardSelect={handleViewCardSelect}
+          onPropertyChange={handlePropertyChange}
+          boardId={boardId}
+        />
+      )}
 
       {contextMenu && (
         <CardContextMenu
@@ -563,6 +692,7 @@ function BoardViewInner({ boardId, onBack }) {
               setEdges((eds) => eds.filter((e) => e.source !== cardId && e.target !== cardId));
             }).catch(console.error);
           }}
+          onDiscuss={handleDiscussCard}
           onClose={handleCloseContextMenu}
         />
       )}
@@ -650,6 +780,40 @@ function BoardViewInner({ boardId, onBack }) {
           runs={agent.runs}
           onRefreshRuns={agent.fetchRuns}
           onClose={() => setShowAgentPanel(false)}
+        />
+      )}
+
+      {chatPanelCard && (
+        <CardChatPanel
+          card={chatPanelCard}
+          boardId={boardId}
+          onClose={() => setChatPanelCard(null)}
+          onCardCreated={handleChatCardCreated}
+        />
+      )}
+
+      {selectedCardId && (
+        <PropertyPanel
+          boardId={boardId}
+          cardId={selectedCardId}
+          card={cardsList.find((c) => c.id === selectedCardId)}
+          propertyDefinitions={propertyDefinitions}
+          onClose={() => setSelectedCardId(null)}
+        />
+      )}
+
+      {showVersionHistory && (
+        <VersionHistoryPanel
+          boardId={boardId}
+          onClose={() => setShowVersionHistory(false)}
+          onRestore={(data) => {
+            // Reload board state from snapshot data
+            if (data?.cards && data?.edges) {
+              setNodes(data.cards.map(cardToNode));
+              setEdges(data.edges.map(edgeToFlow));
+            }
+            clearHistory();
+          }}
         />
       )}
 

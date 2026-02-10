@@ -22,6 +22,13 @@ export default function BoardToolbar({
   onToggleWorkflows,
   onToggleAgent,
   agentRunning = false,
+  activeView = 'canvas',
+  onViewChange,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  onToggleHistory,
 }) {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState('');
@@ -100,6 +107,33 @@ export default function BoardToolbar({
       </div>
 
       <div className="board-toolbar__center">
+        <button
+          className="board-toolbar__btn"
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="Undo (Cmd+Z)"
+          aria-label="Undo"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 10h10a5 5 0 0 1 0 10H9" />
+            <path d="M3 10l4-4M3 10l4 4" />
+          </svg>
+        </button>
+        <button
+          className="board-toolbar__btn"
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="Redo (Cmd+Shift+Z)"
+          aria-label="Redo"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 10H11a5 5 0 0 0 0 10h4" />
+            <path d="M21 10l-4-4M21 10l-4 4" />
+          </svg>
+        </button>
+
+        <div className="board-toolbar__divider" />
+
         <div className="board-toolbar__dropdown" ref={templateMenuRef}>
           <button
             className="board-toolbar__btn"
@@ -331,7 +365,60 @@ export default function BoardToolbar({
           Agent
           {agentRunning && <span className="board-toolbar__badge board-toolbar__badge--pulse">...</span>}
         </button>
+
+        <div className="board-toolbar__divider" />
+
+        <button
+          className="board-toolbar__btn"
+          onClick={onToggleHistory}
+          title="Version history"
+          aria-label="Version history"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          History
+        </button>
       </div>
+
+      <div className="board-toolbar__view-toggle">
+          <button
+            className={`board-toolbar__view-btn${activeView === 'canvas' ? ' board-toolbar__view-btn--active' : ''}`}
+            onClick={() => onViewChange?.('canvas')}
+            title="Canvas view"
+            aria-label="Canvas view"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+            </svg>
+          </button>
+          <button
+            className={`board-toolbar__view-btn${activeView === 'table' ? ' board-toolbar__view-btn--active' : ''}`}
+            onClick={() => onViewChange?.('table')}
+            title="Table view"
+            aria-label="Table view"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18" />
+            </svg>
+          </button>
+          <button
+            className={`board-toolbar__view-btn${activeView === 'kanban' ? ' board-toolbar__view-btn--active' : ''}`}
+            onClick={() => onViewChange?.('kanban')}
+            title="Kanban view"
+            aria-label="Kanban view"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="3" width="5" height="18" rx="1" />
+              <rect x="10" y="3" width="5" height="12" rx="1" />
+              <rect x="17" y="3" width="5" height="15" rx="1" />
+            </svg>
+          </button>
+        </div>
 
       <div className="board-toolbar__right">
         {selectedCount > 0 && (

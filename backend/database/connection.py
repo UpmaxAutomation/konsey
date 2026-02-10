@@ -241,6 +241,144 @@ async def _run_column_migrations() -> None:
         # v7: section grouping — cards can belong to a section
         ("cards.section_id", "ALTER TABLE cards ADD COLUMN IF NOT EXISTS section_id UUID REFERENCES sections(id) ON DELETE SET NULL"),
         ("cards.idx_section", "CREATE INDEX IF NOT EXISTS idx_cards_section ON cards(section_id)"),
+        # v7: boards.view_config for canvas/table/kanban view state
+        ("boards.view_config", "ALTER TABLE boards ADD COLUMN IF NOT EXISTS view_config JSONB DEFAULT NULL"),
+        # v7: property_definitions table
+        ("property_definitions.create_table", """
+            CREATE TABLE IF NOT EXISTS property_definitions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+                name VARCHAR(100) NOT NULL,
+                property_type VARCHAR(20) NOT NULL,
+                options JSONB,
+                sort_order INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT uq_board_property_name UNIQUE (board_id, name),
+                CONSTRAINT ck_property_type CHECK (property_type IN ('text', 'number', 'select', 'multi_select', 'date', 'checkbox', 'url', 'email', 'relation'))
+            )
+        """),
+        ("property_definitions.idx_board", "CREATE INDEX IF NOT EXISTS idx_property_defs_board ON property_definitions(board_id)"),
+        # v7: card_property_values table
+        ("card_property_values.create_table", """
+            CREATE TABLE IF NOT EXISTS card_property_values (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                property_id UUID NOT NULL REFERENCES property_definitions(id) ON DELETE CASCADE,
+                value JSONB,
+                CONSTRAINT uq_card_property UNIQUE (card_id, property_id)
+            )
+        """),
+        ("card_property_values.idx_card", "CREATE INDEX IF NOT EXISTS idx_card_prop_values_card ON card_property_values(card_id)"),
+        ("card_property_values.idx_property", "CREATE INDEX IF NOT EXISTS idx_card_prop_values_property ON card_property_values(property_id)"),
+        # v7: tags table
+        ("tags.create_table", """
+            CREATE TABLE IF NOT EXISTS tags (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(50) NOT NULL,
+                color VARCHAR(20) NOT NULL DEFAULT '#4a90e2',
+                collection VARCHAR(50),
+                created_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT uq_user_tag_name UNIQUE (user_id, name)
+            )
+        """),
+        ("tags.idx_user", "CREATE INDEX IF NOT EXISTS idx_tags_user ON tags(user_id)"),
+        # v7: card_tags junction table
+        ("card_tags.create_table", """
+            CREATE TABLE IF NOT EXISTS card_tags (
+                card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+                PRIMARY KEY (card_id, tag_id)
+            )
+        """),
+        # v7: update card_type constraint to include 'knowledge'
+        ("cards.ck_card_type_v7", """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_card_type') THEN
+                    ALTER TABLE cards DROP CONSTRAINT ck_card_type;
+                END IF;
+                ALTER TABLE cards ADD CONSTRAINT ck_card_type CHECK (
+                    card_type IN ('note', 'query', 'council_response', 'council_synthesis', 'file_ref', 'link', 'board_ref', 'workflow_output', 'knowledge')
+                );
+            END $$;
+        """),
+        # v8: pgvector extension
+        ("pgvector.extension", "CREATE EXTENSION IF NOT EXISTS vector"),
+        # v8: document_chunks table for RAG
+        ("document_chunks.create_table", """
+            CREATE TABLE IF NOT EXISTS document_chunks (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                document_id TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                embedding vector(1536),
+                start_line INTEGER,
+                end_line INTEGER,
+                tokens INTEGER DEFAULT 0,
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """),
+        ("document_chunks.idx_project", "CREATE INDEX IF NOT EXISTS idx_doc_chunks_project ON document_chunks(project_id)"),
+        ("document_chunks.idx_document", "CREATE INDEX IF NOT EXISTS idx_doc_chunks_document ON document_chunks(project_id, document_id)"),
+        ("document_chunks.idx_hnsw", """
+            CREATE INDEX IF NOT EXISTS idx_doc_chunks_embedding ON document_chunks
+            USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64)
+        """),
+        # v8.1: knowledge_layers table
+        ("knowledge_layers.create_table", """
+            CREATE TABLE IF NOT EXISTS knowledge_layers (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                description TEXT,
+                persona_prompt TEXT,
+                methodology_prompt TEXT,
+                color TEXT DEFAULT 'blue',
+                icon TEXT DEFAULT 'book',
+                sort_order INTEGER DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """),
+        ("knowledge_layers.idx_project", "CREATE INDEX IF NOT EXISTS idx_layers_project ON knowledge_layers(project_id)"),
+        # v8.1: add layer_id to document_chunks
+        ("document_chunks.add_layer_id", """
+            ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS layer_id UUID REFERENCES knowledge_layers(id) ON DELETE SET NULL
+        """),
+        ("document_chunks.idx_layer", "CREATE INDEX IF NOT EXISTS idx_doc_chunks_layer ON document_chunks(layer_id)"),
+        # v9: board_snapshots table for version history
+        ("board_snapshots.create_table", """
+            CREATE TABLE IF NOT EXISTS board_snapshots (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                name VARCHAR(255),
+                description TEXT,
+                trigger VARCHAR(30) NOT NULL DEFAULT 'auto',
+                snapshot_data JSONB NOT NULL,
+                card_count INTEGER DEFAULT 0,
+                edge_count INTEGER DEFAULT 0,
+                section_count INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """),
+        ("board_snapshots.idx_board", "CREATE INDEX IF NOT EXISTS idx_board_snapshots_board ON board_snapshots(board_id, created_at DESC)"),
+        # v9.1: card_mentions table for backlinks
+        ("card_mentions.create_table", """
+            CREATE TABLE IF NOT EXISTS card_mentions (
+                source_card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                target_card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                PRIMARY KEY (source_card_id, target_card_id)
+            )
+        """),
+        ("card_mentions.idx_target", "CREATE INDEX IF NOT EXISTS idx_card_mentions_target ON card_mentions(target_card_id)"),
+        ("card_mentions.idx_board", "CREATE INDEX IF NOT EXISTS idx_card_mentions_board ON card_mentions(board_id)"),
     ]
 
     async with AsyncSessionLocal() as session:

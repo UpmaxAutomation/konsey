@@ -13,5 +13,11 @@ from . import boards
 from . import sections
 from . import agent_runs
 from . import workflows
+from . import properties
+from . import tags
+from . import document_chunks
+from . import knowledge_layers
+from . import snapshots
+from . import mentions
 
-__all__ = ["users", "conversations", "settings", "api_keys", "folders", "usage", "memory", "email_verification", "projects", "boards", "sections", "agent_runs", "workflows"]
+__all__ = ["users", "conversations", "settings", "api_keys", "folders", "usage", "memory", "email_verification", "projects", "boards", "sections", "agent_runs", "workflows", "properties", "tags", "document_chunks", "knowledge_layers", "snapshots", "mentions"]

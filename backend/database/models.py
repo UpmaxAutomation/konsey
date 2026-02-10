@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from sqlalchemy import (
     String, Text, Boolean, Integer, Float, DateTime, Date, ForeignKey,
-    JSON, ARRAY, Index, UniqueConstraint, CheckConstraint, text
+    JSON, ARRAY, Index, UniqueConstraint, CheckConstraint, PrimaryKeyConstraint, text
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -390,6 +390,8 @@ class Board(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    view_config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
     # Relationships
     user: Mapped["User"] = relationship(back_populates="boards")
     project: Mapped[Optional["Project"]] = relationship(back_populates="boards")
@@ -397,6 +399,7 @@ class Board(Base):
     edges: Mapped[List["Edge"]] = relationship(back_populates="board", cascade="all, delete-orphan")
     sections: Mapped[List["Section"]] = relationship(back_populates="board", cascade="all, delete-orphan")
     workflows: Mapped[List["Workflow"]] = relationship(back_populates="board", cascade="all, delete-orphan")
+    property_definitions: Mapped[List["PropertyDefinition"]] = relationship(back_populates="board", cascade="all, delete-orphan")
     children: Mapped[List["Board"]] = relationship(back_populates="parent", foreign_keys="[Board.parent_board_id]")
     parent: Mapped[Optional["Board"]] = relationship(back_populates="children", remote_side="[Board.id]", foreign_keys="[Board.parent_board_id]")
 
@@ -461,10 +464,12 @@ class Card(Base):
     # Relationships
     board: Mapped["Board"] = relationship(back_populates="cards")
     section: Mapped[Optional["Section"]] = relationship(back_populates="cards", foreign_keys=[section_id])
+    property_values: Mapped[List["CardPropertyValue"]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    card_tags: Mapped[List["CardTag"]] = relationship(back_populates="card", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
-            "card_type IN ('note', 'query', 'council_response', 'council_synthesis', 'file_ref', 'link', 'board_ref', 'workflow_output')",
+            "card_type IN ('note', 'query', 'council_response', 'council_synthesis', 'file_ref', 'link', 'board_ref', 'workflow_output', 'knowledge')",
             name="ck_card_type"
         ),
         Index("idx_cards_journal", "board_id", "journal_date", postgresql_where=text("is_journal = true")),
@@ -563,6 +568,81 @@ class WorkflowStep(Base):
     )
 
 
+class PropertyDefinition(Base):
+    """A property definition for cards on a board (e.g. Status, Priority, Due Date)."""
+    __tablename__ = "property_definitions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    property_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    options: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    board: Mapped["Board"] = relationship(back_populates="property_definitions")
+    values: Mapped[List["CardPropertyValue"]] = relationship(back_populates="property_definition", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("board_id", "name", name="uq_board_property_name"),
+        CheckConstraint(
+            "property_type IN ('text', 'number', 'select', 'multi_select', 'date', 'checkbox', 'url', 'email', 'relation')",
+            name="ck_property_type"
+        ),
+        Index("idx_property_defs_board", "board_id"),
+    )
+
+
+class CardPropertyValue(Base):
+    """A property value set on a specific card."""
+    __tablename__ = "card_property_values"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"), index=True)
+    property_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("property_definitions.id", ondelete="CASCADE"), index=True)
+    value: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    # Relationships
+    card: Mapped["Card"] = relationship(back_populates="property_values")
+    property_definition: Mapped["PropertyDefinition"] = relationship(back_populates="values")
+
+    __table_args__ = (
+        UniqueConstraint("card_id", "property_id", name="uq_card_property"),
+    )
+
+
+class Tag(Base):
+    """A user-scoped tag that can be applied to cards."""
+    __tablename__ = "tags"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
+    color: Mapped[str] = mapped_column(String(20), nullable=False, default="#4a90e2")
+    collection: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    card_tags: Mapped[List["CardTag"]] = relationship(back_populates="tag", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_user_tag_name"),
+    )
+
+
+class CardTag(Base):
+    """Association between cards and tags."""
+    __tablename__ = "card_tags"
+
+    card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True)
+    tag_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True)
+
+    # Relationships
+    card: Mapped["Card"] = relationship(back_populates="card_tags")
+    tag: Mapped["Tag"] = relationship(back_populates="card_tags")
+
+
 class AgentRun(Base):
     """An autonomous agent run that populates a board."""
     __tablename__ = "agent_runs"
@@ -588,3 +668,73 @@ class AgentRun(Base):
         ),
         Index("idx_agent_runs_board", "board_id"),
     )
+
+
+class DocumentChunk(Base):
+    """A text chunk from a document with vector embedding for RAG."""
+    __tablename__ = "document_chunks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str] = mapped_column(Text, nullable=False)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    # embedding stored via raw SQL (vector(1536) type), not mapped here
+    start_line: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    end_line: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tokens: Mapped[int] = mapped_column(Integer, default=0)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    layer_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("knowledge_layers.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class KnowledgeLayer(Base):
+    """A knowledge domain layer with expert persona for layer-aware RAG."""
+    __tablename__ = "knowledge_layers"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    persona_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    methodology_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    color: Mapped[str] = mapped_column(String(20), default="blue")
+    icon: Mapped[str] = mapped_column(String(20), default="book")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BoardSnapshot(Base):
+    """A point-in-time snapshot of a board's state for version history."""
+    __tablename__ = "board_snapshots"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    trigger: Mapped[str] = mapped_column(String(30), nullable=False, default="auto")
+    snapshot_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    card_count: Mapped[int] = mapped_column(Integer, default=0)
+    edge_count: Mapped[int] = mapped_column(Integer, default=0)
+    section_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_board_snapshots_board_created", "board_id", "created_at"),
+    )
+
+
+class CardMention(Base):
+    """Tracks card-to-card mentions for backlink computation."""
+    __tablename__ = "card_mentions"
+    __table_args__ = (
+        PrimaryKeyConstraint("source_card_id", "target_card_id"),
+    )
+
+    source_card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"))
+    target_card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"))
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

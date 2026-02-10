@@ -35,6 +35,8 @@ export default function useKeyboardShortcuts({
   searchReset,
   onAddSection,
   onAddSubBoard,
+  onUndo,
+  onRedo,
 }) {
   useEffect(() => {
     function handleKeyDown(e) {
@@ -82,8 +84,18 @@ export default function useKeyboardShortcuts({
         e.preventDefault();
         onAddSubBoard?.();
       }
+      // Cmd+Z: Undo
+      if (e.key === 'z' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault();
+        onUndo?.();
+      }
+      // Cmd+Shift+Z: Redo
+      if (e.key === 'z' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        onRedo?.();
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodes, selectedEdges, handleDeleteSelected, handleAddCard, showSearch, searchReset, onAddSection, onAddSubBoard, setShowCouncilModal, setShowSearch, setHighlightedCards, setContextMenu, setNodes, setEdges]);
+  }, [selectedNodes, selectedEdges, handleDeleteSelected, handleAddCard, showSearch, searchReset, onAddSection, onAddSubBoard, onUndo, onRedo, setShowCouncilModal, setShowSearch, setHighlightedCards, setContextMenu, setNodes, setEdges]);
 }

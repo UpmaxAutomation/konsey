@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { batchUpdateCardPositions, updateBoardViewport } from '../../../api/boards.js';
+import { useHistoryStore } from '../../../stores/historyStore';
 
 /**
  * Manages debounced position saving on node drag and viewport save on pan/zoom.
@@ -9,13 +10,17 @@ import { batchUpdateCardPositions, updateBoardViewport } from '../../../api/boar
  * @param {Function} onNodesChange - ReactFlow's raw onNodesChange handler
  * @returns Wrapped node change handler and viewport move-end handler
  */
-export default function useDebouncedPositions(boardId, onNodesChange) {
+export default function useDebouncedPositions(boardId, onNodesChange, setNodes) {
   const viewportSaveTimer = useRef(null);
   const positionSaveTimer = useRef(null);
   const pendingPositions = useRef({});
   const pendingViewport = useRef(null);
   const boardIdRef = useRef(boardId);
   const savingRef = useRef(false);
+  const dragStartPositions = useRef({});
+  const pushEntry = useHistoryStore((s) => s.pushEntry);
+  const isUndoing = useHistoryStore((s) => s.isUndoing);
+  const isRedoing = useHistoryStore((s) => s.isRedoing);
   boardIdRef.current = boardId;
 
   // Flush any pending position saves immediately
@@ -62,12 +67,39 @@ export default function useDebouncedPositions(boardId, onNodesChange) {
     onNodesChange(changes);
 
     for (const change of changes) {
-      if (change.type === 'position' && change.position && !change.dragging) {
-        pendingPositions.current[change.id] = {
-          card_id: change.id,
-          x: change.position.x,
-          y: change.position.y,
-        };
+      if (change.type === 'position' && change.position) {
+        if (change.dragging) {
+          // Drag started or continuing — capture starting position if not already stored
+          if (!dragStartPositions.current[change.id]) {
+            dragStartPositions.current[change.id] = { ...change.position };
+          }
+        } else {
+          // Drag ended — record undo entry if we have a start position
+          const startPos = dragStartPositions.current[change.id];
+          if (startPos && setNodes && !isUndoing && !isRedoing) {
+            const endPos = { ...change.position };
+            const nodeId = change.id;
+            pushEntry({
+              type: 'move_card',
+              description: `Move card ${nodeId}`,
+              undo: () => setNodes((nds) => nds.map((n) =>
+                n.id === nodeId ? { ...n, position: { ...startPos } } : n
+              )),
+              redo: () => setNodes((nds) => nds.map((n) =>
+                n.id === nodeId ? { ...n, position: { ...endPos } } : n
+              )),
+              apiUndo: () => batchUpdateCardPositions(boardId, [{ card_id: nodeId, x: startPos.x, y: startPos.y }]),
+              apiRedo: () => batchUpdateCardPositions(boardId, [{ card_id: nodeId, x: endPos.x, y: endPos.y }]),
+            });
+          }
+          delete dragStartPositions.current[change.id];
+
+          pendingPositions.current[change.id] = {
+            card_id: change.id,
+            x: change.position.x,
+            y: change.position.y,
+          };
+        }
       }
     }
 
@@ -84,7 +116,7 @@ export default function useDebouncedPositions(boardId, onNodesChange) {
         }
       }, 500);
     }
-  }, [boardId, onNodesChange]);
+  }, [boardId, onNodesChange, setNodes, pushEntry, isUndoing, isRedoing]);
 
   // Save viewport on pan/zoom (debounced)
   const handleMoveEnd = useCallback((_event, viewport) => {
