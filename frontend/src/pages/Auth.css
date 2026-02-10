@@ -413,6 +413,88 @@
   height: 20px;
 }
 
+/* Quick Login (when credentials are remembered) */
+.auth-quick-login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.auth-quick-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+}
+
+.auth-quick-login-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(16, 185, 129, 0.4);
+}
+
+.auth-quick-login-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.auth-quick-login-btn .btn-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.auth-use-different {
+  background: none;
+  border: none;
+  padding: 8px 0;
+  font-size: 13px;
+  color: #9ca3af;
+  cursor: pointer;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.auth-use-different:hover:not(:disabled) {
+  color: #6b7280;
+}
+
+.auth-use-different:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Remember me */
+.auth-remember-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #6b7280;
+  cursor: pointer;
+  user-select: none;
+}
+
+.auth-remember-me input {
+  width: 18px;
+  height: 18px;
+  accent-color: #d4a373;
+  cursor: pointer;
+}
+
+.auth-remember-me span {
+  flex: 1;
+}
+
 /* Submit Button */
 .auth-submit-btn {
   display: flex;
@@ -589,6 +671,18 @@
 
 [data-theme="dark"] .auth-error span {
   color: #fca5a5;
+}
+
+[data-theme="dark"] .auth-remember-me {
+  color: #9ca3af;
+}
+
+[data-theme="dark"] .auth-use-different {
+  color: #6b7280;
+}
+
+[data-theme="dark"] .auth-use-different:hover:not(:disabled) {
+  color: #9ca3af;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1020,4 +1114,29 @@
   margin-top: 20px;
   color: rgba(255, 255, 255, 0.7);
   font-size: 15px;
+}
+
+/* Loading fallback for lazy-loaded components */
+.loading-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  min-height: 200px;
+}
+
+.loading-fallback .loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #d4a373;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-fallback p {
+  margin-top: 16px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
 }

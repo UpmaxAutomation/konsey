@@ -161,7 +161,9 @@ export async function sendMessageStream(
     body.fast_mode = features.fast_mode;
   }
 
-  console.log('🚀 Sending council request:', { fast_mode: body.fast_mode, features });
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'api/conversations.js:sendMessageStream',message:'stream_request_init',data:{conversationId,contentLength:content?.length||0,attachedCount:attachedFiles?.length||0,webSearch:features?.web_search,deepSearch:features?.deep_search,fastMode:features?.fast_mode,apiBase:API_BASE},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   // Retry only the initial connection, not the streaming itself
   const response = await withStreamRetry(
@@ -270,36 +272,54 @@ export async function sendQuickMessageStream(
     body.deep_search = features.deep_search;
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_request_init',data:{conversationId,contentLength:content?.length||0,model,attachedCount:attachedFiles?.length||0,webSearch:features?.web_search,deepSearch:features?.deep_search,apiBase:API_BASE},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   // Retry only the initial connection, not the streaming itself
-  const response = await withStreamRetry(
-    async () => {
-      const res = await authFetch(
-        `${API_BASE}/conversations/${conversationId}/quick-message`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+  let response;
+  try {
+    response = await withStreamRetry(
+      async () => {
+        const res = await authFetch(
+          `${API_BASE}/conversations/${conversationId}/quick-message`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+            signal,
           },
-          body: JSON.stringify(body),
-          signal,
-        },
-        'sendQuickMessageStream'
-      );
-      await handleResponse(res, 'sendQuickMessageStream');
-      return res;
-    },
-    {
-      maxRetries: 2,
-      signal,
-      onRetry: (attempt, error, delay) => {
-        onEvent('retry', { attempt: attempt + 1, error: getUserFriendlyMessage(error), delay });
+          'sendQuickMessageStream'
+        );
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_5',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_response',data:{status:res.status,ok:res.ok,contentType:res.headers.get('content-type')},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        await handleResponse(res, 'sendQuickMessageStream');
+        return res;
       },
-      ...retryOptions,
-    }
-  );
+      {
+        maxRetries: 2,
+        signal,
+        onRetry: (attempt, error, delay) => {
+          onEvent('retry', { attempt: attempt + 1, error: getUserFriendlyMessage(error), delay });
+        },
+        ...retryOptions,
+      }
+    );
+  } catch (error) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_5',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_connect_error',data:{errorName:error?.name||null,errorMessage:String(error?.message||error).slice(0,200)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    throw error;
+  }
 
   // Safety check for response body
   if (!response.body) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_6',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_no_body',data:{status:response.status,ok:response.ok,contentType:response.headers.get('content-type')},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const error = new NetworkError('No response body received');
     onEvent('error', { message: getUserFriendlyMessage(error) });
     throw error;
@@ -307,12 +327,17 @@ export async function sendQuickMessageStream(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  let debugFirstEventLogged = false;
+  let debugFirstChunkLogged = false;
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
         onEvent('complete', {});
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_7',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_done',data:{},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         break;
       }
 
@@ -324,6 +349,18 @@ export async function sendQuickMessageStream(
           const data = line.slice(6);
           try {
             const event = JSON.parse(data);
+            if (!debugFirstEventLogged) {
+              debugFirstEventLogged = true;
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_7',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_first_event',data:{eventType:event?.type||null,eventKeys:event&&typeof event==='object'?Object.keys(event).slice(0,12):null},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+            }
+            if (!debugFirstChunkLogged && event?.type === 'chunk') {
+              debugFirstChunkLogged = true;
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_20',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_first_chunk',data:{eventKeys:event&&typeof event==='object'?Object.keys(event).slice(0,12):null,hasText:typeof event?.text==='string',hasData:typeof event?.data==='string',textPreview:typeof event?.text==='string'?event.text.slice(0,80):null,dataPreview:typeof event?.data==='string'?event.data.slice(0,80):null},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
+            }
             onEvent(event.type, event);
           } catch (e) {
             console.error('Failed to parse SSE event:', e);
@@ -334,6 +371,9 @@ export async function sendQuickMessageStream(
   } catch (err) {
     // Handle stream errors (network failure, abort, etc.)
     if (err.name !== 'AbortError') {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_8',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_error',data:{errorName:err?.name||null,errorMessage:String(err?.message||err).slice(0,200)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const error = parseError(err);
       onEvent('error', { message: getUserFriendlyMessage(error), error: error.toJSON() });
       throw error;

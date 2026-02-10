@@ -206,6 +206,32 @@ export {
   getSharedConversation,
 } from './export.js';
 
+// Re-export all boards functions
+export {
+  listBoards,
+  createBoard,
+  getBoard,
+  updateBoard,
+  updateBoardViewport,
+  deleteBoard,
+  listCards,
+  createCard,
+  updateCard,
+  batchUpdateCardPositions,
+  deleteCard,
+  listEdges,
+  createEdge,
+  deleteEdge,
+  createCardFromMessage,
+  createCardsFromCouncilTurn,
+  runCouncilFromBoard,
+  runCardAIAction,
+  runBoardAIAction,
+  getBoardMemory,
+  boardMemoryAction,
+  deleteBoardFact,
+} from './boards.js';
+
 // Build the api object for backward compatibility
 // This maintains the `api.methodName()` usage pattern
 import * as conversations from './conversations.js';
@@ -221,6 +247,7 @@ import * as projects from './projects.js';
 import * as ratings from './ratings.js';
 import * as batch from './batch.js';
 import * as exportModule from './export.js';
+import * as boards from './boards.js';
 
 export const api = {
   // Conversations
@@ -387,4 +414,28 @@ export const api = {
   exportHTML: exportModule.exportHTML,
   shareConversation: exportModule.shareConversation,
   getSharedConversation: exportModule.getSharedConversation,
+
+  // Boards
+  listBoards: boards.listBoards,
+  createBoard: boards.createBoard,
+  getBoard: boards.getBoard,
+  updateBoard: boards.updateBoard,
+  updateBoardViewport: boards.updateBoardViewport,
+  deleteBoard: boards.deleteBoard,
+  listCards: boards.listCards,
+  createCard: boards.createCard,
+  updateCard: boards.updateCard,
+  batchUpdateCardPositions: boards.batchUpdateCardPositions,
+  deleteCard: boards.deleteCard,
+  listEdges: boards.listEdges,
+  createEdge: boards.createEdge,
+  deleteEdge: boards.deleteEdge,
+  createCardFromMessage: boards.createCardFromMessage,
+  createCardsFromCouncilTurn: boards.createCardsFromCouncilTurn,
+  runCouncilFromBoard: boards.runCouncilFromBoard,
+  runCardAIAction: boards.runCardAIAction,
+  runBoardAIAction: boards.runBoardAIAction,
+  getBoardMemory: boards.getBoardMemory,
+  boardMemoryAction: boards.boardMemoryAction,
+  deleteBoardFact: boards.deleteBoardFact,
 };

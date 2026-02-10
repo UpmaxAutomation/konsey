@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../api';
 import { useTheme } from '../contexts/ThemeContext';
-import ThemeToggle from './ThemeToggle';
+import ThemeToggle from '../shared/components/ThemeToggle';
 import './Settings.css';
 
 const CUSTOM_PRESETS_KEY = 'llm-council-custom-presets';

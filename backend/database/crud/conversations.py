@@ -24,17 +24,26 @@ async def get_by_id(db: AsyncSession, conversation_id: uuid.UUID) -> Optional[Co
 async def get_by_id_with_messages(
     db: AsyncSession,
     conversation_id: uuid.UUID,
-    user_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
 ) -> Optional[Conversation]:
-    """Get conversation with messages, ensuring user ownership."""
-    result = await db.execute(
+    """Get conversation with messages.
+
+    Args:
+        db: Database session
+        conversation_id: The conversation UUID
+        user_id: If provided, ensures user ownership. If None, returns any matching conversation.
+    """
+    query = (
         select(Conversation)
         .options(selectinload(Conversation.messages))
-        .where(
-            Conversation.id == conversation_id,
-            Conversation.user_id == user_id
-        )
+        .where(Conversation.id == conversation_id)
     )
+
+    # Only add user filter if user_id is provided
+    if user_id is not None:
+        query = query.where(Conversation.user_id == user_id)
+
+    result = await db.execute(query)
     return result.scalar_one_or_none()
 
 
@@ -75,6 +84,43 @@ async def list_by_user(
 
     result = await db.execute(query)
     return list(result.scalars().all())
+
+
+async def list_by_user_with_message_counts(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    folder_id: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    skip: int = 0,
+    limit: int = 100,
+) -> List[tuple[Conversation, int]]:
+    """List conversations for a user with message counts.
+
+    This is used for list views where we need `message_count` without loading
+    full message bodies (avoids N+1 queries).
+    """
+    message_count = func.count(Message.id).label("message_count")
+    query = (
+        select(Conversation, message_count)
+        .outerjoin(Message, Message.conversation_id == Conversation.id)
+        .where(Conversation.user_id == user_id)
+        .group_by(Conversation.id)
+        .order_by(Conversation.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+
+    if folder_id is not None:
+        query = query.where(Conversation.folder_id == folder_id)
+
+    if tags:
+        query = query.where(Conversation.tags.overlap(tags))
+
+    result = await db.execute(query)
+    rows: List[tuple[Conversation, int]] = []
+    for conv, count in result.all():
+        rows.append((conv, int(count or 0)))
+    return rows
 
 
 async def create(

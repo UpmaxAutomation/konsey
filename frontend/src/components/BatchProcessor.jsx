@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import SafeMarkdown from './SafeMarkdown';
+import SafeMarkdown from '../shared/components/SafeMarkdown';
 import { api } from '../api';
 import './BatchProcessor.css';
 

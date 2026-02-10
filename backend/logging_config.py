@@ -35,8 +35,8 @@ def setup_logging(
     ]
 
     if json_format:
-        # Production: JSON format
-        renderer = structlog.processors.JSONRenderer()
+        # Production: JSON format with explicit UTF-8 encoding
+        renderer = structlog.processors.JSONRenderer(ensure_ascii=False)
     else:
         # Development: colored console output
         renderer = structlog.dev.ConsoleRenderer(colors=True)

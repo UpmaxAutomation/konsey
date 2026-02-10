@@ -5,15 +5,74 @@ import json
 import os
 import subprocess
 import tempfile
+import asyncio
+import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from .config import PERPLEXITY_API_URL
+
+logger = logging.getLogger(__name__)
+
+# ============ RATE LIMITING ============
+
+# Per-user rate limiting: {user_id: [timestamps]}
+# "anonymous" is used for unauthenticated users
+_search_timestamps: Dict[str, List[datetime]] = {}
+SEARCH_RATE_LIMIT = 10  # Maximum searches per minute per user
+
+
+def check_rate_limit(user_id: Optional[str] = None) -> bool:
+    """
+    Check if a search request is within rate limits for a specific user.
+
+    Args:
+        user_id: User identifier (str(uuid) or "anonymous" for unauthenticated)
+
+    Returns:
+        True if request is allowed, False if rate limited
+    """
+    global _search_timestamps
+    user_key = str(user_id) if user_id else "anonymous"
+    now = datetime.now()
+
+    # Initialize list for new users
+    if user_key not in _search_timestamps:
+        _search_timestamps[user_key] = []
+
+    # Remove timestamps older than 1 minute
+    _search_timestamps[user_key] = [
+        t for t in _search_timestamps[user_key] if now - t < timedelta(minutes=1)
+    ]
+
+    if len(_search_timestamps[user_key]) >= SEARCH_RATE_LIMIT:
+        return False
+
+    _search_timestamps[user_key].append(now)
+    return True
+
+
+def get_rate_limit_status(user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Get current rate limit status for a specific user."""
+    user_key = str(user_id) if user_id else "anonymous"
+    now = datetime.now()
+
+    if user_key not in _search_timestamps:
+        recent = []
+    else:
+        recent = [t for t in _search_timestamps[user_key] if now - t < timedelta(minutes=1)]
+
+    return {
+        "requests_in_window": len(recent),
+        "limit": SEARCH_RATE_LIMIT,
+        "remaining": max(0, SEARCH_RATE_LIMIT - len(recent)),
+        "user": user_key
+    }
 
 # ============ WEB SEARCH ============
 
-async def web_search(query: str, num_results: int = 5) -> List[Dict[str, str]]:
+async def _duckduckgo_search(query: str, num_results: int = 5) -> List[Dict[str, str]]:
     """
-    Search the web using DuckDuckGo (no API key required).
+    Internal DuckDuckGo search implementation.
 
     Args:
         query: Search query
@@ -21,47 +80,217 @@ async def web_search(query: str, num_results: int = 5) -> List[Dict[str, str]]:
 
     Returns:
         List of search results with title, url, and snippet
+
+    Raises:
+        httpx.TimeoutException: If request times out
+        httpx.HTTPStatusError: If HTTP error occurs
+        Exception: For other errors
     """
-    try:
-        # Use DuckDuckGo HTML search (no API key needed)
-        url = "https://html.duckduckgo.com/html/"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    import re
+
+    url = "https://html.duckduckgo.com/html/"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        response = await client.post(url, data={"q": query}, headers=headers)
+        response.raise_for_status()
+
+    html = response.text
+    results = []
+
+    # Multiple parsing strategies for robustness
+
+    # Strategy 1: Standard result link pattern
+    link_pattern = r'<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)</a>'
+    snippet_pattern = r'<a class="result__snippet"[^>]*>([^<]+(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</a>'
+
+    links = re.findall(link_pattern, html)
+    snippets = re.findall(snippet_pattern, html)
+
+    # Strategy 2: Fallback pattern if first fails
+    if not links:
+        # Try alternate pattern for results
+        alt_link_pattern = r'<a[^>]*class="[^"]*result[^"]*"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>'
+        links = re.findall(alt_link_pattern, html)
+
+    for i, (result_url, title) in enumerate(links[:num_results]):
+        snippet = snippets[i] if i < len(snippets) else ""
+        # Clean snippet of HTML tags
+        snippet = re.sub(r'<[^>]+>', '', snippet).strip()
+        results.append({
+            "title": title.strip(),
+            "url": result_url,
+            "snippet": snippet[:300]
+        })
+
+    return results
+
+
+async def _search_with_retry(
+    search_fn,
+    query: str,
+    num_results: int = 5,
+    max_retries: int = 3
+) -> List[Dict[str, str]]:
+    """
+    Execute search with exponential backoff retry.
+
+    Args:
+        search_fn: Async search function to call
+        query: Search query
+        num_results: Number of results
+        max_retries: Maximum retry attempts
+
+    Returns:
+        Search results list
+
+    Raises:
+        Exception: If all retries fail
+    """
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return await search_fn(query, num_results)
+        except httpx.TimeoutException as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                logger.warning(f"Search attempt {attempt + 1} timed out, retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                logger.warning(f"Search attempt {attempt + 1} failed: {e}, retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
+    raise last_error
+
+
+async def web_search(query: str, num_results: int = 5, user_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Search the web using DuckDuckGo with error handling and per-user rate limiting.
+
+    Args:
+        query: Search query
+        num_results: Number of results to return
+        user_id: User identifier for rate limiting (None for anonymous)
+
+    Returns:
+        Dict with keys:
+        - error: bool - Whether an error occurred
+        - results: List[Dict] - Search results (if successful)
+        - message: str - Status or error message
+    """
+    # Check per-user rate limit
+    if not check_rate_limit(user_id):
+        logger.warning(f"Search rate limited for user {user_id}, query: {query[:50]}...")
+        return {
+            "error": True,
+            "results": [],
+            "message": "Rate limited. Please wait a moment before searching again."
         }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, data={"q": query}, headers=headers)
-            response.raise_for_status()
+    try:
+        results = await _search_with_retry(_duckduckgo_search, query, num_results)
 
-        # Parse results from HTML
-        html = response.text
-        results = []
+        if not results:
+            logger.info(f"No results found for query: {query[:50]}...")
+            return {
+                "error": False,
+                "results": [],
+                "message": "No results found for your query."
+            }
 
-        # Simple parsing - extract result blocks
-        import re
+        logger.info(f"Web search successful: {len(results)} results for '{query[:50]}...'")
+        return {
+            "error": False,
+            "results": results,
+            "message": f"Found {len(results)} results"
+        }
 
-        # Find all result links and snippets
-        link_pattern = r'<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)</a>'
-        snippet_pattern = r'<a class="result__snippet"[^>]*>([^<]+(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</a>'
-
-        links = re.findall(link_pattern, html)
-        snippets = re.findall(snippet_pattern, html)
-
-        for i, (url, title) in enumerate(links[:num_results]):
-            snippet = snippets[i] if i < len(snippets) else ""
-            # Clean snippet of HTML tags
-            snippet = re.sub(r'<[^>]+>', '', snippet).strip()
-            results.append({
-                "title": title.strip(),
-                "url": url,
-                "snippet": snippet[:300]
-            })
-
-        return results
-
+    except httpx.TimeoutException:
+        logger.error(f"Search timed out for query: {query[:50]}...")
+        return {
+            "error": True,
+            "results": [],
+            "message": "Search timed out. Please try again."
+        }
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Search HTTP error {e.response.status_code} for query: {query[:50]}...")
+        return {
+            "error": True,
+            "results": [],
+            "message": f"Search service unavailable (HTTP {e.response.status_code}). Please try again later."
+        }
     except Exception as e:
-        print(f"Web search error: {e}")
-        return [{"title": "Search failed", "url": "", "snippet": str(e)}]
+        logger.error(f"Search failed for query '{query[:50]}...': {e}")
+        return {
+            "error": True,
+            "results": [],
+            "message": "Search unavailable. Proceeding without web context."
+        }
+
+
+async def web_search_with_fallback(
+    query: str,
+    num_results: int = 5,
+    perplexity_api_key: Optional[str] = None,
+    perplexity_model: str = "sonar",
+    use_deep: bool = False
+) -> Dict[str, Any]:
+    """
+    Search the web with Perplexity fallback if DuckDuckGo fails.
+
+    Args:
+        query: Search query
+        num_results: Number of results to return
+        perplexity_api_key: Optional Perplexity API key for fallback
+        perplexity_model: Perplexity model to use (default: sonar)
+        use_deep: Whether to use deep research model
+
+    Returns:
+        Dict with error status, results, and message
+    """
+    # Try DuckDuckGo first
+    result = await web_search(query, num_results)
+
+    # If DuckDuckGo succeeded, return the result
+    if not result.get("error"):
+        return result
+
+    # If we have a Perplexity key, try fallback
+    if perplexity_api_key:
+        logger.info(f"DuckDuckGo failed, falling back to Perplexity for query: {query[:50]}...")
+        try:
+            perplexity_result = await perplexity_search(
+                query=query,
+                api_key=perplexity_api_key,
+                model=perplexity_model,
+                num_results=num_results,
+                deep_search=use_deep
+            )
+            return {
+                "error": False,
+                "results": perplexity_result.get("results", []),
+                "message": f"Found {len(perplexity_result.get('results', []))} results via Perplexity",
+                "summary": perplexity_result.get("summary", ""),
+                "citations": perplexity_result.get("citations", []),
+                "fallback_used": True
+            }
+        except Exception as e:
+            logger.error(f"Perplexity fallback also failed: {e}")
+            return {
+                "error": True,
+                "results": [],
+                "message": "Both search services unavailable. Proceeding without web context."
+            }
+
+    # No Perplexity key, return the original DuckDuckGo error
+    return result
 
 
 async def fetch_url(url: str) -> str:
@@ -375,13 +604,23 @@ def execute_javascript(code: str, timeout: int = 30) -> Dict[str, Any]:
 
 # ============ MEMORY / CONTEXT ============
 
+# Legacy file-based storage for anonymous users
 MEMORY_FILE = "data/council_memory.json"
 
-def _load_memory() -> Dict[str, Any]:
-    """Load memory from file."""
+
+def _get_memory_file(user_id: Optional[str] = None) -> str:
+    """Get memory file path - per-user file for identified users, shared file for anonymous."""
+    if user_id and user_id != "anonymous":
+        return f"data/memory_{user_id}.json"
+    return MEMORY_FILE
+
+
+def _load_memory(user_id: Optional[str] = None) -> Dict[str, Any]:
+    """Load memory from file (for anonymous/legacy use)."""
+    memory_file = _get_memory_file(user_id)
     try:
-        if os.path.exists(MEMORY_FILE):
-            with open(MEMORY_FILE, 'r') as f:
+        if os.path.exists(memory_file):
+            with open(memory_file, 'r') as f:
                 return json.load(f)
     except Exception as e:
         print(f"Error loading memory: {e}")
@@ -394,19 +633,55 @@ def _load_memory() -> Dict[str, Any]:
     }
 
 
-def _save_memory(memory: Dict[str, Any]):
-    """Save memory to file."""
+def _save_memory(memory: Dict[str, Any], user_id: Optional[str] = None):
+    """Save memory to file (for anonymous/legacy use)."""
+    memory_file = _get_memory_file(user_id)
     try:
-        os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
-        with open(MEMORY_FILE, 'w') as f:
+        os.makedirs(os.path.dirname(memory_file), exist_ok=True)
+        with open(memory_file, 'w') as f:
             json.dump(memory, f, indent=2)
     except Exception as e:
         print(f"Error saving memory: {e}")
 
 
+async def remember_fact_async(fact: str, category: str = "general", user_id: Optional[str] = None, db=None) -> bool:
+    """
+    Store a fact in memory (async, uses database for authenticated users).
+
+    Args:
+        fact: The fact to remember
+        category: Category for organization
+        user_id: User ID (uses database if provided with db)
+        db: Database session
+
+    Returns:
+        True if successful
+    """
+    if user_id and db and user_id != "anonymous":
+        try:
+            from .database import crud as db_crud
+            import uuid as uuid_module
+            await db_crud.memory.add_fact(db, uuid_module.UUID(user_id), fact, category)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to save fact to database: {e}")
+            # Fall through to file-based
+
+    # File-based fallback for anonymous users
+    memory = _load_memory(user_id)
+    memory["facts"].append({
+        "content": fact,
+        "category": category,
+        "timestamp": datetime.now().isoformat()
+    })
+    memory["facts"] = memory["facts"][-100:]
+    _save_memory(memory, user_id)
+    return True
+
+
 def remember_fact(fact: str, category: str = "general") -> bool:
     """
-    Store a fact in memory.
+    Store a fact in memory (sync, for anonymous users).
 
     Args:
         fact: The fact to remember
@@ -421,15 +696,50 @@ def remember_fact(fact: str, category: str = "general") -> bool:
         "category": category,
         "timestamp": datetime.now().isoformat()
     })
-    # Keep only last 100 facts
     memory["facts"] = memory["facts"][-100:]
     _save_memory(memory)
     return True
 
 
+async def remember_decision_async(question: str, decision: str, reasoning: str = "", user_id: Optional[str] = None, db=None) -> bool:
+    """
+    Store a council decision in memory (async, uses database for authenticated users).
+
+    Args:
+        question: The original question
+        decision: The council's decision/answer
+        reasoning: Optional reasoning behind the decision
+        user_id: User ID (uses database if provided with db)
+        db: Database session
+
+    Returns:
+        True if successful
+    """
+    if user_id and db and user_id != "anonymous":
+        try:
+            from .database import crud as db_crud
+            import uuid as uuid_module
+            await db_crud.memory.add_decision(db, uuid_module.UUID(user_id), question, decision, reasoning)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to save decision to database: {e}")
+
+    # File-based fallback
+    memory = _load_memory(user_id)
+    memory["decisions"].append({
+        "question": question[:500],
+        "decision": decision[:2000],
+        "reasoning": reasoning[:1000],
+        "timestamp": datetime.now().isoformat()
+    })
+    memory["decisions"] = memory["decisions"][-50:]
+    _save_memory(memory, user_id)
+    return True
+
+
 def remember_decision(question: str, decision: str, reasoning: str = "") -> bool:
     """
-    Store a council decision in memory.
+    Store a council decision in memory (sync, for anonymous users).
 
     Args:
         question: The original question
@@ -446,15 +756,46 @@ def remember_decision(question: str, decision: str, reasoning: str = "") -> bool
         "reasoning": reasoning[:1000],
         "timestamp": datetime.now().isoformat()
     })
-    # Keep only last 50 decisions
     memory["decisions"] = memory["decisions"][-50:]
     _save_memory(memory)
     return True
 
 
+async def set_preference_async(key: str, value: Any, user_id: Optional[str] = None, db=None) -> bool:
+    """
+    Set a user preference (async, uses database for authenticated users).
+
+    Args:
+        key: Preference key
+        value: Preference value
+        user_id: User ID (uses database if provided with db)
+        db: Database session
+
+    Returns:
+        True if successful
+    """
+    if user_id and db and user_id != "anonymous":
+        try:
+            from .database import crud as db_crud
+            import uuid as uuid_module
+            await db_crud.memory.set_preference(db, uuid_module.UUID(user_id), key, value)
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to save preference to database: {e}")
+
+    # File-based fallback
+    memory = _load_memory(user_id)
+    memory["preferences"][key] = {
+        "value": value,
+        "updated_at": datetime.now().isoformat()
+    }
+    _save_memory(memory, user_id)
+    return True
+
+
 def set_preference(key: str, value: Any) -> bool:
     """
-    Set a user preference.
+    Set a user preference (sync, for anonymous users).
 
     Args:
         key: Preference key
@@ -472,18 +813,44 @@ def set_preference(key: str, value: Any) -> bool:
     return True
 
 
-def get_memory_context(query: str = "", limit: int = 10) -> str:
+async def get_memory_context_async(query: str = "", limit: int = 10, user_id: Optional[str] = None, db=None) -> str:
     """
-    Get relevant memory context for a query.
+    Get relevant memory context for a query (async, uses database for authenticated users).
 
     Args:
         query: Optional query to filter relevant memories
         limit: Maximum items to return
+        user_id: User ID (uses database if provided with db)
+        db: Database session
 
     Returns:
         Formatted string of relevant memories
     """
-    memory = _load_memory()
+    if user_id and db and user_id != "anonymous":
+        try:
+            from .database import crud as db_crud
+            import uuid as uuid_module
+            return await db_crud.memory.get_memory_context(db, uuid_module.UUID(user_id), limit)
+        except Exception as e:
+            logger.warning(f"Failed to get memory from database: {e}")
+
+    # File-based fallback
+    return get_memory_context(query, limit, user_id)
+
+
+def get_memory_context(query: str = "", limit: int = 10, user_id: Optional[str] = None) -> str:
+    """
+    Get relevant memory context for a query (sync, file-based).
+
+    Args:
+        query: Optional query to filter relevant memories
+        limit: Maximum items to return
+        user_id: User ID for file isolation
+
+    Returns:
+        Formatted string of relevant memories
+    """
+    memory = _load_memory(user_id)
     context_parts = []
 
     # Add recent facts

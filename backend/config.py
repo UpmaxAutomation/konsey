@@ -231,7 +231,8 @@ _runtime_config = {
         "web_search": True,
         "deep_search": False,
         "code_execution": True,
-        "memory": True
+        "memory": True,
+        "auto_preference": "quality"
     },
     "personas": {},  # model_id -> persona_key or custom text
     "custom_personas": {},  # persona_id -> custom persona text
@@ -266,7 +267,8 @@ def load_settings():
                     "web_search": saved_features.get("web_search", True),
                     "deep_search": saved_features.get("deep_search", False),
                     "code_execution": saved_features.get("code_execution", True),
-                    "memory": saved_features.get("memory", True)
+                    "memory": saved_features.get("memory", True),
+                    "auto_preference": saved_features.get("auto_preference", "quality"),
                 }
                 _runtime_config["personas"] = saved.get("personas", {})
                 _runtime_config["custom_personas"] = saved.get("custom_personas", {})

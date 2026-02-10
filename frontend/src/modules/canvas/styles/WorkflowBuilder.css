@@ -1,0 +1,438 @@
+/* ==========================================================================
+   WorkflowBuilder.css -- Step editor panel
+   ========================================================================== */
+
+/* ── Container ── */
+
+.wf-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* ── Name input ── */
+
+.wf-builder__name-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wf-builder__name-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wf-builder__name-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  background: var(--bg-input, var(--bg-primary));
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.wf-builder__name-input::placeholder {
+  color: var(--text-muted, var(--text-secondary));
+  font-weight: 400;
+}
+
+.wf-builder__name-input:focus {
+  border-color: var(--accent-primary);
+}
+
+.wf-builder__name-input:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+/* ── Steps container with connecting line ── */
+
+.wf-builder__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  padding-left: 16px;
+}
+
+/* Vertical connecting line */
+.wf-builder__steps::before {
+  content: '';
+  position: absolute;
+  left: 27px;
+  top: 20px;
+  bottom: 20px;
+  width: 2px;
+  background: var(--border-primary);
+  border-radius: 1px;
+}
+
+/* ── Step card ── */
+
+.wf-builder__step {
+  position: relative;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-primary);
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.wf-builder__step--expanded {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.1);
+}
+
+/* ── Step header ── */
+
+.wf-builder__step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+
+.wf-builder__step-header:hover {
+  background: var(--bg-secondary);
+}
+
+/* Number circle */
+.wf-builder__step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.wf-builder__step--expanded .wf-builder__step-number {
+  background: var(--accent-primary);
+}
+
+/* Step name in header */
+.wf-builder__step-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Type badge */
+.wf-builder__step-type-badge {
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.08);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Action buttons (move / remove) */
+.wf-builder__step-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.wf-builder__step-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  padding: 0;
+  min-height: auto;
+  line-height: 1;
+  transition: background 0.12s, color 0.12s;
+}
+
+.wf-builder__step-actions button:hover:not(:disabled) {
+  background: var(--bg-tertiary, var(--bg-secondary));
+  color: var(--text-primary);
+}
+
+.wf-builder__step-actions button:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.wf-builder__step-actions button:last-child:hover:not(:disabled) {
+  background: var(--error-light, #fef2f2);
+  color: var(--error, #ef4444);
+}
+
+.wf-builder__step-actions button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+/* ── Step body (collapsible) ── */
+
+.wf-builder__step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 12px 14px;
+  border-top: 1px solid var(--border-primary);
+  animation: wf-builder-expand 150ms ease-out;
+}
+
+@keyframes wf-builder-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Form fields ── */
+
+.wf-builder__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wf-builder__field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wf-builder__step-body select,
+.wf-builder__step-body input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-input, var(--bg-primary));
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.wf-builder__step-body select:focus,
+.wf-builder__step-body input:focus {
+  border-color: var(--accent-primary);
+}
+
+.wf-builder__step-body select:focus-visible,
+.wf-builder__step-body input:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+.wf-builder__step-body textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-input, var(--bg-primary));
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.55;
+  transition: border-color 0.15s;
+}
+
+.wf-builder__step-body textarea::placeholder {
+  color: var(--text-muted, var(--text-secondary));
+}
+
+.wf-builder__step-body textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.wf-builder__step-body textarea:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -1px;
+}
+
+/* Hint text */
+.wf-builder__hint {
+  font-size: 11px;
+  color: var(--text-muted, var(--text-secondary));
+  font-style: italic;
+  line-height: 1.4;
+}
+
+/* ── Add step button ── */
+
+.wf-builder__add-step {
+  width: 100%;
+  padding: 10px;
+  border: 2px dashed var(--border-primary);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: auto;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.wf-builder__add-step:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.wf-builder__add-step:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ── Footer ── */
+
+.wf-builder__footer {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-primary);
+}
+
+.wf-builder__btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  min-height: auto;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.wf-builder__btn--cancel {
+  background: none;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+.wf-builder__btn--cancel:hover {
+  background: var(--bg-secondary);
+  border-color: var(--text-secondary);
+}
+
+.wf-builder__btn--save {
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+}
+
+.wf-builder__btn--save:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.wf-builder__btn--save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wf-builder__btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ── Dark mode ── */
+
+[data-theme="dark"] .wf-builder__step {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .wf-builder__step--expanded {
+  border-color: var(--accent-primary);
+}
+
+[data-theme="dark"] .wf-builder__step-type-badge {
+  background: rgba(99, 102, 241, 0.14);
+}
+
+[data-theme="dark"] .wf-builder__step-actions button:last-child:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+[data-theme="dark"] .wf-builder__add-step:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+/* ── Reduced motion ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .wf-builder__step {
+    transition: none;
+  }
+
+  .wf-builder__step-body {
+    animation: none;
+  }
+
+  .wf-builder__step-actions button {
+    transition: none;
+  }
+
+  .wf-builder__add-step {
+    transition: none;
+  }
+
+  .wf-builder__btn {
+    transition: none;
+  }
+}

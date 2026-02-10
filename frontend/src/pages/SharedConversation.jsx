@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import SafeMarkdown from '../components/SafeMarkdown';
+import SafeMarkdown from '../shared/components/SafeMarkdown';
 import { api } from '../api';
 import './SharedConversation.css';
 

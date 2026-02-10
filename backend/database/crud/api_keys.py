@@ -145,17 +145,32 @@ async def get_user_key(
     provider: str
 ) -> Optional[str]:
     """Get decrypted API key for a user and provider."""
+    # First, check if any key exists (active or not) for debugging
+    all_keys_result = await db.execute(
+        select(UserAPIKey).where(
+            UserAPIKey.user_id == user_id,
+            UserAPIKey.provider == provider
+        )
+    )
+    all_key_record = all_keys_result.scalar_one_or_none()
+    if all_key_record:
+        logger.debug(f"get_user_key: found key record for {provider}, is_active={all_key_record.is_active}")
+    else:
+        logger.debug(f"get_user_key: no key record found for user {user_id}, provider {provider}")
+
+    # Now get only active keys (also accept NULL as active for backward compatibility)
     result = await db.execute(
         select(UserAPIKey).where(
             UserAPIKey.user_id == user_id,
             UserAPIKey.provider == provider,
-            UserAPIKey.is_active == True
+            UserAPIKey.is_active != False  # Treat NULL as active
         )
     )
     key_record = result.scalar_one_or_none()
     if key_record:
         try:
             decrypted = _decrypt(key_record.encrypted_key)
+            logger.debug(f"get_user_key: successfully decrypted key for {provider}")
             return decrypted
         except Exception as e:
             # Log decryption failure without exposing key data
@@ -172,7 +187,7 @@ async def list_user_providers(
     result = await db.execute(
         select(UserAPIKey.provider).where(
             UserAPIKey.user_id == user_id,
-            UserAPIKey.is_active == True
+            UserAPIKey.is_active != False  # Treat NULL as active
         )
     )
     return [row[0] for row in result.fetchall()]
@@ -213,6 +228,7 @@ async def set_user_key(
             user_id=user_id,
             provider=provider,
             encrypted_key=encrypted,
+            is_active=True,  # Explicitly set to avoid NULL values
         )
         db.add(new_key)
         await db.flush()  # Ensure new key is flushed before commit
@@ -315,6 +331,38 @@ async def delete_system_key(db: AsyncSession, provider: str) -> bool:
     return result.rowcount > 0
 
 
+async def clear_all_user_keys(db: AsyncSession) -> int:
+    """Clear all user API keys (use when SECRET_KEY changes)."""
+    result = await db.execute(delete(UserAPIKey))
+    await db.flush()
+    return result.rowcount
+
+
+async def clear_all_system_keys(db: AsyncSession) -> int:
+    """Clear all encrypted system API keys (use when SECRET_KEY changes)."""
+    # Only delete encrypted keys (api_key entries)
+    result = await db.execute(
+        delete(SystemConfig).where(SystemConfig.key.like("%_api_key"))
+    )
+    await db.flush()
+    return result.rowcount
+
+
+async def clear_all_encrypted_keys(db: AsyncSession) -> dict:
+    """
+    Clear ALL encrypted API keys from the database.
+    Use this when SECRET_KEY has changed and keys can't be decrypted.
+    Returns count of deleted keys.
+    """
+    user_count = await clear_all_user_keys(db)
+    system_count = await clear_all_system_keys(db)
+    return {
+        "user_keys_deleted": user_count,
+        "system_keys_deleted": system_count,
+        "total_deleted": user_count + system_count
+    }
+
+
 # Resolution function: user key -> system key -> env var
 
 async def resolve_api_key(
@@ -331,20 +379,29 @@ async def resolve_api_key(
     Note: Environment variable fallback removed - users must set their own keys
     or admin must set system key explicitly.
     """
+    logger.debug(f"resolve_api_key: user_id={user_id}, provider={provider}, allow_system_fallback={allow_system_fallback}")
+
     # Try user's key first
     if user_id:
         user_key = await get_user_key(db, user_id, provider)
         if user_key:
+            logger.debug(f"resolve_api_key: found user key for {provider}")
             return user_key
+        logger.debug(f"resolve_api_key: no user key found for {provider}")
 
     # Only try system key if explicitly allowed (for admin-set system keys)
     if allow_system_fallback:
         system_key = await get_system_key(db, provider)
         if system_key:
+            logger.debug(f"resolve_api_key: found system key for {provider}")
             return system_key
 
         # Fallback to environment variable for OpenRouter (only if system fallback allowed)
         if provider == "openrouter":
-            return os.getenv("OPENROUTER_API_KEY")
+            env_key = os.getenv("OPENROUTER_API_KEY")
+            if env_key:
+                logger.debug(f"resolve_api_key: found env var OPENROUTER_API_KEY")
+                return env_key
 
+    logger.debug(f"resolve_api_key: no key found for {provider}")
     return None

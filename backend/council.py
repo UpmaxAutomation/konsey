@@ -1,6 +1,8 @@
 """3-stage LLM Council orchestration."""
 
 import logging
+import json
+import time
 from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 import uuid
@@ -83,6 +85,25 @@ async def stage1_collect_responses(
     else:
         enhanced_query = user_query
 
+    # Enhance query for image analysis if images are attached
+    has_images = bool(image_content and len(image_content) > 0)
+    if has_images:
+        # Add image analysis guidance if user hasn't explicitly asked about the image
+        image_keywords = ['image', 'picture', 'photo', 'screenshot', 'diagram', 'chart', 'graph', 'see', 'look', 'show', 'visual']
+        user_query_lower = user_query.lower()
+        user_mentions_image = any(kw in user_query_lower for kw in image_keywords)
+
+        if not user_mentions_image:
+            # User didn't mention the image, so add context
+            enhanced_query = f"""[Image Analysis Context]
+The user has attached {len(image_content)} image(s). Please analyze the image(s) as part of your response:
+- Describe what you see in the image
+- Identify any text, numbers, data, or important elements
+- Note any patterns, trends, or notable features
+- Connect your observations to the user's question
+
+User Question: {enhanced_query}"""
+
     # Build messages with persona if assigned
     # Get user-specific council models if available
     if user_id and db:
@@ -94,6 +115,7 @@ async def stage1_collect_responses(
             council_models = get_council_models()
     else:
         council_models = get_council_models()
+
     messages_by_model = {}
 
     for model in council_models:
@@ -378,7 +400,10 @@ def calculate_aggregate_rankings(
     model_positions = defaultdict(list)
 
     for ranking in stage2_results:
-        ranking_text = ranking['ranking']
+        # Safely get ranking text, skip if missing
+        ranking_text = ranking.get('ranking')
+        if not ranking_text:
+            continue
 
         # Parse the ranking from the structured format
         parsed_ranking = parse_ranking_from_text(ranking_text)
@@ -511,9 +536,18 @@ async def gather_context(
                 logger.info(f"Perplexity search completed: {len(context.get('web_search', []))} results")
             elif use_web_search:
                 logger.info("No Perplexity key, falling back to DuckDuckGo search")
-                search_results = await web_search(user_query, num_results=3)
-                if search_results and search_results[0].get("url"):
-                    context["web_search"] = search_results
+                search_result = await web_search(user_query, num_results=3)
+                # Handle new Dict response format
+                if isinstance(search_result, dict):
+                    if search_result.get("error"):
+                        logger.warning(f"Web search error: {search_result.get('message', 'Unknown error')}")
+                        context["web_search_error"] = search_result.get("message", "Search failed")
+                    elif search_result.get("results"):
+                        context["web_search"] = search_result["results"]
+                        logger.info(f"DuckDuckGo search completed: {len(search_result['results'])} results")
+                # Handle legacy List response format for backward compatibility
+                elif isinstance(search_result, list) and search_result and search_result[0].get("url"):
+                    context["web_search"] = search_result
             else:
                 logger.warning("Deep search requested but no Perplexity API key configured")
         except Exception as e:
@@ -586,14 +620,17 @@ async def run_full_council(
         text_files = [f for f in attached_files if not files.is_image_file(f)]
 
         # Add text files to context (works with all models)
+        # Pass user_query for relevance-based file ranking
         if text_files:
-            file_context = files.format_files_for_context(conversation_id, text_files)
+            file_context = files.format_files_for_context(conversation_id, text_files, query=user_query)
             if file_context:
                 context_sections.append(file_context)
 
         # Prepare image content for vision models (will be handled separately)
         if image_files:
-            image_content = files.format_files_for_vision(conversation_id, image_files)
+            image_content = files.format_files_for_vision(
+                conversation_id, image_files, query=user_query
+            )
 
     # Add conversation history context (also highly relevant)
     if conversation_context:
@@ -704,7 +741,8 @@ async def run_full_council_stream(
     db: Optional[Any] = None,
     fast_mode: Optional[bool] = False,
     conversation_id: Optional[str] = None,
-    attached_files: Optional[List[str]] = None
+    attached_files: Optional[List[str]] = None,
+    project_id: Optional[str] = None
 ):
     """
     Run the complete 3-stage council process with streaming.
@@ -736,6 +774,12 @@ async def run_full_council_stream(
         - {type: 'stage3_complete', data: Dict}
         - {type: 'complete', stage1: List, stage2: List, stage3: Dict, metadata: Dict}
     """
+    # Gather project context if project_id provided
+    project_context = None
+    if project_id:
+        from . import projects
+        project_context = projects.get_project_context(project_id)
+
     # Gather additional context (search + memory)
     context = {}
 
@@ -755,6 +799,10 @@ async def run_full_council_stream(
     enhanced_query = user_query
     context_sections = []
 
+    # Add project context first (highest priority - defines the project scope)
+    if project_context:
+        context_sections.append(project_context)
+
     # Handle attached files (images and text files)
     image_content = []
     if conversation_id and attached_files:
@@ -764,9 +812,12 @@ async def run_full_council_stream(
         text_files = [f for f in attached_files if not files.is_image_file(f)]
 
         # Add text files to context (works with all models)
+        # Pass user_query for relevance-based file ranking
         if text_files:
             try:
-                file_context = files.format_files_for_context(conversation_id, text_files)
+                file_context = files.format_files_for_context(
+                    conversation_id, text_files, query=user_query
+                )
                 if file_context:
                     context_sections.append(file_context)
             except Exception as e:
@@ -775,7 +826,9 @@ async def run_full_council_stream(
         # Prepare image content for vision models (will be handled separately)
         if image_files:
             try:
-                image_content = files.format_files_for_vision(conversation_id, image_files)
+                image_content = files.format_files_for_vision(
+                    conversation_id, image_files, query=user_query
+                )
                 logger.info(f"Prepared {len(image_content)} images for vision models")
             except Exception as e:
                 logger.error(f"Error formatting images: {e}")
@@ -815,115 +868,118 @@ async def run_full_council_stream(
     # Build per-model messages (for vision model support)
     from .config import supports_vision
     final_query = enhanced_query if context_sections else user_query
-    messages_by_model = {}
 
-    for model in council_models:
-        persona = get_model_persona(model)
+    async def run_stage1(models_to_use, results_out):
+        messages_by_model = {}
+        for model in models_to_use:
+            persona = get_model_persona(model)
 
-        # Build user content - multimodal for vision models with images
-        if image_content and supports_vision(model):
-            # Build multimodal content array for vision models
-            user_content = [{"type": "text", "text": final_query}]
-            for img in image_content:
-                if img.get("type") == "image":
-                    source = img.get("source", {})
-                    if source.get("type") == "base64":
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
-                            }
-                        })
-        else:
-            # Plain text content for non-vision models or no images
-            user_content = final_query
+            # Build user content - multimodal for vision models with images
+            if image_content and supports_vision(model):
+                # Build multimodal content array for vision models
+                user_content = [{"type": "text", "text": final_query}]
+                for img in image_content:
+                    if img.get("type") == "image":
+                        source = img.get("source", {})
+                        if source.get("type") == "base64":
+                            user_content.append({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{source.get('media_type', 'image/png')};base64,{source.get('data', '')}"
+                                }
+                            })
+            else:
+                # Plain text content for non-vision models or no images
+                user_content = final_query
 
-        if persona:
-            messages_by_model[model] = [
-                {"role": "system", "content": persona},
-                {"role": "user", "content": user_content}
-            ]
-        else:
-            messages_by_model[model] = [{"role": "user", "content": user_content}]
+            if persona:
+                messages_by_model[model] = [
+                    {"role": "system", "content": persona},
+                    {"role": "user", "content": user_content}
+                ]
+            else:
+                messages_by_model[model] = [{"role": "user", "content": user_content}]
+
+        # Create async tasks for all models
+        async def stream_model_stage1(model):
+            """Stream a single model's response for stage 1."""
+            yield {"type": "stage1_model_start", "model": model}
+
+            full_response = ""
+            model_messages = messages_by_model[model]
+            async for event in query_model_stream(model, model_messages, user_id=user_id, db=db):
+                if event.get("chunk"):
+                    full_response += event["chunk"]
+                    yield {"type": "stage1_model_chunk", "model": model, "chunk": event["chunk"]}
+                elif event.get("done"):
+                    yield {
+                        "type": "stage1_model_complete",
+                        "model": model,
+                        "response": full_response,
+                        "usage": event.get("usage", {})
+                    }
+                elif event.get("error"):
+                    yield {
+                        "type": "stage1_model_error",
+                        "model": model,
+                        "error": event.get("message", "Unknown error")
+                    }
+
+        # Stream all stage1 models in parallel
+        tasks = [stream_model_stage1(model) for model in models_to_use]
+
+        # Use asyncio to handle multiple streams
+        async def merge_stage1_streams():
+            """Merge multiple model streams and yield events."""
+            queues = {model: asyncio.Queue() for model in models_to_use}
+
+            async def consume_stream(model, generator):
+                """Consume one model's stream and put events in queue."""
+                async for event in generator:
+                    await queues[model].put(event)
+                await queues[model].put(None)  # Signal completion
+
+            # Start all consumers
+            consumers = [asyncio.create_task(consume_stream(model, gen)) for model, gen in zip(models_to_use, tasks)]
+
+            # Yield events as they arrive from any queue
+            active_queues = set(models_to_use)
+            while active_queues:
+                for model in list(active_queues):
+                    try:
+                        event = await asyncio.wait_for(queues[model].get(), timeout=0.01)
+                        if event is None:
+                            active_queues.remove(model)
+                        else:
+                            yield event
+                    except asyncio.TimeoutError:
+                        continue
+
+            # Wait for all consumers to finish
+            await asyncio.gather(*consumers)
+
+        # Stream stage 1
+        stage1_responses = {}
+        async for event in merge_stage1_streams():
+            yield event
+            if event.get("type") == "stage1_model_complete":
+                stage1_responses[event["model"]] = event["response"]
+
+        # Build stage1_results
+        for model, response in stage1_responses.items():
+            if response:
+                results_out.append({"model": model, "response": response})
 
     stage1_results = []
-
-    # Create async tasks for all models
-    async def stream_model_stage1(model):
-        """Stream a single model's response for stage 1."""
-        yield {"type": "stage1_model_start", "model": model}
-
-        full_response = ""
-        model_messages = messages_by_model[model]
-        async for event in query_model_stream(model, model_messages, user_id=user_id, db=db):
-            if event.get("chunk"):
-                full_response += event["chunk"]
-                yield {"type": "stage1_model_chunk", "model": model, "chunk": event["chunk"]}
-            elif event.get("done"):
-                yield {
-                    "type": "stage1_model_complete",
-                    "model": model,
-                    "response": full_response,
-                    "usage": event.get("usage", {})
-                }
-            elif event.get("error"):
-                yield {
-                    "type": "stage1_model_error",
-                    "model": model,
-                    "error": event.get("message", "Unknown error")
-                }
-
-    # Stream all stage1 models in parallel
-    tasks = [stream_model_stage1(model) for model in council_models]
-
-    # Use asyncio to handle multiple streams
-    async def merge_stage1_streams():
-        """Merge multiple model streams and yield events."""
-        queues = {model: asyncio.Queue() for model in council_models}
-
-        async def consume_stream(model, generator):
-            """Consume one model's stream and put events in queue."""
-            async for event in generator:
-                await queues[model].put(event)
-            await queues[model].put(None)  # Signal completion
-
-        # Start all consumers
-        consumers = [asyncio.create_task(consume_stream(model, gen)) for model, gen in zip(council_models, tasks)]
-
-        # Yield events as they arrive from any queue
-        active_queues = set(council_models)
-        while active_queues:
-            for model in list(active_queues):
-                try:
-                    event = await asyncio.wait_for(queues[model].get(), timeout=0.01)
-                    if event is None:
-                        active_queues.remove(model)
-                    else:
-                        yield event
-                except asyncio.TimeoutError:
-                    continue
-
-        # Wait for all consumers to finish
-        await asyncio.gather(*consumers)
-
-    # Stream stage 1
-    stage1_responses = {}
-    async for event in merge_stage1_streams():
+    async for event in run_stage1(council_models, stage1_results):
         yield event
-        if event.get("type") == "stage1_model_complete":
-            stage1_responses[event["model"]] = event["response"]
-
-    # Build stage1_results
-    for model, response in stage1_responses.items():
-        if response:
-            stage1_results.append({"model": model, "response": response})
 
     yield {"type": "stage1_complete", "data": stage1_results}
 
     if not stage1_results:
         yield {
             "type": "error",
-            "message": "All models failed to respond. Please check your API key in Settings → API Keys and ensure OpenRouter API key is set."
+            "message": "All selected models failed to respond. Please choose different models or add a BYOK key for those providers."
         }
         return
 
@@ -1145,8 +1201,8 @@ Now provide your evaluation and ranking:"""
         yield event
         if event.get("type") == "stage2_model_complete":
             stage2_responses[event["model"]] = {
-                "ranking": event["ranking"],
-                "parsed": event["parsed_ranking"]
+                "ranking": event.get("ranking", ""),
+                "parsed_ranking": event.get("parsed_ranking", [])
             }
 
     # Build stage2_results
@@ -1155,7 +1211,7 @@ Now provide your evaluation and ranking:"""
             stage2_results.append({
                 "model": model,
                 "ranking": data["ranking"],
-                "parsed_ranking": data["parsed"]
+                "parsed_ranking": data["parsed_ranking"]
             })
 
     # Calculate aggregate rankings

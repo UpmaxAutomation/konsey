@@ -1,0 +1,212 @@
+.board-memory-panel {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: 320px;
+  height: calc(100% - 48px);
+  background: var(--bg-primary, #fff);
+  border-left: 1px solid var(--border-primary, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.08);
+}
+
+.board-memory-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.board-memory-panel__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  margin: 0;
+}
+
+.board-memory-panel__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.board-memory-panel__close:hover {
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+.board-memory-panel__tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.board-memory-panel__tab {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-family: inherit;
+}
+
+.board-memory-panel__tab--active {
+  color: var(--accent-primary, #6366f1);
+  border-bottom-color: var(--accent-primary, #6366f1);
+}
+
+.board-memory-panel__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.board-memory-panel__input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.board-memory-panel__input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #0f172a);
+  outline: none;
+}
+
+.board-memory-panel__input:focus {
+  border-color: var(--accent-primary, #6366f1);
+}
+
+.board-memory-panel__add-btn {
+  padding: 6px 12px;
+  background: var(--accent-primary, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.board-memory-panel__add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.board-memory-panel__empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-tertiary, #94a3b8);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.board-memory-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-memory-panel__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-secondary, #f8fafc);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary, #0f172a);
+  line-height: 1.4;
+}
+
+.board-memory-panel__item--decision {
+  flex-direction: column;
+  gap: 4px;
+}
+
+.board-memory-panel__decision-context {
+  font-size: 11px;
+  color: var(--text-tertiary, #94a3b8);
+  font-style: italic;
+}
+
+.board-memory-panel__item-text {
+  flex: 1;
+  word-break: break-word;
+}
+
+.board-memory-panel__item-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: var(--text-tertiary, #94a3b8);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.board-memory-panel__item:hover .board-memory-panel__item-delete {
+  opacity: 1;
+}
+
+.board-memory-panel__item-delete:hover {
+  background: var(--error-light, #fef2f2);
+  color: var(--error, #ef4444);
+}
+
+.board-memory-panel__footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.board-memory-panel__clear-btn {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  background: none;
+  color: var(--text-secondary, #64748b);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+.board-memory-panel__clear-btn:hover:not(:disabled) {
+  border-color: var(--error, #ef4444);
+  color: var(--error, #ef4444);
+}
+
+.board-memory-panel__clear-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

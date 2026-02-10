@@ -33,6 +33,7 @@ def get_client() -> httpx.AsyncClient:
                 keepalive_expiry=30.0,
             ),
             http2=True,  # Enable HTTP/2 for better multiplexing
+            default_encoding="utf-8",  # Ensure UTF-8 for Unicode support
         )
     return _client
 

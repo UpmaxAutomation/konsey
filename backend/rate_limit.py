@@ -30,10 +30,18 @@ def get_identifier(request: Request) -> str:
 # Get Redis URL or use in-memory storage
 REDIS_URL = os.getenv("REDIS_URL")
 
-# Configure limiter
+# Configure limiter with graceful Redis fallback
+_storage_uri = "memory://"
+if REDIS_URL:
+    try:
+        import redis  # noqa: F401
+        _storage_uri = REDIS_URL
+    except ImportError:
+        pass  # redis package not installed, use memory
+
 limiter = Limiter(
     key_func=get_identifier,
-    storage_uri=REDIS_URL,  # Uses memory if None
+    storage_uri=_storage_uri,
     strategy="fixed-window",
     default_limits=["100/minute"],
 )

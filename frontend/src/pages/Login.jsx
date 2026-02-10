@@ -1,7 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './Auth.css';
+
+const REMEMBER_KEY = 'llm_council_remember_creds';
+
+function getStoredCredentials() {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed?.email && parsed?.password) return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredCredentials(email, password) {
+  try {
+    localStorage.setItem(REMEMBER_KEY, JSON.stringify({ email, password }));
+  } catch {
+    // ignore
+  }
+}
+
+function clearStoredCredentials() {
+  try {
+    localStorage.removeItem(REMEMBER_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 // Icons
 const BrainIcon = ({ className }) => (
@@ -96,9 +126,11 @@ const ArrowRightIcon = ({ className }) => (
 );
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const stored = getStoredCredentials();
+  const [email, setEmail] = useState(stored?.email ?? '');
+  const [password, setPassword] = useState(stored?.password ?? '');
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(!!stored);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -107,20 +139,48 @@ export default function Login() {
   const location = useLocation();
 
   const from = location.state?.from?.pathname || '/';
+  const hasStoredCreds = !!getStoredCredentials();
+
+  // Pre-fill from storage on mount (in case state was reset)
+  useEffect(() => {
+    const s = getStoredCredentials();
+    if (s && !email && !password) {
+      setEmail(s.email);
+      setPassword(s.password);
+      setRememberMe(true);
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setError('');
     setIsLoading(true);
 
     try {
       await login(email, password);
+      if (rememberMe) {
+        setStoredCredentials(email, password);
+      } else {
+        clearStoredCredentials();
+      }
       navigate(from, { replace: true });
     } catch (err) {
       setError(err.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleQuickLogin = () => {
+    handleSubmit(null);
+  };
+
+  const handleUseDifferentAccount = () => {
+    clearStoredCredentials();
+    setEmail('');
+    setPassword('');
+    setRememberMe(false);
+    setError('');
   };
 
   const features = [
@@ -187,6 +247,37 @@ export default function Login() {
             </div>
           )}
 
+          {hasStoredCreds && email && password && (
+            <div className="auth-quick-login">
+              <button
+                type="button"
+                className="auth-quick-login-btn"
+                onClick={handleQuickLogin}
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    <span>Signing in...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Quick login</span>
+                    <ArrowRightIcon className="btn-icon" />
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="auth-use-different"
+                onClick={handleUseDifferentAccount}
+                disabled={isLoading}
+              >
+                Use different account
+              </button>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-group">
               <label htmlFor="email">Email address</label>
@@ -233,6 +324,16 @@ export default function Login() {
                 </button>
               </div>
             </div>
+
+            <label className="auth-remember-me">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                disabled={isLoading}
+              />
+              <span>Remember me (quick login next time)</span>
+            </label>
 
             <button
               type="submit"

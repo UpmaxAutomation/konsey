@@ -1,0 +1,92 @@
+/* FloatingAddMenu — "+" button & block palette on empty lines */
+
+.floating-add-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ---- Trigger button ---- */
+
+.floating-add-menu__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-primary, #e4e4e7);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  cursor: pointer;
+  color: var(--text-muted, #a1a1aa);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.floating-add-menu__trigger:hover {
+  color: var(--text-primary, #09090b);
+  border-color: var(--text-muted, #a1a1aa);
+  background: var(--bg-hover, #f4f4f5);
+}
+
+.floating-add-menu__trigger:focus-visible {
+  outline: 2px solid var(--focus-ring, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* ---- Block palette ---- */
+
+.floating-add-menu__blocks {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-primary, #e4e4e7);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.floating-add-menu__block-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 5px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #71717a);
+  transition: background 0.1s, color 0.1s;
+}
+
+.floating-add-menu__block-btn:hover {
+  background: var(--bg-hover, #f4f4f5);
+  color: var(--text-primary, #09090b);
+}
+
+.floating-add-menu__block-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #3b82f6);
+  outline-offset: 1px;
+}
+
+/* ---- Dark theme ---- */
+
+[data-theme="dark"] .floating-add-menu__blocks {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.24);
+}
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-add-menu__trigger {
+    transition: none;
+  }
+
+  .floating-add-menu__block-btn {
+    transition: none;
+  }
+}

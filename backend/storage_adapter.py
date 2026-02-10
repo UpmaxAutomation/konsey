@@ -75,28 +75,36 @@ async def create_conversation(conversation_id: str, user_id: Optional[uuid.UUID]
         return json_storage.create_conversation(conversation_id)
 
 
-async def get_conversation(conversation_id: str, user_id: Optional[uuid.UUID] = None, db: Optional[AsyncSession] = None) -> Optional[Dict[str, Any]]:
-    """Load a conversation from storage - user-scoped if user_id provided."""
+async def get_conversation(conversation_id: str, user_id: Optional[uuid.UUID] = None, db: Optional[AsyncSession] = None, allow_any_user: bool = False) -> Optional[Dict[str, Any]]:
+    """Load a conversation from storage.
+
+    Args:
+        conversation_id: The conversation ID string
+        user_id: User ID for ownership check. If None, uses anonymous user.
+        db: Optional database session
+        allow_any_user: If True, skips user ownership check (for fallback scenarios)
+
+    Returns:
+        Conversation dict or None if not found
+    """
     if USE_DATABASE:
         conv = None
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+        except ValueError:
+            return None
+
+        # Determine user_id for query
+        query_user_id = None if allow_any_user else (user_id or _get_user_id())
+
         if db:
             # Use provided database session
-            actual_user_id = user_id or _get_user_id()
-            try:
-                conv_uuid = uuid.UUID(conversation_id)
-            except ValueError:
-                return None
-            conv = await db_conversations.get_by_id_with_messages(db, conv_uuid, actual_user_id)
+            conv = await db_conversations.get_by_id_with_messages(db, conv_uuid, query_user_id)
         else:
             # Create new session
             async with get_db_context() as db_session:
-                actual_user_id = user_id or _get_user_id()
-                try:
-                    conv_uuid = uuid.UUID(conversation_id)
-                except ValueError:
-                    return None
-                conv = await db_conversations.get_by_id_with_messages(db_session, conv_uuid, actual_user_id)
-        
+                conv = await db_conversations.get_by_id_with_messages(db_session, conv_uuid, query_user_id)
+
         if not conv:
             return None
 
@@ -161,19 +169,19 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
             if actual_user_id is None:
                 # Return empty list for anonymous users in database mode
                 return []
-            convs = await db_conversations.list_by_user(db, actual_user_id)
+            convs_with_counts = await db_conversations.list_by_user_with_message_counts(
+                db, actual_user_id
+            )
             return [
                 {
                     "id": str(conv.id),
                     "created_at": conv.created_at.isoformat(),
                     "title": conv.title,
-                    # Note: message_count not available in list view for performance
-                    # Messages are not eagerly loaded to avoid N+1 queries
-                    "message_count": 0,
+                    "message_count": message_count,
                     "folder_id": conv.folder_id,
                     "tags": conv.tags or []
                 }
-                for conv in convs
+                for (conv, message_count) in convs_with_counts
             ]
         else:
             # Create new session
@@ -182,18 +190,19 @@ async def list_conversations(user_id: Optional[uuid.UUID] = None, db: Optional[A
                 if actual_user_id is None:
                     # Return empty list for anonymous users in database mode
                     return []
-                convs = await db_conversations.list_by_user(db_session, actual_user_id)
+                convs_with_counts = await db_conversations.list_by_user_with_message_counts(
+                    db_session, actual_user_id
+                )
                 return [
                     {
                         "id": str(conv.id),
                         "created_at": conv.created_at.isoformat(),
                         "title": conv.title,
-                        # Note: message_count not available in list view for performance
-                        "message_count": 0,
+                        "message_count": message_count,
                         "folder_id": conv.folder_id,
                         "tags": conv.tags or []
                     }
-                    for conv in convs
+                    for (conv, message_count) in convs_with_counts
                 ]
     else:
         return json_storage.list_conversations()

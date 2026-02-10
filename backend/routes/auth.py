@@ -1,5 +1,6 @@
 """Authentication routes for LLM Council."""
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -22,8 +23,52 @@ from ..auth.jwt_handler import (
 )
 from ..auth.oauth import verify_google_token, exchange_google_code
 from ..auth.dependencies import get_current_user, get_current_admin_user
+from ..rate_limit import limiter, RATE_LIMITS
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+# Email verification placeholder
+async def send_verification_email(email: str, token: str, user_name: Optional[str] = None) -> None:
+    """
+    Placeholder for sending verification email.
+
+    In production, this would integrate with an email service like:
+    - SendGrid
+    - AWS SES
+    - Mailgun
+    - Resend
+
+    For now, it logs the verification link.
+    """
+    import os
+    base_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    verification_link = f"{base_url}/verify-email?token={token}"
+
+    # Log the verification link (in production, send actual email)
+    logger.info(
+        f"[EMAIL VERIFICATION] "
+        f"To: {email} | "
+        f"Name: {user_name or 'User'} | "
+        f"Link: {verification_link}"
+    )
+
+    # Print to console for development visibility
+    print(f"\n{'='*60}")
+    print(f"EMAIL VERIFICATION")
+    print(f"{'='*60}")
+    print(f"To: {email}")
+    print(f"Subject: Verify your LLM Council account")
+    print(f"")
+    print(f"Hello {user_name or 'there'},")
+    print(f"")
+    print(f"Please verify your email by clicking the link below:")
+    print(f"{verification_link}")
+    print(f"")
+    print(f"This link expires in 24 hours.")
+    print(f"{'='*60}\n")
 
 
 # Request/Response schemas
@@ -83,11 +128,22 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user: UserResponse
+    warning: Optional[str] = None  # Optional warning (e.g., email not verified)
 
 
 class MessageResponse(BaseModel):
     """Simple message response."""
     message: str
+
+
+class VerifyEmailRequest(BaseModel):
+    """Email verification request."""
+    token: str
+
+
+class ResendVerificationRequest(BaseModel):
+    """Request to resend verification email."""
+    email: EmailStr
 
 
 # Helper functions
@@ -152,15 +208,16 @@ def _user_to_response(user: User) -> UserResponse:
 # Routes
 
 @router.post("/register", response_model=TokenResponse)
+@limiter.limit(RATE_LIMITS["auth"])
 async def register(
-    request: RegisterRequest,
-    req: Request,
+    request: Request,
+    body: RegisterRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """Register a new user with email and password."""
     try:
         # Check if email already exists
-        existing = await crud.users.get_by_email(db, request.email)
+        existing = await crud.users.get_by_email(db, body.email)
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -177,35 +234,40 @@ async def register(
         )
         real_user_count = result.scalar() or 0
         is_first_user = real_user_count == 0
-        
+
         # Create user
-        password_hash = hash_password(request.password)
+        password_hash = hash_password(body.password)
         user = await crud.users.create(
             db,
-            email=request.email,
+            email=body.email,
             password_hash=password_hash,
-            name=request.name,
-            is_verified=False,  # TODO: Implement email verification
+            name=body.name,
+            is_verified=False,
         )
-        
+
         # Make first user an admin
         if is_first_user:
             await crud.users.update_user(db, user.id, is_admin=True)
             await db.flush()  # Flush to ensure admin status is updated
             await db.refresh(user)
 
-        # Generate tokens
+        # Generate and send email verification token
+        verification_token = await crud.email_verification.create_verification_token(db, user.id)
+        await send_verification_email(user.email, verification_token, user.name)
+
+        # Generate auth tokens
         access_token = create_access_token(user.id, user.email, user.is_admin)
         refresh_token, expires_at = create_refresh_token(user.id)
 
         # Store refresh token
-        device_info = req.headers.get("User-Agent", "")[:255]
+        device_info = request.headers.get("User-Agent", "")[:255]
         await _store_refresh_token(db, user.id, refresh_token, expires_at, device_info)
 
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             user=_user_to_response(user),
+            warning="A verification email has been sent. Please check your inbox.",
         )
     except HTTPException:
         raise
@@ -220,14 +282,15 @@ async def register(
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit(RATE_LIMITS["auth"])
 async def login(
-    request: LoginRequest,
-    req: Request,
+    request: Request,
+    body: LoginRequest,
     db: AsyncSession = Depends(get_db)
 ):
     """Login with email and password."""
     try:
-        user = await crud.users.get_by_email(db, request.email)
+        user = await crud.users.get_by_email(db, body.email)
     except Exception as e:
         error_msg = str(e)
         error_type = type(e).__name__
@@ -238,7 +301,7 @@ async def login(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Database connection error: Invalid database credentials. Please check DATABASE_URL in Railway environment variables."
             )
-        
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {error_msg}"
@@ -250,7 +313,7 @@ async def login(
             detail="Invalid email or password"
         )
 
-    if not verify_password(request.password, user.password_hash):
+    if not verify_password(body.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -267,13 +330,19 @@ async def login(
     refresh_token, expires_at = create_refresh_token(user.id)
 
     # Store refresh token
-    device_info = req.headers.get("User-Agent", "")[:255]
+    device_info = request.headers.get("User-Agent", "")[:255]
     await _store_refresh_token(db, user.id, refresh_token, expires_at, device_info)
+
+    # Add warning if email not verified (don't block login)
+    warning = None
+    if not user.is_verified:
+        warning = "Please verify your email address to ensure account security"
 
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         user=_user_to_response(user),
+        warning=warning,
     )
 
 
@@ -459,6 +528,86 @@ async def logout(
     """Logout and revoke refresh token."""
     await _revoke_refresh_token(db, request.refresh_token)
     return MessageResponse(message="Successfully logged out")
+
+
+@router.post("/verify-email", response_model=MessageResponse)
+async def verify_email(
+    request: VerifyEmailRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Verify user's email address using the token sent via email.
+
+    The token is a one-time-use token that expires after 24 hours.
+    """
+    # Verify the token and get user_id
+    user_id = await crud.email_verification.verify_token(db, request.token)
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token"
+        )
+
+    # Get the user
+    user = await crud.users.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+
+    # Check if already verified
+    if user.is_verified:
+        return MessageResponse(message="Email already verified")
+
+    # Mark user as verified
+    await crud.users.verify_email(db, user_id)
+
+    return MessageResponse(message="Email verified successfully")
+
+
+@router.post("/resend-verification", response_model=MessageResponse)
+@limiter.limit(RATE_LIMITS["auth"])
+async def resend_verification(
+    request: Request,
+    body: ResendVerificationRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Resend verification email to user.
+
+    Rate limited to prevent abuse.
+    """
+    # Find user by email
+    user = await crud.users.get_by_email(db, body.email)
+
+    if not user:
+        # Don't reveal if email exists - return success anyway
+        return MessageResponse(
+            message="If an account exists with this email, a verification link has been sent"
+        )
+
+    # Check if already verified
+    if user.is_verified:
+        return MessageResponse(
+            message="If an account exists with this email, a verification link has been sent"
+        )
+
+    # Check if user has OAuth-only account (no password set)
+    if user.google_id and not user.password_hash:
+        # Google accounts are auto-verified via Google
+        return MessageResponse(
+            message="If an account exists with this email, a verification link has been sent"
+        )
+
+    # Generate and send new verification token
+    verification_token = await crud.email_verification.create_verification_token(db, user.id)
+    await send_verification_email(user.email, verification_token, user.name)
+
+    return MessageResponse(
+        message="If an account exists with this email, a verification link has been sent"
+    )
 
 
 @router.get("/me", response_model=UserResponse)
@@ -664,6 +813,35 @@ async def delete_system_api_key(
         "message": f"System API key deleted for {provider}",
         "provider": provider,
         "deleted": deleted
+    }
+
+
+@router.delete("/admin/api-keys/clear-all", response_model=dict)
+async def clear_all_encrypted_keys(
+    admin_user: User = Depends(get_current_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Clear ALL encrypted API keys from the database (admin only).
+
+    Use this when SECRET_KEY has changed and stored keys can no longer
+    be decrypted. After clearing, users will need to re-enter their API keys.
+
+    This operation:
+    - Deletes all user API keys
+    - Deletes all system API keys
+    - Does NOT affect environment variable keys (like OPENROUTER_API_KEY in .env)
+
+    Returns count of deleted keys.
+    """
+    result = await crud.api_keys.clear_all_encrypted_keys(db)
+    await db.flush()
+
+    return {
+        "status": "success",
+        "message": "All encrypted API keys cleared from database",
+        **result,
+        "note": "Environment variable keys (like OPENROUTER_API_KEY) are unaffected"
     }
 
 

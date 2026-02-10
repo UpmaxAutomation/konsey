@@ -1,22 +1,36 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import ErrorBoundary from './components/ErrorBoundary';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import ErrorBoundary from './shared/components/ErrorBoundary';
 import ClaudeSidebar from './components/ClaudeSidebar';
-import ChatInterface from './components/ChatInterface';
+import ChatInterface from './modules/chat/components/ChatInterface';
 import ProjectView from './components/ProjectView';
-import ProtectedRoute from './components/ProtectedRoute';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import SharedConversation from './pages/SharedConversation';
-import TeamManager from './components/TeamManager';
-import APIKeysManager from './components/APIKeysManager';
-import AnalyticsDashboard from './components/AnalyticsDashboard';
+import ProtectedRoute from './shared/components/ProtectedRoute';
 import { useAuth } from './contexts/AuthContext';
-import { useToast } from './components/Toast';
+import { useToast } from './shared/components/Toast';
 import { api, API_BASE } from './api';
 import { getUserFriendlyMessage, NetworkError } from './utils/errors';
+import useUiStore from './stores/uiStore';
 import './App.css';
 import './pages/Auth.css';
+
+// Lazy load heavy components for code splitting
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const SharedConversation = lazy(() => import('./pages/SharedConversation'));
+const TeamManager = lazy(() => import('./components/TeamManager'));
+const APIKeysManager = lazy(() => import('./components/APIKeysManager'));
+const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'));
+const BoardList = lazy(() => import('./modules/canvas/components/BoardList'));
+const BoardView = lazy(() => import('./modules/canvas/components/BoardView'));
+const CommandPalette = lazy(() => import('./modules/search/CommandPalette'));
+
+// Loading fallback component
+const LoadingFallback = () => (
+  <div className="loading-fallback">
+    <div className="loading-spinner"></div>
+    <p>Loading...</p>
+  </div>
+);
 
 // Main app content (protected)
 function MainApp() {
@@ -33,6 +47,10 @@ function MainApp() {
   const [showTeamManager, setShowTeamManager] = useState(false);
   const [showAPIKeysManager, setShowAPIKeysManager] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const showCommandPalette = useUiStore((s) => s.showCommandPalette);
+  const toggleCommandPalette = useUiStore((s) => s.toggleCommandPalette);
+  const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const autoCreateChatRef = useRef(false);
   // Council progress tracking
@@ -47,6 +65,11 @@ function MainApp() {
   });
   const budgetTimeoutRef = useRef(null);
   const councilAbortRef = useRef(null);
+
+  // URL-based view routing
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const currentView = pathParts[0] || 'chat'; // 'chat', 'boards', 'projects'
+  const routeId = pathParts[1] || null;
 
   // Clean up budget timeout on unmount
   useEffect(() => {
@@ -93,25 +116,38 @@ function MainApp() {
     const handleOpenTeamManager = () => setShowTeamManager(true);
     const handleOpenAPIKeysManager = () => setShowAPIKeysManager(true);
     const handleOpenAnalytics = () => setShowAnalytics(true);
+    const handleOpenBoards = () => navigate('/boards');
 
     window.addEventListener('openTeamManager', handleOpenTeamManager);
     window.addEventListener('openAPIKeysManager', handleOpenAPIKeysManager);
     window.addEventListener('openAnalytics', handleOpenAnalytics);
+    window.addEventListener('openBoards', handleOpenBoards);
 
     return () => {
       window.removeEventListener('openTeamManager', handleOpenTeamManager);
       window.removeEventListener('openAPIKeysManager', handleOpenAPIKeysManager);
       window.removeEventListener('openAnalytics', handleOpenAnalytics);
+      window.removeEventListener('openBoards', handleOpenBoards);
     };
-  }, []);
+  }, [navigate]);
+
+  // Listen for "Discuss in Chat" events from canvas cards
+  useEffect(() => {
+    const handler = (e) => {
+      navigate('/');
+      // Card detail (nodeId, cardType) available via e.detail for future pre-fill support
+    };
+    window.addEventListener('discussCardInChat', handler);
+    return () => window.removeEventListener('discussCardInChat', handler);
+  }, [navigate]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Cmd/Ctrl + K = New conversation
+      // Cmd/Ctrl + K = Command Palette
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        handleNewConversation();
+        toggleCommandPalette();
       }
       // Escape = Close sidebar on mobile
       if (e.key === 'Escape' && isSidebarOpen) {
@@ -381,7 +417,6 @@ function MainApp() {
   }, [currentConversationId]);
 
   const handleSendMessage = async (content, attachedFiles = [], features = null) => {
-    console.log('📨 App.handleSendMessage received features:', features);
     if (!currentConversationId) return;
 
     // Store message count before adding optimistic updates for safe rollback
@@ -391,12 +426,24 @@ function MainApp() {
     councilAbortRef.current = new AbortController();
 
     setIsLoading(true);
-    // Reset council progress
+    // Reset council progress with selected models and chairman
+    let selectedModels = [];
+    let selectedChairman = '';
+    try {
+      const config = await api.getConfig();
+      selectedModels = config.council_models || [];
+      selectedChairman = config.chairman_model || '';
+    } catch (e) {
+      console.warn('Failed to refresh council config:', e.message);
+    }
     setCouncilProgress({
       stage: 0,
-      models: [],
-      modelProgress: {},
-      chairmanModel: '',
+      models: selectedModels,
+      modelProgress: selectedModels.reduce((acc, model) => {
+        acc[model] = 'pending';
+        return acc;
+      }, {}),
+      chairmanModel: selectedChairman,
       chairmanStatus: 'pending',
       contextStatus: null,
       searchType: null
@@ -460,26 +507,42 @@ function MainApp() {
 
             // Model-level progress events for Stage 1
             case 'stage1_model_start':
-              setCouncilProgress(prev => ({
-                ...prev,
-                stage: 1,
-                models: prev.models.includes(event.model) ? prev.models : [...prev.models, event.model],
-                modelProgress: { ...prev.modelProgress, [event.model]: 'loading' }
-              }));
+              setCouncilProgress(prev => {
+                const knownModels = prev.models.length ? prev.models : [event.model];
+                if (prev.models.length && !prev.models.includes(event.model)) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  stage: 1,
+                  models: knownModels,
+                  modelProgress: { ...prev.modelProgress, [event.model]: 'loading' }
+                };
+              });
               break;
 
             case 'stage1_model_complete':
-              setCouncilProgress(prev => ({
-                ...prev,
-                modelProgress: { ...prev.modelProgress, [event.model]: 'completed' }
-              }));
+              setCouncilProgress(prev => {
+                if (prev.models.length && !prev.models.includes(event.model)) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  modelProgress: { ...prev.modelProgress, [event.model]: 'completed' }
+                };
+              });
               break;
 
             case 'stage1_model_error':
-              setCouncilProgress(prev => ({
-                ...prev,
-                modelProgress: { ...prev.modelProgress, [event.model]: 'error' }
-              }));
+              setCouncilProgress(prev => {
+                if (prev.models.length && !prev.models.includes(event.model)) {
+                  return prev;
+                }
+                return {
+                  ...prev,
+                  modelProgress: { ...prev.modelProgress, [event.model]: 'error' }
+                };
+              });
               break;
 
             case 'stage1_start':
@@ -632,15 +695,10 @@ function MainApp() {
 
             case 'error':
               console.error('Stream error:', event.message);
-              // Show toast notification for errors
+              // Show toast notification for errors - display actual backend message for better debugging
               const errorMsg = event.message || 'An error occurred';
-              if (errorMsg.includes('API key') || errorMsg.includes('api key')) {
-                toast.error('API key missing or invalid. Go to Settings → API Keys to configure your keys.');
-              } else if (errorMsg.includes('No OpenRouter')) {
-                toast.error('OpenRouter API key required. Go to Settings → API Keys to add it.');
-              } else {
-                toast.error(errorMsg);
-              }
+              // Show the actual error message from the backend to help users understand the issue
+              toast.error(errorMsg);
               // Show error message in conversation
               setCurrentConversation((prev) => {
                 if (!prev?.messages?.length) return prev;
@@ -808,27 +866,40 @@ function MainApp() {
           councilProgress={councilProgress}
         />
 
-        {/* Manager Modals */}
+        {/* Manager Modals (lazy loaded) */}
         {showTeamManager && (
           <>
             <div className="modal-overlay" onClick={() => setShowTeamManager(false)} />
-            <TeamManager onClose={() => setShowTeamManager(false)} />
+            <Suspense fallback={<LoadingFallback />}>
+              <TeamManager onClose={() => setShowTeamManager(false)} />
+            </Suspense>
           </>
         )}
 
         {showAPIKeysManager && (
           <>
             <div className="modal-overlay" onClick={() => setShowAPIKeysManager(false)} />
-            <APIKeysManager onClose={() => setShowAPIKeysManager(false)} />
+            <Suspense fallback={<LoadingFallback />}>
+              <APIKeysManager onClose={() => setShowAPIKeysManager(false)} />
+            </Suspense>
           </>
         )}
 
         {showAnalytics && (
           <>
             <div className="modal-overlay" onClick={() => setShowAnalytics(false)} />
-            <AnalyticsDashboard onClose={() => setShowAnalytics(false)} />
+            <Suspense fallback={<LoadingFallback />}>
+              <AnalyticsDashboard onClose={() => setShowAnalytics(false)} />
+            </Suspense>
           </>
         )}
+
+        <Suspense fallback={null}>
+          <CommandPalette
+            isOpen={showCommandPalette}
+            onClose={() => useUiStore.setState({ showCommandPalette: false })}
+          />
+        </Suspense>
       </div>
     );
   }
@@ -909,6 +980,23 @@ function MainApp() {
 
       {/* Main content area wrapper for mobile-first layout */}
       <main className="app-main">
+        {currentView === 'boards' ? (
+          <ErrorBoundary>
+            <Suspense fallback={<LoadingFallback />}>
+              {routeId ? (
+                <BoardView
+                  boardId={routeId}
+                  onBack={() => navigate('/boards')}
+                />
+              ) : (
+                <BoardList
+                  onSelectBoard={(id) => navigate(`/boards/${id}`)}
+                  onClose={() => navigate('/')}
+                />
+              )}
+            </Suspense>
+          </ErrorBoundary>
+        ) : (
         <ErrorBoundary>
           <ChatInterface
             conversation={currentConversation}
@@ -939,29 +1027,43 @@ function MainApp() {
             }}
           />
         </ErrorBoundary>
+        )}
       </main>
 
-      {/* Manager Modals */}
+      {/* Manager Modals (lazy loaded) */}
       {showTeamManager && (
         <>
           <div className="modal-overlay" onClick={() => setShowTeamManager(false)} />
-          <TeamManager onClose={() => setShowTeamManager(false)} />
+          <Suspense fallback={<LoadingFallback />}>
+            <TeamManager onClose={() => setShowTeamManager(false)} />
+          </Suspense>
         </>
       )}
 
       {showAPIKeysManager && (
         <>
           <div className="modal-overlay" onClick={() => setShowAPIKeysManager(false)} />
-          <APIKeysManager onClose={() => setShowAPIKeysManager(false)} />
+          <Suspense fallback={<LoadingFallback />}>
+            <APIKeysManager onClose={() => setShowAPIKeysManager(false)} />
+          </Suspense>
         </>
       )}
 
       {showAnalytics && (
         <>
           <div className="modal-overlay" onClick={() => setShowAnalytics(false)} />
-          <AnalyticsDashboard onClose={() => setShowAnalytics(false)} />
+          <Suspense fallback={<LoadingFallback />}>
+            <AnalyticsDashboard onClose={() => setShowAnalytics(false)} />
+          </Suspense>
         </>
       )}
+
+      <Suspense fallback={null}>
+        <CommandPalette
+          isOpen={showCommandPalette}
+          onClose={() => useUiStore.setState({ showCommandPalette: false })}
+        />
+      </Suspense>
     </div>
   );
 }
@@ -980,28 +1082,30 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
-      />
-      <Route
-        path="/register"
-        element={isAuthenticated ? <Navigate to="/" replace /> : <Register />}
-      />
-      <Route
-        path="/share/:token"
-        element={<SharedConversation />}
-      />
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <MainApp />
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        <Route
+          path="/login"
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Login />}
+        />
+        <Route
+          path="/register"
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Register />}
+        />
+        <Route
+          path="/share/:token"
+          element={<SharedConversation />}
+        />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <MainApp />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </Suspense>
   );
 }
 

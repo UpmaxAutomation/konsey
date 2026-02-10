@@ -41,7 +41,7 @@ def create_conversation(conversation_id: str) -> Dict[str, Any]:
 
     # Save to file
     path = get_conversation_path(conversation_id)
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump(conversation, f, indent=2)
 
     return conversation
@@ -62,7 +62,7 @@ def get_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
     if not os.path.exists(path):
         return None
 
-    with open(path, 'r') as f:
+    with open(path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
 
@@ -76,7 +76,7 @@ def save_conversation(conversation: Dict[str, Any]):
     ensure_data_dir()
 
     path = get_conversation_path(conversation['id'])
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump(conversation, f, indent=2)
 
 
@@ -93,7 +93,7 @@ def list_conversations() -> List[Dict[str, Any]]:
     for filename in os.listdir(DATA_DIR):
         if filename.endswith('.json') and not filename == 'folders.json':
             path = os.path.join(DATA_DIR, filename)
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 # Return metadata only
                 conversations.append({
@@ -367,7 +367,7 @@ def ensure_folders_file():
                 }
             ]
         }
-        with open(folders_path, 'w') as f:
+        with open(folders_path, 'w', encoding='utf-8') as f:
             json.dump(default_folders, f, indent=2)
 
 
@@ -381,7 +381,7 @@ def list_folders() -> List[Dict[str, Any]]:
     ensure_folders_file()
     folders_path = get_folders_path()
 
-    with open(folders_path, 'r') as f:
+    with open(folders_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
         return data.get("folders", [])
 
@@ -401,7 +401,7 @@ def create_folder(name: str, color: str = "#4a90e2", icon: str = "folder") -> Di
     ensure_folders_file()
     folders_path = get_folders_path()
 
-    with open(folders_path, 'r') as f:
+    with open(folders_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     # Generate ID from name
@@ -426,7 +426,7 @@ def create_folder(name: str, color: str = "#4a90e2", icon: str = "folder") -> Di
 
     data["folders"].append(new_folder)
 
-    with open(folders_path, 'w') as f:
+    with open(folders_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
     return new_folder
@@ -445,7 +445,7 @@ def delete_folder(folder_id: str) -> bool:
     ensure_folders_file()
     folders_path = get_folders_path()
 
-    with open(folders_path, 'r') as f:
+    with open(folders_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
     # Find and remove folder
@@ -457,19 +457,19 @@ def delete_folder(folder_id: str) -> bool:
         return False
 
     # Save updated folders
-    with open(folders_path, 'w') as f:
+    with open(folders_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
 
     # Remove folder_id from all conversations
     for filename in os.listdir(DATA_DIR):
         if filename.endswith('.json') and filename != 'folders.json':
             path = os.path.join(DATA_DIR, filename)
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 conversation = json.load(f)
 
             if conversation.get("folder_id") == folder_id:
                 conversation["folder_id"] = None
-                with open(path, 'w') as f:
+                with open(path, 'w', encoding='utf-8') as f:
                     json.dump(conversation, f, indent=2)
 
     return True
@@ -578,7 +578,7 @@ def list_all_tags() -> List[str]:
     for filename in os.listdir(DATA_DIR):
         if filename.endswith('.json') and filename != 'folders.json':
             path = os.path.join(DATA_DIR, filename)
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 tags = data.get("tags", [])
                 all_tags.update(tags)

@@ -136,3 +136,89 @@ export async function deleteAgent(taskId) {
   }
   return response.json();
 }
+
+// ── Canvas Agent (v6) ──────────────────────────
+
+export async function runCanvasAgent(boardId, { goal, model = 'openai/gpt-4o', maxIterations = 20 } = {}, onEvent) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/agent/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ goal, model, max_iterations: maxIterations }),
+  });
+
+  if (!response.ok) throw new Error('Failed to start canvas agent');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          onEvent?.(event);
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+}
+
+export async function pauseCanvasAgent(boardId, runId) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/agent/${runId}/pause`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Failed to pause agent');
+  return response.json();
+}
+
+export async function resumeCanvasAgent(boardId, runId, onEvent) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/agent/${runId}/resume`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) throw new Error('Failed to resume agent');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          onEvent?.(event);
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
+}
+
+export async function cancelCanvasAgent(boardId, runId) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/agent/${runId}/cancel`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Failed to cancel agent');
+  return response.json();
+}
+
+export async function listCanvasAgentRuns(boardId) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/agent/runs`);
+  if (!response.ok) throw new Error('Failed to list agent runs');
+  return response.json();
+}

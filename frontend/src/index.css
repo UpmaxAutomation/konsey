@@ -99,6 +99,26 @@
   --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.04);
 
   --spinner-track: #e2e8f0;
+
+  /* Card color palette (8 colors, Heptabase-inspired) */
+  --card-gray: #6b7280;    --card-gray-bg: rgba(107, 114, 128, 0.13);
+  --card-red: #ef4444;     --card-red-bg: rgba(239, 68, 68, 0.12);
+  --card-orange: #f97316;  --card-orange-bg: rgba(249, 115, 22, 0.12);
+  --card-yellow: #eab308;  --card-yellow-bg: rgba(234, 179, 8, 0.13);
+  --card-green: #22c55e;   --card-green-bg: rgba(34, 197, 94, 0.12);
+  --card-blue: #3b82f6;    --card-blue-bg: rgba(59, 130, 246, 0.12);
+  --card-purple: #8b5cf6;  --card-purple-bg: rgba(139, 92, 246, 0.12);
+  --card-pink: #ec4899;    --card-pink-bg: rgba(236, 72, 153, 0.12);
+
+  /* Section background colors (same palette, higher opacity) */
+  --section-gray-bg: rgba(107, 114, 128, 0.06);
+  --section-red-bg: rgba(239, 68, 68, 0.06);
+  --section-orange-bg: rgba(249, 115, 22, 0.06);
+  --section-yellow-bg: rgba(234, 179, 8, 0.06);
+  --section-green-bg: rgba(34, 197, 94, 0.06);
+  --section-blue-bg: rgba(59, 130, 246, 0.06);
+  --section-purple-bg: rgba(139, 92, 246, 0.06);
+  --section-pink-bg: rgba(236, 72, 153, 0.06);
 }
 
 /* ========== DARK MODE ========== */
@@ -149,6 +169,26 @@
   --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 
   --spinner-track: #27272a;
+
+  /* Card color palette (dark mode - stronger for visible tint) */
+  --card-gray-bg: rgba(107, 114, 128, 0.18);
+  --card-red-bg: rgba(239, 68, 68, 0.16);
+  --card-orange-bg: rgba(249, 115, 22, 0.16);
+  --card-yellow-bg: rgba(234, 179, 8, 0.18);
+  --card-green-bg: rgba(34, 197, 94, 0.16);
+  --card-blue-bg: rgba(59, 130, 246, 0.16);
+  --card-purple-bg: rgba(139, 92, 246, 0.16);
+  --card-pink-bg: rgba(236, 72, 153, 0.16);
+
+  /* Section background colors (dark mode) */
+  --section-gray-bg: rgba(107, 114, 128, 0.08);
+  --section-red-bg: rgba(239, 68, 68, 0.08);
+  --section-orange-bg: rgba(249, 115, 22, 0.08);
+  --section-yellow-bg: rgba(234, 179, 8, 0.08);
+  --section-green-bg: rgba(34, 197, 94, 0.08);
+  --section-blue-bg: rgba(59, 130, 246, 0.08);
+  --section-purple-bg: rgba(139, 92, 246, 0.08);
+  --section-pink-bg: rgba(236, 72, 153, 0.08);
 }
 
 * {

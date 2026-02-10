@@ -5,8 +5,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
-import { useToast } from './Toast';
-import ChatInterface from './ChatInterface';
+import { useToast } from '../shared/components/Toast';
+import ChatInterface from '../modules/chat/components/ChatInterface';
 import './ProjectView.css';
 
 export default function ProjectView({

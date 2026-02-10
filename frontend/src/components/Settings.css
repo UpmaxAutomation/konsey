@@ -1021,6 +1021,11 @@
   margin-bottom: 12px;
 }
 
+.preset-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .presets-label {
   font-size: 15px;
   font-weight: 600;
@@ -1044,6 +1049,29 @@
   border-color: var(--accent-primary);
   color: white;
   transform: translateY(-1px);
+}
+
+.refresh-models-btn {
+  padding: 8px 14px;
+  background: transparent;
+  border: 2px solid var(--border-primary);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-models-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.refresh-models-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .presets-row {
@@ -1107,6 +1135,16 @@
   font-style: italic;
 }
 
+.preset-warning {
+  margin: 10px 0 0 0;
+  padding: 10px 14px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #9a3412;
+}
+
 /* Dark mode: Presets section */
 [data-theme="dark"] .presets-section {
   background-color: #1a1a1a;
@@ -1128,6 +1166,17 @@
   border-color: #3b82f6;
 }
 
+[data-theme="dark"] .refresh-models-btn {
+  border-color: #404040;
+  color: #d1d5db;
+}
+
+[data-theme="dark"] .refresh-models-btn:hover:not(:disabled) {
+  background-color: #262626;
+  border-color: #3b82f6;
+  color: #f9fafb;
+}
+
 [data-theme="dark"] .preset-select {
   background-color: #111111;
   color: #f9fafb;
@@ -1137,6 +1186,12 @@
 [data-theme="dark"] .preset-select option {
   background-color: #1a1a1a;
   color: #f9fafb;
+}
+
+[data-theme="dark"] .preset-warning {
+  background: #2a1a10;
+  border-color: #9a3412;
+  color: #fdba74;
 }
 
 [data-theme="dark"] .preset-select optgroup {

@@ -23,15 +23,6 @@ const BASE_URL = isProduction ? '' : DEV_URL;
 export const API_BASE = BASE_URL.replace(/\/$/, '') + (BASE_URL.includes('/api') ? '' : '/api');
 
 
-// Debug logging in production
-if (import.meta.env.PROD) {
-  console.log('🔍 API Configuration:', {
-    VITE_API_URL: import.meta.env.VITE_API_URL,
-    BASE_URL,
-    API_BASE,
-    mode: import.meta.env.MODE
-  });
-}
 
 /**
  * Parse response and throw appropriate error if not OK.

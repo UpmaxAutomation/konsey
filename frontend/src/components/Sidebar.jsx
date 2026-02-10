@@ -4,7 +4,7 @@ import Settings from './Settings';
 import Analytics from './Analytics';
 import Projects from './Projects';
 import BatchProcessor from './BatchProcessor';
-import SearchModal from './SearchModal';
+import SearchModal from '../shared/components/SearchModal';
 import AdminPanel from './AdminPanel';
 import StarredSection from './Sidebar/StarredSection';
 import RecentsSection from './Sidebar/RecentsSection';

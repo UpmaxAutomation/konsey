@@ -44,3 +44,5 @@ frontend/.env
 # Test files
 test-connection.html
 .vercel
+frontend/playwright-report/
+frontend/test-results/

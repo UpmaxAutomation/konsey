@@ -1,0 +1,287 @@
+/* ==========================================================================
+   TiptapEditor.css — Rich text editor styles for canvas card editing
+
+   Matches card typography: Inter, 13px/400 body, 14px/600 headings.
+   ========================================================================== */
+
+.tiptap-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 60px;
+}
+
+.tiptap-editor__content {
+  padding: 8px 14px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+  min-height: 60px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Selection and cursor accent color */
+.tiptap-editor__content ::selection {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+.tiptap-editor__content {
+  caret-color: var(--card-accent, #6366f1);
+}
+
+[data-theme="dark"] .tiptap-editor__content ::selection {
+  background: rgba(99, 102, 241, 0.30);
+}
+
+/* ---------------------------------------------------------------------------
+   ProseMirror content styles
+   --------------------------------------------------------------------------- */
+.tiptap-editor__content p { margin: 0 0 0.5em; }
+.tiptap-editor__content h1 { font-size: 18px; font-weight: 700; margin: 0.5em 0 0.3em; }
+.tiptap-editor__content h2 { font-size: 16px; font-weight: 600; margin: 0.5em 0 0.3em; }
+.tiptap-editor__content h3 { font-size: 14px; font-weight: 600; margin: 0.5em 0 0.3em; }
+.tiptap-editor__content ul,
+.tiptap-editor__content ol { padding-left: 1.4em; margin: 0.3em 0; }
+.tiptap-editor__content li { margin: 0.15em 0; }
+
+.tiptap-editor__content blockquote {
+  border-left: 3px solid var(--card-accent, #6366f1);
+  padding-left: 12px;
+  margin: 0.5em 0;
+  color: var(--text-secondary);
+}
+
+.tiptap-editor__content pre {
+  background: var(--bg-tertiary, #f4f4f5);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.tiptap-editor__content code {
+  background: var(--bg-tertiary, #f4f4f5);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+.tiptap-editor__content hr {
+  border: none;
+  border-top: 1px solid var(--border-primary);
+  margin: 0.8em 0;
+}
+
+.tiptap-editor__content a {
+  color: var(--card-accent, #6366f1);
+  text-decoration: underline;
+}
+
+.tiptap-editor__content strong { font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+   Images
+   --------------------------------------------------------------------------- */
+.tiptap-editor__content .tiptap-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5em 0;
+  cursor: default;
+}
+
+.tiptap-editor__content .tiptap-image.ProseMirror-selectednode {
+  outline: 2px solid var(--card-accent, #6366f1);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Placeholder (empty editor state)
+   --------------------------------------------------------------------------- */
+.tiptap-empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted, #a1a1aa);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Task list checkboxes
+   --------------------------------------------------------------------------- */
+.tiptap-editor__content ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.3em 0;
+}
+
+.tiptap-editor__content ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0;
+}
+
+.tiptap-editor__content ul[data-type="taskList"] li > label {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.tiptap-editor__content ul[data-type="taskList"] li > label input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--text-muted, #a1a1aa);
+  border-radius: 3px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tiptap-editor__content ul[data-type="taskList"] li > label input[type="checkbox"]:checked {
+  background: var(--card-accent, #6366f1);
+  border-color: var(--card-accent, #6366f1);
+}
+
+.tiptap-editor__content ul[data-type="taskList"] li > label input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.tiptap-editor__content ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--text-muted, #a1a1aa);
+}
+
+/* Highlight */
+.tiptap-editor__content mark {
+  background: rgba(245, 158, 11, 0.25);
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Card mention inline pill
+   --------------------------------------------------------------------------- */
+.tiptap-editor__content .card-mention-inline {
+  display: inline;
+  background: rgba(99, 102, 241, 0.10);
+  color: #6366f1;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tiptap-editor__content .card-mention-inline:hover {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+[data-theme="dark"] .tiptap-editor__content .card-mention-inline {
+  background: rgba(99, 102, 241, 0.15);
+}
+
+[data-theme="dark"] .tiptap-editor__content .card-mention-inline:hover {
+  background: rgba(99, 102, 241, 0.25);
+}
+
+/* ---------------------------------------------------------------------------
+   Footer bar
+   --------------------------------------------------------------------------- */
+.tiptap-editor__footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px 6px;
+  border-top: 1px solid var(--border-primary);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.tiptap-editor__charcount {
+  font-variant-numeric: tabular-nums;
+}
+
+.tiptap-editor__hints {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   Scrollbar
+   --------------------------------------------------------------------------- */
+.tiptap-editor__content::-webkit-scrollbar { width: 4px; }
+.tiptap-editor__content::-webkit-scrollbar-track { background: transparent; }
+.tiptap-editor__content::-webkit-scrollbar-thumb { background: var(--border-secondary); border-radius: 2px; }
+.tiptap-editor__content::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ---------------------------------------------------------------------------
+   Accessibility
+   --------------------------------------------------------------------------- */
+.tiptap-editor__content:focus-visible {
+  outline: 2px solid var(--card-accent, #6366f1);
+  outline-offset: -1px;
+}
+
+/* ---------------------------------------------------------------------------
+   Dark mode — Tiptap content
+   --------------------------------------------------------------------------- */
+[data-theme="dark"] .tiptap-editor__content pre {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .tiptap-editor__content code {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .tiptap-editor__content blockquote {
+  color: var(--text-secondary);
+  border-left-color: var(--card-accent, #6366f1);
+}
+
+[data-theme="dark"] .tiptap-editor__content hr {
+  border-top-color: var(--border-secondary);
+}
+
+[data-theme="dark"] .tiptap-editor__content a {
+  color: var(--card-accent, #818cf8);
+}
+
+[data-theme="dark"] .tiptap-editor__content mark {
+  background: rgba(245, 158, 11, 0.30);
+}
+
+[data-theme="dark"] .tiptap-editor__content ul[data-type="taskList"] li > label input[type="checkbox"] {
+  border-color: var(--text-secondary, #71717a);
+}
+
+[data-theme="dark"] .tiptap-editor__content .tiptap-image.ProseMirror-selectednode {
+  outline-color: var(--card-accent, #818cf8);
+}
+
+[data-theme="dark"] .tiptap-editor__footer {
+  border-top-color: var(--border-secondary);
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced motion
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .tiptap-editor__content {
+    scroll-behavior: auto;
+  }
+}

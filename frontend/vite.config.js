@@ -12,6 +12,18 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     minify: 'esbuild',
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-charts': ['recharts'],
+          'vendor-syntax': ['react-syntax-highlighter'],
+          'vendor-markdown': ['react-markdown', 'remark-gfm'],
+          'vendor-reactflow': ['@xyflow/react'],
+          'vendor-tiptap': ['@tiptap/react', '@tiptap/starter-kit', '@tiptap/extension-bubble-menu', 'tiptap-markdown'],
+        }
+      }
+    }
   },
 })

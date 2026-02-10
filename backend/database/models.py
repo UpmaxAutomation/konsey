@@ -1,12 +1,12 @@
 """SQLAlchemy models for LLM Council."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List
 
 from sqlalchemy import (
-    String, Text, Boolean, Integer, Float, DateTime, ForeignKey,
-    JSON, ARRAY, Index, UniqueConstraint, CheckConstraint
+    String, Text, Boolean, Integer, Float, DateTime, Date, ForeignKey,
+    JSON, ARRAY, Index, UniqueConstraint, CheckConstraint, text
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -42,6 +42,7 @@ class User(Base):
     projects: Mapped[List["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     refresh_tokens: Mapped[List["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     ratings: Mapped[List["Rating"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    boards: Mapped[List["Board"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class UserSettings(Base):
@@ -52,7 +53,16 @@ class UserSettings(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     council_models: Mapped[dict] = mapped_column(JSON, default=list)
     chairman_model: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    enhanced_features: Mapped[dict] = mapped_column(JSON, default=lambda: {"web_search": True, "code_execution": True, "memory": True})
+    enhanced_features: Mapped[dict] = mapped_column(
+        JSON,
+        default=lambda: {
+            "web_search": True,
+            "deep_search": False,
+            "code_execution": True,
+            "memory": True,
+            "auto_preference": "quality",
+        },
+    )
     personas: Mapped[dict] = mapped_column(JSON, default=dict)
     custom_personas: Mapped[dict] = mapped_column(JSON, default=dict)
     budget_config: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -170,6 +180,7 @@ class Project(Base):
     # Relationships
     user: Mapped["User"] = relationship(back_populates="projects")
     conversations: Mapped[List["Conversation"]] = relationship(back_populates="project")
+    boards: Mapped[List["Board"]] = relationship(back_populates="project")
 
 
 class RefreshToken(Base):
@@ -328,4 +339,252 @@ class PromptTemplate(Base):
 
     __table_args__ = (
         Index("idx_templates_user_category", "user_id", "category"),
+    )
+
+
+class UserMemory(Base):
+    """Per-user memory storage for facts, decisions, and preferences."""
+    __tablename__ = "user_memories"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    memory_type: Mapped[str] = mapped_column(String(20), nullable=False)  # fact, decision, preference
+    category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # general, technical, etc.
+    content: Mapped[str] = mapped_column(Text, nullable=False)  # JSON for complex data
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_user_memory_type", "user_id", "memory_type"),
+    )
+
+
+class EmailVerificationToken(Base):
+    """Email verification tokens for user registration."""
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+
+
+class Board(Base):
+    """Canvas board for visual organization of council artifacts."""
+    __tablename__ = "boards"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="Untitled Board")
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    viewport: Mapped[dict] = mapped_column(JSON, default=lambda: {"x": 0, "y": 0, "zoom": 1})
+    parent_board_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="SET NULL"), nullable=True)
+    depth: Mapped[int] = mapped_column(Integer, default=0)
+    icon: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    memory: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="boards")
+    project: Mapped[Optional["Project"]] = relationship(back_populates="boards")
+    cards: Mapped[List["Card"]] = relationship(back_populates="board", cascade="all, delete-orphan")
+    edges: Mapped[List["Edge"]] = relationship(back_populates="board", cascade="all, delete-orphan")
+    sections: Mapped[List["Section"]] = relationship(back_populates="board", cascade="all, delete-orphan")
+    workflows: Mapped[List["Workflow"]] = relationship(back_populates="board", cascade="all, delete-orphan")
+    children: Mapped[List["Board"]] = relationship(back_populates="parent", foreign_keys="[Board.parent_board_id]")
+    parent: Mapped[Optional["Board"]] = relationship(back_populates="children", remote_side="[Board.id]", foreign_keys="[Board.parent_board_id]")
+
+    __table_args__ = (
+        Index("idx_boards_user_updated", "user_id", "updated_at"),
+        Index("idx_boards_project", "project_id"),
+        Index("idx_boards_parent", "parent_board_id"),
+    )
+
+
+class Section(Base):
+    """A visual grouping section on a canvas board."""
+    __tablename__ = "sections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    color: Mapped[str] = mapped_column(Text, nullable=False, default="gray")
+    x: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    y: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    width: Mapped[float] = mapped_column(Float, nullable=False, default=400.0)
+    height: Mapped[float] = mapped_column(Float, nullable=False, default=300.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    board: Mapped["Board"] = relationship(back_populates="sections")
+    cards: Mapped[List["Card"]] = relationship(back_populates="section", foreign_keys="[Card.section_id]")
+
+    __table_args__ = (
+        Index("idx_sections_board", "board_id"),
+    )
+
+
+class Card(Base):
+    """A card/node on a canvas board."""
+    __tablename__ = "cards"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    card_type: Mapped[str] = mapped_column(String(30), nullable=False, default="note")
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    position_x: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    position_y: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    width: Mapped[float] = mapped_column(Float, nullable=False, default=280.0)
+    height: Mapped[float] = mapped_column(Float, nullable=False, default=200.0)
+    color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    source_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("messages.id", ondelete="SET NULL"), nullable=True)
+    source_conversation_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True)
+    extra: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_inbox: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_journal: Mapped[bool] = mapped_column(Boolean, default=False)
+    journal_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    section_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("sections.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    board: Mapped["Board"] = relationship(back_populates="cards")
+    section: Mapped[Optional["Section"]] = relationship(back_populates="cards", foreign_keys=[section_id])
+
+    __table_args__ = (
+        CheckConstraint(
+            "card_type IN ('note', 'query', 'council_response', 'council_synthesis', 'file_ref', 'link', 'board_ref', 'workflow_output')",
+            name="ck_card_type"
+        ),
+        Index("idx_cards_journal", "board_id", "journal_date", postgresql_where=text("is_journal = true")),
+        Index("idx_cards_inbox", "board_id", "created_at", postgresql_where=text("is_inbox = true")),
+    )
+
+
+class Edge(Base):
+    """An edge/connection between two cards on a board."""
+    __tablename__ = "edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    from_card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"))
+    to_card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"))
+    edge_type: Mapped[str] = mapped_column(String(30), nullable=False, default="related")
+    label: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    style: Mapped[dict] = mapped_column(JSON, default=dict)
+    source_handle: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    target_handle: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Relationships
+    board: Mapped["Board"] = relationship(back_populates="edges")
+
+    __table_args__ = (
+        UniqueConstraint("from_card_id", "to_card_id", "edge_type", name="uq_edge_from_to_type"),
+        CheckConstraint(
+            "edge_type IN ('derived_from', 'ranks_above', 'synthesizes', 'related', 'workflow_step')",
+            name="ck_edge_type"
+        ),
+    )
+
+
+class Workflow(Base):
+    """A multi-step AI pipeline on a canvas board."""
+    __tablename__ = "workflows"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    template_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    current_step_index: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    board: Mapped["Board"] = relationship(back_populates="workflows")
+    steps: Mapped[List["WorkflowStep"]] = relationship(back_populates="workflow", cascade="all, delete-orphan", order_by="WorkflowStep.step_index")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'running', 'paused', 'completed', 'failed', 'cancelled')",
+            name="ck_workflow_status"
+        ),
+        Index("idx_workflows_board", "board_id"),
+    )
+
+
+class WorkflowStep(Base):
+    """A single step in a workflow pipeline."""
+    __tablename__ = "workflow_steps"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workflows.id", ondelete="CASCADE"), index=True)
+    step_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    step_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    prompt_template: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    input_card_ids: Mapped[list] = mapped_column(JSON, default=list)
+    output_card_ids: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    workflow: Mapped["Workflow"] = relationship(back_populates="steps")
+
+    __table_args__ = (
+        CheckConstraint(
+            "step_type IN ('council_query', 'ai_transform', 'combine', 'human_review')",
+            name="ck_step_type"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'waiting_review', 'completed', 'failed', 'skipped')",
+            name="ck_step_status"
+        ),
+        Index("idx_workflow_steps_workflow", "workflow_id"),
+    )
+
+
+class AgentRun(Base):
+    """An autonomous agent run that populates a board."""
+    __tablename__ = "agent_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    board_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("boards.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    goal: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    iteration_count: Mapped[int] = mapped_column(Integer, default=0)
+    max_iterations: Mapped[int] = mapped_column(Integer, default=20)
+    thoughts_log: Mapped[list] = mapped_column(JSON, default=list)
+    created_card_ids: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'paused', 'completed', 'failed', 'cancelled')",
+            name="ck_agent_run_status"
+        ),
+        Index("idx_agent_runs_board", "board_id"),
     )

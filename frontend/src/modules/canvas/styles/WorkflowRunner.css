@@ -1,0 +1,178 @@
+/* ------------------------------------------------------------------
+   WorkflowRunner  --  floating bottom-center overlay for workflow progress
+   ------------------------------------------------------------------ */
+
+.workflow-runner {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 12px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  max-width: 540px;
+  font-family: inherit;
+}
+
+/* ---- Minimized pill variant ---- */
+
+.workflow-runner--pill {
+  cursor: pointer;
+  padding: 8px 16px;
+  gap: 8px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  background: var(--bg-primary, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+
+.workflow-runner--pill:hover {
+  background: var(--bg-secondary, #f1f5f9);
+}
+
+.workflow-runner__pill-label {
+  white-space: nowrap;
+}
+
+/* ---- Status dot ---- */
+
+.workflow-runner__dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary, #64748b);
+}
+
+.workflow-runner__dot--running {
+  background: var(--accent-primary, #6366f1);
+  animation: workflow-dot-pulse 1s ease-in-out infinite;
+}
+
+.workflow-runner__dot--waiting {
+  background: #f59e0b;
+  animation: none;
+}
+
+@keyframes workflow-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.75); }
+}
+
+/* ---- Workflow name ---- */
+
+.workflow-runner__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+/* ---- Step progress ---- */
+
+.workflow-runner__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.workflow-runner__step-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workflow-runner__bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-primary, #e2e8f0);
+  overflow: hidden;
+}
+
+.workflow-runner__bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent-primary, #6366f1);
+  transition: width 0.3s ease;
+}
+
+/* ---- Action buttons ---- */
+
+.workflow-runner__btn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  font-family: inherit;
+}
+
+.workflow-runner__btn--approve {
+  background: #10b981;
+  color: #fff;
+}
+
+.workflow-runner__btn--approve:hover {
+  background: #059669;
+}
+
+.workflow-runner__btn--cancel {
+  background: none;
+  color: #ef4444;
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.workflow-runner__btn--cancel:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ---- Minimize toggle ---- */
+
+.workflow-runner__minimize {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.workflow-runner__minimize:hover {
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+/* ---- Focus-visible ---- */
+
+.workflow-runner__btn:focus-visible,
+.workflow-runner__minimize:focus-visible,
+.workflow-runner--pill:focus-visible {
+  outline: 2px solid var(--accent-primary, #6366f1);
+  outline-offset: 2px;
+}

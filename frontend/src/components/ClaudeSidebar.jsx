@@ -6,12 +6,16 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import './ClaudeSidebar.css';
 import Settings from './Settings';
-import SearchModal from './SearchModal';
+import SearchModal from '../shared/components/SearchModal';
 import ProjectSettings from './ProjectSettings';
 import NewProjectModal from './NewProjectModal';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { listProjects, createProject } from '../api';
+import useBoardStore from '../stores/boardStore';
+import useUiStore from '../stores/uiStore';
+import BoardTree from '../modules/sidebar/BoardTree';
+import SidebarTabs from '../modules/sidebar/SidebarTabs';
 
 // LocalStorage keys
 const STARRED_PROJECTS_KEY = 'llm-council-starred-projects';
@@ -72,6 +76,7 @@ export default function ClaudeSidebar({
   onProjectSelect,
   onMoveToProject,
 }) {
+  const [sidebarTab, setSidebarTab] = useState('chats');
   const [showSettings, setShowSettings] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
@@ -221,10 +226,10 @@ export default function ClaudeSidebar({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Cmd/Ctrl + K - Search
+      // Cmd/Ctrl + K - Command Palette (handled by App.jsx via useUiStore)
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setShowSearch(true);
+        useUiStore.getState().toggleCommandPalette();
       }
       // Cmd/Ctrl + N - New conversation
       if ((e.metaKey || e.ctrlKey) && e.key === 'n' && !e.shiftKey) {
@@ -403,16 +408,28 @@ export default function ClaudeSidebar({
             {isCreatingConversation ? 'Creating...' : 'New chat'}
           </button>
 
-          <button className="claude-search-btn" onClick={() => setShowSearch(true)}>
+          <button className="claude-search-btn" onClick={() => useUiStore.getState().toggleCommandPalette()}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.35-4.35" />
             </svg>
-            Search chats
+            Search
             <span className="claude-search-shortcut">⌘K</span>
           </button>
         </div>
 
+        {/* Tab switcher: Chats / Boards */}
+        <SidebarTabs activeTab={sidebarTab} onTabChange={setSidebarTab} />
+
+        {/* Boards tab content */}
+        {sidebarTab === 'boards' && (
+          <div className="claude-boards-tab">
+            <BoardTree onSelectBoard={(id) => navigate(id ? '/boards/' + id : '/boards')} />
+          </div>
+        )}
+
+        {/* Chats tab content: Projects + Conversations */}
+        {sidebarTab === 'chats' && <>
         {/* Projects Section */}
         <div className="claude-projects-section">
           <div className="claude-projects-header">
@@ -556,6 +573,7 @@ export default function ClaudeSidebar({
             </>
           )}
         </div>
+        </>}
 
         {/* Footer with user info */}
         <div className="claude-sidebar-footer">
