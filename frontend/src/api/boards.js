@@ -103,6 +103,24 @@ export async function deleteCard(boardId, cardId) {
   return response.json();
 }
 
+export async function mergeCards(boardId, targetCardId, sourceCardId) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/cards/${targetCardId}/merge`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_card_id: sourceCardId }),
+  });
+  if (!response.ok) throw new Error('Failed to merge cards');
+  return response.json();
+}
+
+export async function splitCard(boardId, cardId) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/cards/${cardId}/split`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Failed to split card');
+  return response.json();
+}
+
 // ── Edge CRUD ──────────────────────────────
 
 export async function listEdges(boardId) {
@@ -157,11 +175,11 @@ export async function deleteSection(boardId, sectionId) {
   return response.json();
 }
 
-export async function groupIntoSection(boardId, { card_ids, title, color }) {
+export async function groupIntoSection(boardId, { card_ids, title, color, bounds_x, bounds_y, bounds_width, bounds_height }) {
   const response = await authFetch(`${API_BASE}/boards/${boardId}/sections/group`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ card_ids, title, color }),
+    body: JSON.stringify({ card_ids, title, color, bounds_x, bounds_y, bounds_width, bounds_height }),
   });
   if (!response.ok) throw new Error('Failed to group cards into section');
   return response.json();
@@ -260,6 +278,16 @@ export async function createEdgesBatch(boardId, edges) {
     body: JSON.stringify({ edges }),
   });
   if (!response.ok) throw new Error('Failed to create edges batch');
+  return response.json();
+}
+
+export async function updateEdge(boardId, edgeId, updates) {
+  const response = await authFetch(`${API_BASE}/boards/${boardId}/edges/${edgeId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!response.ok) throw new Error('Failed to update edge');
   return response.json();
 }
 

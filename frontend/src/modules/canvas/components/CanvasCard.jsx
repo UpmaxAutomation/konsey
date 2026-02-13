@@ -1,8 +1,12 @@
 import { useState, useRef, useEffect, useCallback, Component, memo } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, NodeResizer } from '@xyflow/react';
 import SafeMarkdown from '../../../shared/components/SafeMarkdown';
 import CardEditor from './CardEditor';
+import CardAttachments from './CardAttachments';
+import { useUploadAttachment } from '../../../api/queries/cardAttachmentQueries';
+import BoardRefPreview from './BoardRefPreview';
 import SynthesisExpander from './SynthesisExpander';
+import LinkedCardOverlay from './LinkedCardOverlay';
 import { useBoardActions } from '../BoardContext.js';
 import '../styles/CanvasCard.css';
 
@@ -37,6 +41,7 @@ const TYPE_CONFIG = {
   link:              { label: 'Link',      accent: '#3b82f6', headerTint: 'rgba(59,130,246,0.04)',  icon: '\u2197' },
   board_ref:         { label: 'Board',     accent: '#8b5cf6', headerTint: 'rgba(139,92,246,0.04)',  icon: '\uD83D\uDCC1' },
   workflow_output:   { label: 'Workflow',  accent: '#a855f7', headerTint: 'rgba(168,85,247,0.05)',  icon: '\u2699' },
+  linked_card:       { label: 'Linked',   accent: '#06b6d4', headerTint: 'rgba(6,182,212,0.04)',   icon: '\uD83D\uDD17' },
 };
 
 const EDITABLE_TYPES = new Set(['note', 'link']);
@@ -60,40 +65,48 @@ function formatDate(dateStr) {
   } catch { return null; }
 }
 
-function CanvasCard({ data, selected }) {
-  const [collapsed, setCollapsed] = useState(false);
+const TYPE_LABELS = {
+  note: 'Note', knowledge: 'Knowledge', query: 'Query',
+  council_response: 'Response', council_synthesis: 'Synthesis',
+  file_ref: 'File', link: 'Link', board_ref: 'Board',
+  workflow_output: 'Workflow', linked_card: 'Linked',
+};
+
+function CanvasCard({ data, selected, dragging }) {
+  const [collapsed, setCollapsed] = useState(data.extra?.collapsed ?? false);
   const [showThinking, setShowThinking] = useState(false);
   const [showBacklinks, setShowBacklinks] = useState(false);
-  const [showMore, setShowMore] = useState(false);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-  const [cardWidth, setCardWidth] = useState(data.width || null);
+  const uploadMutation = useUploadAttachment(data.cardId);
+  const [isDropTarget, setIsDropTarget] = useState(false);
+  const [selectionPopup, setSelectionPopup] = useState(null);
+  const [showPeek, setShowPeek] = useState(false);
   const contentRef = useRef(null);
-  const resizeRef = useRef(null);
+  const lastSelectionRef = useRef(null);
+  const peekTimerRef = useRef(null);
 
   // Use board context for editing actions — always available, no injection timing issues
   const board = useBoardActions();
 
   const isKnowledge = data.extra?.is_knowledge;
+  const isLinked = data.card_type === 'linked_card';
   const config = isKnowledge ? TYPE_CONFIG.knowledge : (TYPE_CONFIG[data.card_type] || TYPE_CONFIG.note);
   const modelName = data.extra?.model?.split('/').pop();
   const hasThinking = data.extra?.thinking?.trim?.().length > 0;
-  const isEditable = EDITABLE_TYPES.has(data.card_type) || isKnowledge;
+  const isEditable = !isLinked && (EDITABLE_TYPES.has(data.card_type) || isKnowledge);
   const isEditing = isEditable && board?.editingCardId === data.cardId;
 
   const { isDimmed, isProcessing } = data;
   const backlinks = data.backlinks || [];
 
+  // Clear extract popup on click outside or selection clear
   useEffect(() => {
-    const el = contentRef.current;
-    if (!el || collapsed || isEditing) {
-      setIsOverflowing(false);
-      return;
-    }
-    const check = () => setIsOverflowing(el.scrollHeight > el.clientHeight + 2);
-    check();
-    const timer = setTimeout(check, 200);
-    return () => clearTimeout(timer);
-  }, [data.content, collapsed, isEditing, showMore]);
+    if (!selectionPopup) return;
+    const handleDown = (e) => {
+      if (!contentRef.current?.contains(e.target)) setSelectionPopup(null);
+    };
+    document.addEventListener('mousedown', handleDown);
+    return () => document.removeEventListener('mousedown', handleDown);
+  }, [selectionPopup]);
 
   // Auto-save: persist data without closing editor
   const handleAutoSave = useCallback((title, content) => {
@@ -116,32 +129,162 @@ function CanvasCard({ data, selected }) {
     (board?.startEditing || data.onStartEditing)?.(data.cardId);
   }, [isEditable, isEditing, board, data.onStartEditing, data.cardId]);
 
-  const handleResizeStart = useCallback((e) => {
+  const toggleCollapsed = useCallback(() => {
+    const next = !collapsed;
+    setCollapsed(next);
+    const updateFn = board?.updateCard || data.onUpdateCard;
+    if (updateFn) {
+      updateFn(data.cardId, { extra: { ...(data.extra || {}), collapsed: next } });
+    }
+  }, [collapsed, board, data.onUpdateCard, data.cardId, data.extra]);
+
+  const handleResizeEnd = useCallback((_event, { width, height }) => {
+    const updateFn = board?.updateCard || data.onUpdateCard;
+    if (updateFn) {
+      updateFn(data.cardId, {
+        width: Math.round(width),
+        extra: { ...(data.extra || {}), height: Math.round(height) },
+      });
+    }
+  }, [board, data.onUpdateCard, data.cardId, data.extra]);
+
+  // Fit-to-content: double-click the resize handle to auto-size the card
+  const handleResizeHandleDoubleClick = useCallback((e) => {
     e.stopPropagation();
+    const el = contentRef.current;
+    if (!el) return;
+    const fitHeight = Math.max(80, el.scrollHeight + 80); // +80 for header/footer
+    const updateFn = board?.updateCard || data.onUpdateCard;
+    if (updateFn) {
+      updateFn(data.cardId, {
+        extra: { ...(data.extra || {}), height: Math.round(fitHeight) },
+      });
+    }
+  }, [board, data.onUpdateCard, data.cardId, data.extra]);
+
+  // Build a card-shaped drag ghost element for setDragImage
+  const buildDragGhost = useCallback((text) => {
+    const ghost = document.createElement('div');
+    ghost.textContent = text.slice(0, 80) + (text.length > 80 ? '\u2026' : '');
+    Object.assign(ghost.style, {
+      position: 'fixed', top: '-1000px', left: '-1000px',
+      width: '200px', padding: '10px 14px',
+      background: '#fff', border: '1px solid #e2e8f0',
+      borderTop: '2.5px solid ' + (config.accent || '#6366f1'),
+      borderRadius: '8px', fontSize: '12px', lineHeight: '1.5',
+      color: '#1e293b', fontFamily: 'Inter, system-ui, sans-serif',
+      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+      overflow: 'hidden', maxHeight: '60px',
+    });
+    document.body.appendChild(ghost);
+    return ghost;
+  }, [config.accent]);
+
+  // Drag selected text from content area to canvas (creates a new linked card)
+  const handleContentDragStart = useCallback((e) => {
+    // Browsers may clear window.getSelection() on dragstart for draggable elements,
+    // so fall back to the last known selection captured on mouseup.
+    const sel = window.getSelection();
+    const selectedText = sel?.toString?.()?.trim() || lastSelectionRef.current || '';
+    if (!selectedText || selectedText.length < 5) {
+      e.preventDefault();
+      return;
+    }
+    // Stop propagation to prevent ReactFlow from intercepting the drag
+    e.stopPropagation();
+    const payload = JSON.stringify({
+      text: selectedText,
+      title: selectedText.slice(0, 60),
+      sourceCardId: data.cardId,
+    });
+    e.dataTransfer.setData('application/x-council-card', payload);
+    e.dataTransfer.setData('text/plain', selectedText);
+    e.dataTransfer.effectAllowed = 'copy';
+    // Show a card-shaped drag ghost instead of the default browser preview
+    const ghost = buildDragGhost(selectedText);
+    e.dataTransfer.setDragImage(ghost, 100, 20);
+    requestAnimationFrame(() => ghost.remove());
+  }, [data.cardId, buildDragGhost]);
+
+  // Show floating "Extract to Card" button on text selection in read mode
+  const cardRef = useRef(null);
+  const handleContentMouseUp = useCallback(() => {
+    if (isEditing) return; // bubble toolbar handles this in edit mode
+    const sel = window.getSelection();
+    const text = sel?.toString?.()?.trim();
+    // Persist selection text so handleContentDragStart can use it even if
+    // the browser clears the native selection when drag begins.
+    lastSelectionRef.current = text || null;
+    if (!text || text.length < 3) {
+      setSelectionPopup(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const card = cardRef.current;
+    if (!card) return;
+    const cardRect = card.getBoundingClientRect();
+    setSelectionPopup({
+      text,
+      x: rect.left - cardRect.left + rect.width / 2,
+      y: rect.top - cardRect.top - 4,
+    });
+  }, [isEditing]);
+
+  // File drop onto card — triggers attachment upload
+  const handleCardDragOver = useCallback((e) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDropTarget(true);
+    }
+  }, []);
+
+  const handleCardDragLeave = useCallback((e) => {
+    // Only clear if leaving the card entirely
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDropTarget(false);
+    }
+  }, []);
+
+  const handleCardDrop = useCallback((e) => {
+    setIsDropTarget(false);
+    const files = e.dataTransfer?.files;
+    if (!files?.length) return;
     e.preventDefault();
-    const startX = e.clientX;
-    const el = e.target.closest('.canvas-card');
-    const startWidth = el ? el.offsetWidth : 280;
+    e.stopPropagation();
+    // Upload files as attachments via React Query mutation
+    for (const file of files) {
+      uploadMutation.mutate(file);
+    }
+  }, [uploadMutation]);
 
-    const handleMouseMove = (moveEvent) => {
-      const delta = moveEvent.clientX - startX;
-      const raw = Math.min(600, Math.max(200, startWidth + delta));
-      const snapped = Math.round(raw / 16) * 16;
-      setCardWidth(snapped);
-      resizeRef.current = snapped;
-    };
+  // Peek tooltip: show on hover after 300ms, hide on leave or if editing/dragging
+  const handlePeekEnter = useCallback(() => {
+    if (isEditing || dragging) return;
+    peekTimerRef.current = setTimeout(() => setShowPeek(true), 300);
+  }, [isEditing, dragging]);
 
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      if (resizeRef.current) {
-        data.onUpdateCard?.(data.cardId, { width: resizeRef.current });
-      }
-    };
+  const handlePeekLeave = useCallback(() => {
+    clearTimeout(peekTimerRef.current);
+    setShowPeek(false);
+  }, []);
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [data.onUpdateCard, data.cardId]);
+  // Clear peek on editing or dragging changes
+  useEffect(() => {
+    if (isEditing || dragging) {
+      clearTimeout(peekTimerRef.current);
+      setShowPeek(false);
+    }
+  }, [isEditing, dragging]);
+
+  // Cleanup timer on unmount
+  useEffect(() => () => clearTimeout(peekTimerRef.current), []);
+
+  const peekSnippet = data.content
+    ? data.content.replace(/[#*`>\[\]]/g, '').slice(0, 100) + (data.content.length > 100 ? '\u2026' : '')
+    : '';
 
   const createdLabel = formatDate(data.extra?.created_at);
   const words = wordCount(data.content);
@@ -150,6 +293,8 @@ function CanvasCard({ data, selected }) {
     'canvas-card',
     `canvas-card--${data.card_type}`,
     isKnowledge && 'canvas-card--knowledge',
+    isLinked && 'canvas-card--linked',
+    data.is_library && 'canvas-card--library',
     selected && 'canvas-card--selected',
     collapsed && 'canvas-card--collapsed',
     isEditing && 'canvas-card--editing',
@@ -160,14 +305,44 @@ function CanvasCard({ data, selected }) {
 
   return (
     <div
-      className={classNames}
+      ref={cardRef}
+      className={`${classNames}${isDropTarget ? ' canvas-card--drop-target' : ''}`}
       style={{
         '--card-accent': data.color ? `var(--card-${data.color})` : config.accent,
         ...(data.color ? { '--card-color-bg': `var(--card-${data.color}-bg)` } : {}),
-        ...(cardWidth ? { width: `${cardWidth}px`, minWidth: `${cardWidth}px`, maxWidth: `${cardWidth}px` } : {}),
       }}
-      onDoubleClick={handleCardDoubleClick}
+      onDragOver={handleCardDragOver}
+      onDragLeave={handleCardDragLeave}
+      onDrop={handleCardDrop}
+      onMouseEnter={handlePeekEnter}
+      onMouseLeave={handlePeekLeave}
     >
+      <NodeResizer
+        minWidth={200}
+        maxWidth={700}
+        minHeight={80}
+        isVisible={selected}
+        lineClassName="canvas-card__resize-line"
+        handleClassName="canvas-card__resize-control"
+        onResizeEnd={handleResizeEnd}
+      />
+      {/* Invisible double-click target on bottom-right corner for fit-to-content */}
+      {selected && (
+        <div
+          className="canvas-card__fit-handle nodrag"
+          onDoubleClick={handleResizeHandleDoubleClick}
+          title="Double-click to fit content"
+        />
+      )}
+
+      {showPeek && !isEditing && !collapsed && (
+        <div className="canvas-card__peek">
+          <div className="canvas-card__peek-title">{data.title || 'Untitled'}</div>
+          {peekSnippet && <div className="canvas-card__peek-content">{peekSnippet}</div>}
+          <span className="canvas-card__peek-badge">{TYPE_LABELS[data.card_type] || data.card_type}</span>
+        </div>
+      )}
+
       <Handle type="source" position={Position.Top} id="top" className="canvas-card__handle" />
       <Handle type="target" position={Position.Top} id="top" className="canvas-card__handle" />
       <Handle type="source" position={Position.Left} id="left" className="canvas-card__handle" />
@@ -175,9 +350,19 @@ function CanvasCard({ data, selected }) {
       <Handle type="source" position={Position.Right} id="right" className="canvas-card__handle" />
       <Handle type="target" position={Position.Right} id="right" className="canvas-card__handle" />
 
+      {isLinked && (
+        <LinkedCardOverlay
+          sourceCardId={data.source_card_id}
+          sourceBoardName={data.extra?.source_board_name}
+        />
+      )}
+
       <div className="canvas-card__header">
         <span className="canvas-card__icon" style={{ color: config.accent }}>{config.icon}</span>
         <span className="canvas-card__type">{config.label}</span>
+        {data.is_library && (
+          <span className="canvas-card__library-star" title="Library card">{'\u2B50'}</span>
+        )}
         {modelName && <span className="canvas-card__model">{modelName}</span>}
         {hasThinking && (
           <button
@@ -212,7 +397,7 @@ function CanvasCard({ data, selected }) {
         <button
           className="canvas-card__collapse nodrag"
           onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); setCollapsed(!collapsed); }}
+          onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
           title={collapsed ? 'Expand' : 'Collapse'}
           aria-label={collapsed ? 'Expand card' : 'Collapse card'}
         >
@@ -227,11 +412,13 @@ function CanvasCard({ data, selected }) {
           <CardEditor
             title={data.title || ''}
             content={data.content || ''}
+            cardId={data.cardId}
             onSave={handleEditorSave}
             onAutoSave={handleAutoSave}
             onCancel={handleEditorCancel}
             cardType={data.card_type}
             boardCards={data.boardCards || []}
+            onExtractToCard={board?.extractToCard}
           />
         </EditorErrorBoundary>
       ) : (
@@ -256,15 +443,14 @@ function CanvasCard({ data, selected }) {
 
               <div
                 ref={contentRef}
-                className={`canvas-card__content${showMore ? ' canvas-card__content--expanded' : ''}${isEditable ? ' nodrag' : ''}`}
-                style={isEditable ? { cursor: 'text' } : undefined}
+                className="canvas-card__content nodrag nopan"
+                style={{ cursor: 'text', userSelect: 'text', WebkitUserSelect: 'text' }}
+                draggable
+                onDragStart={handleContentDragStart}
+                onMouseUp={handleContentMouseUp}
               >
                 {data.card_type === 'board_ref' ? (
-                  <div className="canvas-card__board-ref">
-                    <span className="canvas-card__board-ref-icon">{'\uD83D\uDCC1'}</span>
-                    <span className="canvas-card__board-ref-name">{data.title || 'Sub-board'}</span>
-                    <span className="canvas-card__board-ref-hint">Double-click to open</span>
-                  </div>
+                  <BoardRefPreview boardId={data.extra?.board_id} title={data.title} />
                 ) : data.card_type === 'file_ref' ? (
                   <div className="canvas-card__file">
                     <span className="canvas-card__file-icon">{'\u25A1'}</span>
@@ -285,16 +471,6 @@ function CanvasCard({ data, selected }) {
                   </div>
                 )}
               </div>
-
-              {(isOverflowing || showMore) && (
-                <button
-                  className="canvas-card__show-more nodrag"
-                  onClick={(e) => { e.stopPropagation(); setShowMore(!showMore); }}
-                  aria-label={showMore ? 'Show less content' : 'Show more content'}
-                >
-                  {showMore ? 'Show less' : 'Show more'}
-                </button>
-              )}
 
               {data.card_type === 'council_synthesis' && data.extra?.stage1 && (
                 <SynthesisExpander extra={data.extra} />
@@ -339,6 +515,10 @@ function CanvasCard({ data, selected }) {
         </div>
       )}
 
+      {!collapsed && !isEditing && (
+        <CardAttachments cardId={data.cardId} compact />
+      )}
+
       {!collapsed && backlinks.length > 0 && (
         <div className="canvas-card__backlinks">
           <button
@@ -374,17 +554,53 @@ function CanvasCard({ data, selected }) {
         </div>
       )}
 
-      {!collapsed && (
-        <div
-          className="canvas-card__resize-handle nodrag"
-          onMouseDown={handleResizeStart}
-          title="Drag to resize"
-          aria-label="Resize card"
-        />
-      )}
-
       <Handle type="source" position={Position.Bottom} id="bottom" className="canvas-card__handle" />
       <Handle type="target" position={Position.Bottom} id="bottom" className="canvas-card__handle" />
+
+      {selectionPopup && !isEditing && (
+        <div
+          className="canvas-card__extract-popup nodrag"
+          style={{ left: selectionPopup.x, top: selectionPopup.y }}
+        >
+          <button
+            className="canvas-card__extract-btn"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              board?.extractToCard?.(selectionPopup.text, data.cardId);
+              window.getSelection()?.removeAllRanges();
+              setSelectionPopup(null);
+            }}
+          >
+            Extract to Card
+          </button>
+          <span
+            className="canvas-card__extract-grip nodrag"
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              const payload = JSON.stringify({
+                text: selectionPopup.text,
+                title: selectionPopup.text.slice(0, 60),
+                sourceCardId: data.cardId,
+              });
+              e.dataTransfer.setData('application/x-council-card', payload);
+              e.dataTransfer.setData('text/plain', selectionPopup.text);
+              e.dataTransfer.effectAllowed = 'copy';
+              const ghost = buildDragGhost(selectionPopup.text);
+              e.dataTransfer.setDragImage(ghost, 100, 20);
+              requestAnimationFrame(() => ghost.remove());
+            }}
+            onDragEnd={() => {
+              window.getSelection()?.removeAllRanges();
+              setSelectionPopup(null);
+            }}
+            title="Drag to canvas to place new card"
+          >
+            {'\u2630'}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

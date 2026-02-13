@@ -37,7 +37,7 @@ export default function ExportDialog({ boardId, boardName, onClose }) {
 
   return (
     <div className="export-overlay" onClick={onClose}>
-      <div className="export-dialog" onClick={e => e.stopPropagation()}>
+      <div className="export-dialog" role="dialog" aria-modal="true" aria-label="Export board" onClick={e => e.stopPropagation()}>
         <div className="export-header">
           <h2>Export Board</h2>
           <button className="export-close" onClick={onClose}>×</button>

@@ -1,10 +1,10 @@
 .section-node {
-  border: 1.5px dashed var(--card-gray);
+  border: 2px dashed var(--card-gray);
   border-radius: var(--radius-md);
   position: relative;
-  min-width: 200px;
-  min-height: 150px;
-  transition: border-color var(--transition-fast);
+  min-width: 300px;
+  min-height: 200px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .section-node--selected {
@@ -16,20 +16,24 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 1;
+  min-height: 44px;
+  box-sizing: border-box;
 }
 
 .section-node__color-dot {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
   transition: transform var(--transition-fast);
 }
 
@@ -42,14 +46,48 @@
   outline-offset: 2px;
 }
 
+.section-node__collapse-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 2px;
+  border-radius: var(--radius-xs);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.section-node__collapse-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
 .section-node__title {
-  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: default;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: font-size 0.15s ease;
+}
+
+.section-node__card-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  padding: 1px 8px;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -107,7 +145,7 @@
 
 .section-node__color-picker {
   position: absolute;
-  top: 36px;
+  top: 44px;
   left: 12px;
   z-index: 10;
 }
@@ -148,4 +186,13 @@
   opacity: 1 !important;
   width: 10px !important;
   height: 10px !important;
+}
+
+/* Collapsed section */
+.section-node--collapsed {
+  overflow: hidden;
+}
+
+.section-node--collapsed .section-node__header {
+  position: relative;
 }

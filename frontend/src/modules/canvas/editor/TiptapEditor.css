@@ -278,6 +278,76 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Slash-command inline URL input (Image / Embed)
+   --------------------------------------------------------------------------- */
+.tiptap-editor__slash-input {
+  padding: 8px 14px;
+  border-top: 1px solid var(--border-primary, #e2e8f0);
+  background: var(--bg-secondary, #f8fafc);
+}
+
+.tiptap-editor__slash-input-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #64748b);
+  margin-bottom: 6px;
+}
+
+.tiptap-editor__slash-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tiptap-editor__slash-input-field {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: 'Inter', system-ui, sans-serif;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 4px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #0f172a);
+  outline: none;
+}
+
+.tiptap-editor__slash-input-field:focus {
+  border-color: var(--accent-primary, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+}
+
+.tiptap-editor__slash-input-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--accent-primary, #6366f1);
+  color: #fff;
+}
+
+.tiptap-editor__slash-input-btn:hover {
+  opacity: 0.9;
+}
+
+.tiptap-editor__slash-input-btn--cancel {
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  border: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.tiptap-editor__slash-input-btn--cancel:hover {
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+
+/* ---------------------------------------------------------------------------
    Reduced motion
    --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {

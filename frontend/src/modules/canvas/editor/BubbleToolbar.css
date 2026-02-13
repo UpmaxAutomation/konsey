@@ -77,10 +77,150 @@
 }
 
 /* ---------------------------------------------------------------------------
+   "Turn Into" button — wider to fit text
+   --------------------------------------------------------------------------- */
+.bubble-toolbar__btn[title="Convert block type"] {
+  width: auto;
+  padding: 0 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   "Turn Into" dropdown
+   --------------------------------------------------------------------------- */
+.bubble-toolbar__turninto-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  background: var(--bg-primary, #18181b);
+  border: 1px solid var(--border-primary, #27272a);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  z-index: 50;
+  animation: bubble-turninto-fadein 0.1s ease-out;
+}
+
+[data-theme="light"] .bubble-toolbar__turninto-dropdown,
+:root:not([data-theme="dark"]) .bubble-toolbar__turninto-dropdown {
+  background: #fff;
+  border-color: #e4e4e7;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes bubble-turninto-fadein {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.bubble-toolbar__turninto-option {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #a1a1aa);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.bubble-toolbar__turninto-option:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.1));
+  color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Inline link input
+   --------------------------------------------------------------------------- */
+.bubble-toolbar__link-input {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-primary, #18181b);
+  border: 1px solid var(--border-primary, #27272a);
+  border-radius: 8px;
+  padding: 4px 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+  animation: bubble-turninto-fadein 0.1s ease-out;
+}
+
+[data-theme="light"] .bubble-toolbar__link-input,
+:root:not([data-theme="dark"]) .bubble-toolbar__link-input {
+  background: #fff;
+  border-color: #e4e4e7;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.bubble-toolbar__link-input-field {
+  width: 220px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: 'Inter', system-ui, sans-serif;
+  border: 1px solid var(--border-primary, #27272a);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.bubble-toolbar__link-input-field:focus {
+  border-color: var(--card-accent, #6366f1);
+}
+
+.bubble-toolbar__link-input-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--card-accent, #6366f1);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bubble-toolbar__link-input-btn:hover {
+  opacity: 0.9;
+}
+
+.bubble-toolbar__link-input-btn--cancel {
+  background: transparent;
+  color: var(--text-secondary, #a1a1aa);
+  font-size: 16px;
+  padding: 2px 6px;
+}
+
+.bubble-toolbar__link-input-btn--cancel:hover {
+  color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------------------
    Reduced motion
    --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   .bubble-toolbar__btn {
     transition: none;
+  }
+  .bubble-toolbar__turninto-dropdown {
+    animation: none;
   }
 }

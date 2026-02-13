@@ -481,3 +481,60 @@
     animation: none;
   }
 }
+
+/* ── Selection → Drag to Canvas ── */
+.card-chat-panel__selection-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.card-chat-panel__drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  background: var(--bg-primary, #fff);
+  color: var(--text-secondary, #64748b);
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: grab;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.card-chat-panel__drag-handle:hover {
+  background: var(--bg-secondary, #f1f5f9);
+  color: var(--accent-primary, #6366f1);
+}
+
+.card-chat-panel__drag-handle:active {
+  cursor: grabbing;
+}
+
+.card-chat-panel__card-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  background: var(--bg-primary, #fff);
+  color: var(--accent-primary, #6366f1);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-family: inherit;
+}
+
+.card-chat-panel__card-btn:hover {
+  background: var(--bg-secondary, #f1f5f9);
+}

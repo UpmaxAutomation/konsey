@@ -6,9 +6,34 @@ export const EDGE_STYLES = {
   synthesizes: { stroke: '#10b981', strokeWidth: 2, animated: true, dashed: false, label: 'synthesizes' },
   related: { stroke: '#cbd5e1', strokeWidth: 1, animated: false, dashed: true, label: '' },
   workflow_step: { stroke: '#a855f7', strokeWidth: 1.5, animated: true, dashed: true, label: '' },
+  pipeline: { stroke: '#6366f1', strokeWidth: 2, animated: false, dashed: false, label: '' },
+  linked: { stroke: '#06b6d4', strokeWidth: 1.5, animated: false, dashed: true, label: 'linked' },
 };
 
+export function pipelineCardToNode(card) {
+  return {
+    id: card.id,
+    type: 'pipelineNode',
+    position: { x: card.position_x, y: card.position_y },
+    dragHandle: '.pipeline-node__header',
+    data: {
+      cardId: card.id,
+      card_type: card.card_type,
+      title: card.title,
+      content: card.content,
+      color: card.color,
+      extra: card.extra || {},
+      pipelineStatus: 'idle',
+      pipelineOutput: null,
+    },
+    style: { width: card.width || 220 },
+  };
+}
+
 export function cardToNode(card) {
+  if (card.card_type?.startsWith('pl_')) {
+    return pipelineCardToNode(card);
+  }
   const node = {
     id: card.id,
     type: 'canvasCard',
@@ -21,8 +46,10 @@ export function cardToNode(card) {
       content: card.content,
       color: card.color,
       extra: card.extra,
+      source_card_id: card.source_card_id || null,
+      is_library: card.is_library || false,
     },
-    style: { width: card.width },
+    style: { width: card.width, ...(card.extra?.height ? { height: card.extra.height } : {}) },
   };
   if (card.section_id) {
     node.parentId = `section-${card.section_id}`;
@@ -43,21 +70,37 @@ export function edgeToFlow(edge) {
   const customStyle = edge.style || {};
   const stroke = customStyle.color || styleCfg.stroke;
   const strokeWidth = customStyle.strokeWidth || styleCfg.strokeWidth;
+  const pathType = customStyle.pathType || 'bezier';
+  const bidirectional = customStyle.bidirectional || false;
+  const noArrows = customStyle.noArrows || false;
+
+  const arrowMarker = noArrows ? undefined : {
+    type: MarkerType.ArrowClosed,
+    width: 14,
+    height: 14,
+    color: stroke,
+  };
+
   return {
     id: edge.id,
     source: edge.from_card_id,
     target: edge.to_card_id,
     type: 'animatedEdge',
     label: edge.label || styleCfg.label || undefined,
-    markerEnd: {
+    markerEnd: arrowMarker,
+    markerStart: bidirectional && !noArrows ? {
       type: MarkerType.ArrowClosed,
       width: 14,
       height: 14,
       color: stroke,
-    },
+    } : undefined,
     sourceHandle: normalizeHandle(edge.source_handle),
     targetHandle: normalizeHandle(edge.target_handle),
-    data: { edge_type: edge.edge_type, style: { ...styleCfg, stroke, strokeWidth } },
+    data: {
+      edge_type: edge.edge_type,
+      edgeId: edge.id,
+      style: { ...styleCfg, stroke, strokeWidth, pathType, bidirectional, noArrows },
+    },
   };
 }
 

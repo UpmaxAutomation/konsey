@@ -1,0 +1,237 @@
+.card-attachments {
+  padding: 8px;
+  border-top: 1px solid var(--border-primary, #e2e8f0);
+}
+
+.card-attachments--compact {
+  padding: 4px 8px;
+  border-top: none;
+}
+
+.card-attachments__badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.card-attachments__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.card-attachments__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.card-attachments__actions {
+  display: flex;
+  gap: 4px;
+}
+
+.card-attachments__add-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.card-attachments__add-btn:hover {
+  background: var(--bg-hover);
+}
+
+.card-attachments__embed-input {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.card-attachments__embed-input input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--border-primary);
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--bg-input, var(--bg-secondary));
+  color: var(--text-primary);
+}
+
+.card-attachments__embed-input button {
+  padding: 4px 10px;
+  border: none;
+  background: var(--accent-primary);
+  color: white;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.card-attachments__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-attachments__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 4px;
+  position: relative;
+}
+
+.card-attachments__item:hover {
+  background: var(--bg-hover);
+}
+
+.card-attachments__thumb {
+  width: 100%;
+  max-height: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.card-attachments__embed {
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.card-attachments__embed iframe {
+  border-radius: 4px;
+}
+
+.card-attachments__file-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-attachments__file-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.card-attachments__filename {
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-attachments__size {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.card-attachments__remove {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  display: none;
+  border: none;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-attachments__item:hover .card-attachments__remove {
+  display: flex;
+}
+
+.card-attachments__pdf-preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.card-attachments__pdf-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-attachments__pdf-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 0;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.card-attachments__pdf-header:hover {
+  background: var(--bg-hover, rgba(0, 0, 0, 0.03));
+}
+
+.card-attachments__annot-badge {
+  font-size: 10px;
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--accent-primary, #3b82f6);
+  padding: 1px 6px;
+  border-radius: 8px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.card-attachments__pdf-toggle {
+  margin-left: auto;
+  border: 1px solid var(--border-primary, #e2e8f0);
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-muted, #64748b);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.card-attachments__pdf-toggle:hover {
+  background: var(--bg-hover, #e2e8f0);
+  color: var(--text-primary, #1e293b);
+}
+
+.card-attachments__drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.08);
+  border: 2px dashed rgba(59, 130, 246, 0.4);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--accent-primary, #3b82f6);
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.card-attachments__loading,
+.card-attachments__uploading {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px;
+}

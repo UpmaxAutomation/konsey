@@ -12,6 +12,7 @@ from ..database.connection import get_db
 from ..database.models import User
 from ..database.crud import tags as tags_crud
 from ..auth.dependencies import get_current_user
+from ..utils import parse_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ async def update_tag(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a tag."""
-    tid = uuid.UUID(tag_id)
+    tid = parse_uuid(tag_id, "tag_id")
     updates = request.model_dump(exclude_none=True)
     tag = await tags_crud.update_tag(db, tid, current_user.id, **updates)
     if not tag:
@@ -100,7 +101,7 @@ async def delete_tag(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a tag."""
-    tid = uuid.UUID(tag_id)
+    tid = parse_uuid(tag_id, "tag_id")
     deleted = await tags_crud.delete_tag(db, tid, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Tag not found")

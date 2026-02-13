@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, memo } from 'react';
-import { NodeResizer, Handle, Position } from '@xyflow/react';
+import { NodeResizer, Handle, Position, useStore } from '@xyflow/react';
 import ColorPicker from './ColorPicker';
 import '../styles/SectionNode.css';
 
@@ -23,9 +23,20 @@ function SectionNode({ data, selected }) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(data.title || '');
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const inputRef = useRef(null);
 
+  // Zoom-aware title scaling
+  const zoom = useStore((s) => s.transform[2]);
+  const titleFontSize = Math.min(48, Math.max(12, 14 / zoom));
+
   const colors = SECTION_COLORS[data.color] || SECTION_COLORS.gray;
+
+  const handleToggleCollapse = useCallback(() => {
+    const next = !collapsed;
+    setCollapsed(next);
+    data.onToggleCollapse?.(data.sectionId, next);
+  }, [collapsed, data]);
 
   const handleTitleSave = useCallback(() => {
     setIsEditingTitle(false);
@@ -47,9 +58,11 @@ function SectionNode({ data, selected }) {
     data.onUngroupSection?.(data.sectionId);
   }, [data]);
 
+  const childCount = data.childCount || 0;
+
   return (
     <div
-      className={`section-node ${selected ? 'section-node--selected' : ''}`}
+      className={`section-node ${selected ? 'section-node--selected' : ''} ${collapsed ? 'section-node--collapsed' : ''}`}
       style={{
         background: colors.bg,
         borderColor: colors.border,
@@ -65,9 +78,9 @@ function SectionNode({ data, selected }) {
       <Handle type="target" position={Position.Right} id="right" className="section-node__handle" />
 
       <NodeResizer
-        minWidth={200}
-        minHeight={150}
-        isVisible={selected}
+        minWidth={300}
+        minHeight={collapsed ? 44 : 200}
+        isVisible={selected && !collapsed}
         lineClassName="section-node__resize-line"
         handleClassName="section-node__resize-handle"
         onResize={(_, params) => {
@@ -78,6 +91,17 @@ function SectionNode({ data, selected }) {
         }}
       />
       <div className="section-node__header">
+        <button
+          className="section-node__collapse-toggle"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleCollapse();
+          }}
+          title={collapsed ? 'Expand section' : 'Collapse section'}
+          aria-label={collapsed ? 'Expand section' : 'Collapse section'}
+        >
+          {collapsed ? '\u25B6' : '\u25BC'}
+        </button>
         <div
           className="section-node__color-dot"
           style={{ background: colors.border }}
@@ -117,6 +141,7 @@ function SectionNode({ data, selected }) {
         ) : (
           <span
             className="section-node__title"
+            style={{ fontSize: `${titleFontSize}px` }}
             onDoubleClick={(e) => {
               e.stopPropagation();
               setIsEditingTitle(true);
@@ -124,6 +149,11 @@ function SectionNode({ data, selected }) {
             }}
           >
             {data.title || 'Untitled Section'}
+          </span>
+        )}
+        {childCount > 0 && (
+          <span className="section-node__card-count">
+            {childCount} {childCount === 1 ? 'card' : 'cards'}
           </span>
         )}
         <button

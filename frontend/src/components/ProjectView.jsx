@@ -55,6 +55,7 @@ export default function ProjectView({
     persona_prompt: '',
     methodology_prompt: '',
   });
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const toast = useToast();
   const inputRef = useRef(null);
   const { data: ragStatus } = useRAGStatus(project?.id);
@@ -307,22 +308,39 @@ export default function ProjectView({
                 <div className="project-conv-meta">
                   {formatTimeAgo(conv.updated_at || conv.created_at)}
                 </div>
-                <button
-                  type="button"
-                  className="project-conv-delete"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.confirm('Delete this conversation?')) {
-                      onDeleteConversation(conv.id);
-                    }
-                  }}
-                  title="Delete conversation"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                  </svg>
-                </button>
+                {confirmDeleteId === conv.id ? (
+                  <span className="project-conv-confirm" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="project-conv-confirm-yes"
+                      onClick={(e) => { e.stopPropagation(); onDeleteConversation(conv.id); setConfirmDeleteId(null); }}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="project-conv-confirm-no"
+                      onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }}
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    className="project-conv-delete"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setConfirmDeleteId(conv.id);
+                    }}
+                    title="Delete conversation"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                  </button>
+                )}
               </div>
             ))
           )}

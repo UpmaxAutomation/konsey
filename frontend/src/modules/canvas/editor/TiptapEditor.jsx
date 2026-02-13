@@ -36,20 +36,24 @@ class PluginBoundary extends Component {
  */
 function TiptapEditor({
   content,
+  cardId,
   onSave,
   onCancel,
   onContentChange,
   placeholder = 'Start writing...',
   autoFocus = true,
   boardCards = [],
+  onExtractToCard,
 }) {
   // Keep latest callbacks in refs to avoid stale closures inside editorProps
-  const callbacksRef = useRef({ onSave, onCancel, onContentChange });
-  callbacksRef.current = { onSave, onCancel, onContentChange };
+  const callbacksRef = useRef({ onSave, onCancel, onContentChange, cardId });
+  callbacksRef.current = { onSave, onCancel, onContentChange, cardId };
 
   // Ref to hold the editor instance for use inside editorProps.handleKeyDown
   const editorRef = useRef(null);
   const [initError, setInitError] = useState(null);
+  const [slashInput, setSlashInput] = useState(null); // { type: 'image'|'embed' }
+  const slashInputRef = useRef(null);
 
   const editor = useEditor({
     extensions: buildExtensions({ placeholder }),
@@ -67,6 +71,46 @@ function TiptapEditor({
     editorProps: {
       attributes: {
         class: 'tiptap-editor__content nodrag nowheel nopan',
+      },
+      handleDOMEvents: {
+        dragstart(view, event) {
+          // When text is selected in the editor and dragged, tag the drag data
+          // with the custom MIME type so the canvas drop handler can create a
+          // new linked card. We read from ProseMirror state (not window.getSelection)
+          // because ProseMirror owns the selection.
+          const { from, to } = view.state.selection;
+          if (from === to) return false;
+          const text = view.state.doc.textBetween(from, to, '\n');
+          if (text.trim().length < 5) return false;
+          const cid = callbacksRef.current.cardId;
+          if (!cid) return false;
+          const trimmed = text.trim();
+          const payload = JSON.stringify({
+            text: trimmed,
+            title: trimmed.slice(0, 60),
+            sourceCardId: cid,
+          });
+          event.dataTransfer.setData('application/x-council-card', payload);
+          event.dataTransfer.effectAllowed = 'copy';
+          // Show a card-shaped drag ghost
+          const ghost = document.createElement('div');
+          ghost.textContent = trimmed.slice(0, 80) + (trimmed.length > 80 ? '\u2026' : '');
+          Object.assign(ghost.style, {
+            position: 'fixed', top: '-1000px', left: '-1000px',
+            width: '200px', padding: '10px 14px',
+            background: '#fff', border: '1px solid #e2e8f0',
+            borderTop: '2.5px solid #6366f1',
+            borderRadius: '8px', fontSize: '12px', lineHeight: '1.5',
+            color: '#1e293b', fontFamily: 'Inter, system-ui, sans-serif',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            overflow: 'hidden', maxHeight: '60px',
+          });
+          document.body.appendChild(ghost);
+          event.dataTransfer.setDragImage(ghost, 100, 20);
+          requestAnimationFrame(() => ghost.remove());
+          // Let ProseMirror handle its own internal drag too
+          return false;
+        },
       },
       handleKeyDown(_view, event) {
         if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -151,6 +195,19 @@ function TiptapEditor({
     return () => clearTimeout(timer);
   }, [editor, autoFocus]);
 
+  // Listen for slash-command-input events (Image / Embed URL input)
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const handler = (e) => {
+      const { type } = e.detail;
+      setSlashInput({ type, url: '' });
+      setTimeout(() => slashInputRef.current?.focus(), 0);
+    };
+    dom.addEventListener('slash-command-input', handler);
+    return () => dom.removeEventListener('slash-command-input', handler);
+  }, [editor]);
+
   if (initError) {
     return (
       <div className="tiptap-editor nodrag nowheel nopan" style={{ padding: 12, color: '#e74c3c', fontSize: 13 }}>
@@ -167,12 +224,72 @@ function TiptapEditor({
   return (
     <div className="tiptap-editor nodrag nowheel nopan">
       <PluginBoundary>
-        <BubbleToolbar editor={editor} />
+        <BubbleToolbar editor={editor} onExtractToCard={onExtractToCard} />
       </PluginBoundary>
       <PluginBoundary>
         <FloatingAddMenu editor={editor} />
       </PluginBoundary>
       <EditorContent editor={editor} />
+      {slashInput && (
+        <div className="tiptap-editor__slash-input">
+          <label className="tiptap-editor__slash-input-label">
+            {slashInput.type === 'image' ? 'Image URL' : 'Embed URL'}
+          </label>
+          <div className="tiptap-editor__slash-input-row">
+            <input
+              ref={slashInputRef}
+              type="url"
+              className="tiptap-editor__slash-input-field"
+              placeholder={slashInput.type === 'image' ? 'https://example.com/image.png' : 'https://youtube.com/...'}
+              value={slashInput.url}
+              onChange={(e) => setSlashInput({ ...slashInput, url: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const url = slashInput.url.trim();
+                  if (url) {
+                    if (slashInput.type === 'image') {
+                      editor.chain().focus().setImage({ src: url }).run();
+                    } else {
+                      editor.chain().focus().insertContent({ type: 'embed', attrs: { url } }).run();
+                    }
+                  }
+                  setSlashInput(null);
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  setSlashInput(null);
+                  editor.chain().focus().run();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="tiptap-editor__slash-input-btn"
+              onClick={() => {
+                const url = slashInput.url.trim();
+                if (url) {
+                  if (slashInput.type === 'image') {
+                    editor.chain().focus().setImage({ src: url }).run();
+                  } else {
+                    editor.chain().focus().insertContent({ type: 'embed', attrs: { url } }).run();
+                  }
+                }
+                setSlashInput(null);
+              }}
+            >
+              Insert
+            </button>
+            <button
+              type="button"
+              className="tiptap-editor__slash-input-btn tiptap-editor__slash-input-btn--cancel"
+              onClick={() => { setSlashInput(null); editor.chain().focus().run(); }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       <div className="tiptap-editor__footer">
         <span className="tiptap-editor__charcount">{wordCount} words</span>
         <span className="tiptap-editor__hints">

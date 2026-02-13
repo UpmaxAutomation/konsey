@@ -530,6 +530,27 @@ async def _run_column_migrations() -> None:
         ("user_flow_templates.add_use_count", "ALTER TABLE user_flow_templates ADD COLUMN IF NOT EXISTS use_count INTEGER DEFAULT 0"),
         ("user_flow_templates.add_avg_rating", "ALTER TABLE user_flow_templates ADD COLUMN IF NOT EXISTS avg_rating FLOAT DEFAULT 0"),
         ("user_flow_templates.add_rating_count", "ALTER TABLE user_flow_templates ADD COLUMN IF NOT EXISTS rating_count INTEGER DEFAULT 0"),
+        # ============ v16: Card Attachments ============
+        ("card_attachments.create_table", """
+            CREATE TABLE IF NOT EXISTS card_attachments (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                filename VARCHAR(255) NOT NULL,
+                file_type VARCHAR(30) NOT NULL DEFAULT 'file',
+                mime_type VARCHAR(100),
+                file_size INTEGER,
+                url TEXT,
+                embed_url TEXT,
+                content_text TEXT,
+                rag_indexed BOOLEAN DEFAULT false,
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMPTZ DEFAULT now(),
+                CONSTRAINT ck_attachment_file_type CHECK (file_type IN ('file', 'image', 'pdf', 'video', 'audio', 'embed'))
+            )
+        """),
+        ("card_attachments.idx_card", "CREATE INDEX IF NOT EXISTS idx_card_attachments_card ON card_attachments(card_id)"),
+        ("card_attachments.idx_user", "CREATE INDEX IF NOT EXISTS idx_card_attachments_user ON card_attachments(user_id)"),
     ]
 
     async with AsyncSessionLocal() as session:

@@ -1,0 +1,111 @@
+.edge-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--border-primary, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.edge-context-menu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  background: none;
+  color: var(--text-primary, #1e293b);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
+}
+
+.edge-context-menu__item:hover {
+  background: var(--bg-hover, #f1f5f9);
+}
+
+.edge-context-menu__item.active {
+  color: var(--accent-primary, #6366f1);
+  font-weight: 600;
+}
+
+.edge-context-menu__item--danger {
+  color: #ef4444;
+}
+
+.edge-context-menu__item--danger:hover {
+  background: #fef2f2;
+}
+
+.edge-context-menu__separator {
+  height: 1px;
+  background: var(--border-primary, #e2e8f0);
+  margin: 4px 0;
+}
+
+.edge-context-menu__section-label {
+  padding: 4px 14px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.edge-context-menu__color-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px;
+  flex-wrap: wrap;
+}
+
+.edge-context-menu__color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.edge-context-menu__color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.edge-context-menu__color-swatch.active {
+  border-color: var(--text-primary, #1e293b);
+}
+
+/* Focus-visible for keyboard navigation */
+.edge-context-menu__item:focus-visible {
+  outline: 2px solid var(--accent-primary, #6366f1);
+  outline-offset: -2px;
+  background: var(--bg-hover, #f1f5f9);
+}
+
+[data-theme="dark"] .edge-context-menu__item:focus-visible {
+  outline-color: #818cf8;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Dark theme */
+[data-theme="dark"] .edge-context-menu {
+  background: var(--bg-primary, #1e293b);
+  border-color: var(--border-primary, #334155);
+}
+
+[data-theme="dark"] .edge-context-menu__item--danger {
+  color: #fca5a5;
+}
+
+[data-theme="dark"] .edge-context-menu__item--danger:hover {
+  background: #450a0a;
+}
+
+[data-theme="dark"] .edge-context-menu__color-swatch.active {
+  border-color: #e2e8f0;
+}

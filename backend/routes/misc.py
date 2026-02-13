@@ -27,6 +27,7 @@ from ..export import (
     create_share_link, get_shared_conversation_id,
 )
 from ..code_interpreter import execute_code, format_execution_result
+from ..utils import parse_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -1006,7 +1007,7 @@ async def admin_list_conversations(
 
     from ..database.crud import conversations as db_conversations
 
-    user_filter = uuid.UUID(user_id) if user_id else None
+    user_filter = parse_uuid(user_id, "user_id") if user_id else None
     convs = await db_conversations.list_all(db, skip=skip, limit=limit, user_filter=user_filter)
     total = await db_conversations.count_all(db, user_filter=user_filter)
 

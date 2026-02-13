@@ -334,10 +334,6 @@ export async function sendQuickMessageStream(
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
-        onEvent('complete', {});
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/75f3ab5e-6780-409e-bc6a-473b28bdd0d8',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H_auto_7',location:'api/conversations.js:sendQuickMessageStream',message:'quick_stream_done',data:{},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         break;
       }
 

@@ -110,15 +110,15 @@
   --card-purple: #8b5cf6;  --card-purple-bg: rgba(139, 92, 246, 0.12);
   --card-pink: #ec4899;    --card-pink-bg: rgba(236, 72, 153, 0.12);
 
-  /* Section background colors (same palette, higher opacity) */
-  --section-gray-bg: rgba(107, 114, 128, 0.06);
-  --section-red-bg: rgba(239, 68, 68, 0.06);
-  --section-orange-bg: rgba(249, 115, 22, 0.06);
-  --section-yellow-bg: rgba(234, 179, 8, 0.06);
-  --section-green-bg: rgba(34, 197, 94, 0.06);
-  --section-blue-bg: rgba(59, 130, 246, 0.06);
-  --section-purple-bg: rgba(139, 92, 246, 0.06);
-  --section-pink-bg: rgba(236, 72, 153, 0.06);
+  /* Section background colors (visible tint for group areas) */
+  --section-gray-bg: rgba(107, 114, 128, 0.14);
+  --section-red-bg: rgba(239, 68, 68, 0.14);
+  --section-orange-bg: rgba(249, 115, 22, 0.14);
+  --section-yellow-bg: rgba(234, 179, 8, 0.12);
+  --section-green-bg: rgba(34, 197, 94, 0.12);
+  --section-blue-bg: rgba(59, 130, 246, 0.12);
+  --section-purple-bg: rgba(139, 92, 246, 0.12);
+  --section-pink-bg: rgba(236, 72, 153, 0.12);
 }
 
 /* ========== DARK MODE ========== */
@@ -180,15 +180,15 @@
   --card-purple-bg: rgba(139, 92, 246, 0.16);
   --card-pink-bg: rgba(236, 72, 153, 0.16);
 
-  /* Section background colors (dark mode) */
-  --section-gray-bg: rgba(107, 114, 128, 0.08);
-  --section-red-bg: rgba(239, 68, 68, 0.08);
-  --section-orange-bg: rgba(249, 115, 22, 0.08);
-  --section-yellow-bg: rgba(234, 179, 8, 0.08);
-  --section-green-bg: rgba(34, 197, 94, 0.08);
-  --section-blue-bg: rgba(59, 130, 246, 0.08);
-  --section-purple-bg: rgba(139, 92, 246, 0.08);
-  --section-pink-bg: rgba(236, 72, 153, 0.08);
+  /* Section background colors (dark mode - visible tint) */
+  --section-gray-bg: rgba(107, 114, 128, 0.18);
+  --section-red-bg: rgba(239, 68, 68, 0.18);
+  --section-orange-bg: rgba(249, 115, 22, 0.18);
+  --section-yellow-bg: rgba(234, 179, 8, 0.15);
+  --section-green-bg: rgba(34, 197, 94, 0.16);
+  --section-blue-bg: rgba(59, 130, 246, 0.16);
+  --section-purple-bg: rgba(139, 92, 246, 0.16);
+  --section-pink-bg: rgba(236, 72, 153, 0.16);
 }
 
 * {

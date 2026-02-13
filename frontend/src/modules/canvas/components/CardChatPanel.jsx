@@ -13,6 +13,8 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [conversationId, setConversationId] = useState(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionRect, setSelectionRect] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [councilStage, setCouncilStage] = useState(null);
@@ -21,6 +23,7 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
   const abortRef = useRef(null);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const messageAppendedRef = useRef(false);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -70,11 +73,12 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
     // Build the message content - prepend card context on first message
     const isFirst = messages.length === 0;
     const fullContent = isFirst
-      ? `[Discussing card: "${card.title}" (${card.card_type})]\n${card.content || ''}\n\n---\n\n${trimmed}`
+      ? `<card-context title="${card.title}" type="${card.card_type}">\n${card.content || ''}\n</card-context>\n\nUser request: ${trimmed}`
       : trimmed;
 
     // Optimistic user message
     setMessages((prev) => [...prev, { role: 'user', content: trimmed }]);
+    messageAppendedRef.current = false;
     setIsLoading(true);
     setStreamingText('');
     setCouncilStage(null);
@@ -98,10 +102,13 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
                 setStreamingText(accumulated);
                 break;
               case 'complete':
-                setMessages((prev) => [
-                  ...prev,
-                  { role: 'assistant', content: accumulated },
-                ]);
+                if (!messageAppendedRef.current) {
+                  messageAppendedRef.current = true;
+                  setMessages((prev) => [
+                    ...prev,
+                    { role: 'assistant', content: accumulated },
+                  ]);
+                }
                 setStreamingText('');
                 setIsLoading(false);
                 break;
@@ -139,18 +146,19 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
                 break;
               case 'stage3_complete':
                 stage3Content = event.data?.response || '';
-                setMessages((prev) => [
-                  ...prev,
-                  { role: 'assistant', content: stage3Content, isCouncil: true },
-                ]);
+                if (!messageAppendedRef.current) {
+                  messageAppendedRef.current = true;
+                  setMessages((prev) => [
+                    ...prev,
+                    { role: 'assistant', content: stage3Content, isCouncil: true },
+                  ]);
+                }
                 setCouncilStage(null);
                 setIsLoading(false);
                 break;
               case 'complete':
-                if (isLoading) {
-                  setIsLoading(false);
-                  setCouncilStage(null);
-                }
+                setIsLoading(false);
+                setCouncilStage(null);
                 break;
               case 'error':
                 setError(event.message || 'An error occurred');
@@ -183,6 +191,35 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
     setStreamingText('');
     setCouncilStage(null);
   }, []);
+
+  const handleMessageMouseUp = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 5) {
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectedText(sel.toString().trim());
+      setSelectionRect({ top: rect.top - 40, left: rect.left + rect.width / 2 });
+    } else {
+      setSelectedText('');
+      setSelectionRect(null);
+    }
+  }, []);
+
+  // Enhance native text drag so dropping selected text onto canvas creates a card
+  const handleMessageDragStart = useCallback((e) => {
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    if (text && text.length > 2) {
+      const payload = JSON.stringify({
+        text,
+        title: text.slice(0, 60),
+        sourceCardId: card?.id || null,
+      });
+      e.dataTransfer.setData('application/x-council-card', payload);
+      e.dataTransfer.setData('text/plain', text);
+      e.dataTransfer.effectAllowed = 'copy';
+    }
+  }, [card]);
 
   const handlePinToBoard = useCallback(async (content) => {
     try {
@@ -280,8 +317,55 @@ export default function CardChatPanel({ card, boardId, onClose, onCardCreated })
         )}
       </div>
 
+      {/* Text selection → drag to canvas */}
+      {selectedText && selectionRect && (
+        <div
+          className="card-chat-panel__selection-action"
+          style={{ position: 'fixed', top: selectionRect.top, left: selectionRect.left, transform: 'translateX(-50%)', zIndex: 1000 }}
+        >
+          <span
+            className="card-chat-panel__drag-handle"
+            draggable
+            onDragStart={(e) => {
+              const payload = JSON.stringify({ text: selectedText, title: selectedText.slice(0, 60), sourceCardId: card?.id || null });
+              e.dataTransfer.setData('application/x-council-card', payload);
+              e.dataTransfer.setData('text/plain', selectedText);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+            onDragEnd={() => {
+              setSelectedText('');
+              setSelectionRect(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+            title="Drag to canvas to create card"
+          >
+            ⠿
+          </span>
+          <button
+            className="card-chat-panel__card-btn"
+            onClick={async () => {
+              try {
+                const newCard = await createCard(boardId, {
+                  card_type: 'note',
+                  title: selectedText.slice(0, 60),
+                  content: selectedText,
+                });
+                onCardCreated?.(newCard);
+              } catch (err) {
+                setError('Failed to create card: ' + err.message);
+              }
+              setSelectedText('');
+              setSelectionRect(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+          >
+            + Card
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
-      <div className="card-chat-panel__messages">
+      <div className="card-chat-panel__messages" onMouseUp={handleMessageMouseUp} onDragStart={handleMessageDragStart}>
         {messages.length === 0 && !isLoading && (
           <div className="card-chat-panel__empty">
             Ask a question about this card. {mode === 'council' ? 'The council will deliberate.' : 'A single model will respond.'}

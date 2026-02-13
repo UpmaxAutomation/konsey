@@ -68,7 +68,7 @@ export default function ShareButton({ conversationId, conversationTitle }) {
 
       {isOpen && (
         <div className="share-modal-overlay" onClick={() => setIsOpen(false)}>
-          <div className="share-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="share-modal" role="dialog" aria-modal="true" aria-label="Share conversation" onClick={(e) => e.stopPropagation()}>
             <div className="share-modal-header">
               <h3>Share Conversation</h3>
               <button className="share-close" onClick={() => setIsOpen(false)}>×</button>

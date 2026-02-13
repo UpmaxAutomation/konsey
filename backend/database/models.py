@@ -458,6 +458,12 @@ class Card(Base):
         ForeignKey("sections.id", ondelete="SET NULL"),
         nullable=True, index=True,
     )
+    source_card_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cards.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    is_library: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -466,14 +472,24 @@ class Card(Base):
     section: Mapped[Optional["Section"]] = relationship(back_populates="cards", foreign_keys=[section_id])
     property_values: Mapped[List["CardPropertyValue"]] = relationship(back_populates="card", cascade="all, delete-orphan")
     card_tags: Mapped[List["CardTag"]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    source_card: Mapped[Optional["Card"]] = relationship(
+        remote_side="Card.id",
+        foreign_keys=[source_card_id],
+    )
+    linked_instances: Mapped[List["Card"]] = relationship(
+        foreign_keys="Card.source_card_id",
+        back_populates="source_card",
+    )
 
     __table_args__ = (
         CheckConstraint(
-            "card_type IN ('note', 'query', 'council_response', 'council_synthesis', 'file_ref', 'link', 'board_ref', 'workflow_output', 'knowledge')",
+            "card_type IN ('note', 'query', 'council_response', 'council_synthesis', 'file_ref', 'link', 'board_ref', 'workflow_output', 'knowledge', 'pl_input', 'pl_llm', 'pl_council', 'pl_transform', 'pl_output', 'pl_conditional', 'linked_card')",
             name="ck_card_type"
         ),
         Index("idx_cards_journal", "board_id", "journal_date", postgresql_where=text("is_journal = true")),
         Index("idx_cards_inbox", "board_id", "created_at", postgresql_where=text("is_inbox = true")),
+        Index("idx_cards_source", "source_card_id", postgresql_where=text("source_card_id IS NOT NULL")),
+        Index("idx_cards_library", "board_id", "is_library", postgresql_where=text("is_library = true")),
     )
 
 
@@ -498,7 +514,7 @@ class Edge(Base):
     __table_args__ = (
         UniqueConstraint("from_card_id", "to_card_id", "edge_type", name="uq_edge_from_to_type"),
         CheckConstraint(
-            "edge_type IN ('derived_from', 'ranks_above', 'synthesizes', 'related', 'workflow_step')",
+            "edge_type IN ('derived_from', 'ranks_above', 'synthesizes', 'related', 'workflow_step', 'pipeline', 'linked')",
             name="ck_edge_type"
         ),
     )
@@ -894,3 +910,24 @@ class TemplateRating(Base):
         UniqueConstraint("user_id", "template_type", "template_id", name="uq_user_template_rating"),
         Index("idx_template_ratings_template", "template_type", "template_id"),
     )
+
+
+# ============ v16: Card Attachments ============
+
+class CardAttachment(Base):
+    """File or embed attachment on a card."""
+    __tablename__ = "card_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    card_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cards.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(30), nullable=False, default="file")
+    mime_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    embed_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    content_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rag_indexed: Mapped[bool] = mapped_column(Boolean, default=False)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

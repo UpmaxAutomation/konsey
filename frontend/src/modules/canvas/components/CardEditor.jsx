@@ -32,7 +32,7 @@ function FallbackTextarea({ content, placeholder, onSave, onCancel, onContentCha
   );
 }
 
-export default function CardEditor({ title, content, onSave, onAutoSave, onCancel, cardType, boardCards = [] }) {
+export default function CardEditor({ title, content, cardId, onSave, onAutoSave, onCancel, cardType, boardCards = [], onExtractToCard, onFileDrop }) {
   const [editTitle, setEditTitle] = useState(title);
   const [tiptapFailed, setTiptapFailed] = useState(false);
   const contentRef = useRef(content);
@@ -76,6 +76,22 @@ export default function CardEditor({ title, content, onSave, onAutoSave, onCance
       ref={editorRef}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(e) => {
+        const files = e.dataTransfer?.files;
+        if (!files?.length) return;
+        // Only handle non-image files (images handled by TiptapEditor)
+        const nonImageFiles = Array.from(files).filter(f => !f.type.startsWith('image/'));
+        if (nonImageFiles.length > 0 && onFileDrop) {
+          e.preventDefault();
+          nonImageFiles.forEach(f => onFileDrop(f));
+        }
+      }}
     >
       <input
         ref={titleRef}
@@ -102,12 +118,14 @@ export default function CardEditor({ title, content, onSave, onAutoSave, onCance
           <TiptapErrorBoundary onError={() => setTiptapFailed(true)}>
             <LazyTiptapEditor
               content={content}
+              cardId={cardId}
               placeholder={placeholder}
               onSave={(md) => { flush(); onSave(editTitle, md); }}
               onCancel={() => { flush(); onCancel(); }}
               onContentChange={handleContentChange}
               autoFocus={false}
               boardCards={boardCards}
+              onExtractToCard={onExtractToCard ? (text) => onExtractToCard(text, cardId) : undefined}
             />
           </TiptapErrorBoundary>
         </Suspense>

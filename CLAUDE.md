@@ -48,3 +48,10 @@ code_review, research, creative, reasoning, budget — each with tuned models + 
 
 ## Reasoning Models
 Auto-detected (O1/O3/R1/QwQ), 120s timeout, thinking extraction, collapsible UI display
+
+## Agent Teams — File Ownership
+- **Frontend teammate:** `frontend/src/` — components, pages, hooks, styles
+- **Backend teammate:** `backend/` — main.py, council.py, voting.py, openrouter.py, storage.py
+- **QA teammate:** tests, build verification, lint
+- **Shared (team lead only):** `backend/config.py`, `.env`, `package.json`
+- After all tests pass: `python ~/.claude/scripts/notify-discord.py "LLM Council" "details" success`

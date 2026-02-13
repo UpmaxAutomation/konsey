@@ -91,10 +91,12 @@ const commands = [
     category: 'Advanced',
     aliases: ['img', 'picture', 'photo'],
     command: (editor) => {
-      const url = window.prompt('Enter image URL:');
-      if (url) {
-        editor.chain().focus().setImage({ src: url }).run();
-      }
+      // Dispatch custom event for the editor wrapper to handle with proper UI
+      const event = new CustomEvent('slash-command-input', {
+        detail: { type: 'image', editor },
+        bubbles: true,
+      });
+      editor.view.dom.dispatchEvent(event);
     },
   },
   {
@@ -120,9 +122,28 @@ const commands = [
     category: 'Advanced',
     aliases: ['embed', 'iframe', 'youtube', 'video'],
     command: (editor) => {
-      const url = window.prompt('Enter URL to embed:');
-      if (url) editor.chain().focus().insertContent({ type: 'embed', attrs: { url } }).run();
+      const event = new CustomEvent('slash-command-input', {
+        detail: { type: 'embed', editor },
+        bubbles: true,
+      });
+      editor.view.dom.dispatchEvent(event);
     },
+  },
+  {
+    title: 'Table',
+    icon: '\u2637',
+    description: 'Insert a 3\u00d73 table',
+    category: 'Advanced',
+    aliases: ['table', 'grid'],
+    command: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+  },
+  {
+    title: 'Toggle',
+    icon: '\u25B6',
+    description: 'Collapsible toggle block',
+    category: 'Advanced',
+    aliases: ['toggle', 'collapsible', 'details', 'accordion'],
+    command: (editor) => editor.chain().focus().insertContent({ type: 'toggleBlock', attrs: { summary: 'Toggle' } }).run(),
   },
 ];
 

@@ -64,6 +64,10 @@ from .routes import (
     assets_router,
     board_templates_router,
     export_router,
+    card_attachments_router,
+    pipeline_router,
+    card_search_router,
+    annotations_router,
 )
 
 # Setup structured logging
@@ -262,6 +266,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ============ Include All Routers ============
 app.include_router(auth_router)
+app.include_router(pipeline_router)  # Before boards_router to avoid route ordering issues
 app.include_router(boards_router)
 app.include_router(conversations_router)
 app.include_router(council_router)
@@ -287,6 +292,9 @@ app.include_router(flow_templates_router)
 app.include_router(assets_router)
 app.include_router(board_templates_router)
 app.include_router(export_router)
+app.include_router(card_attachments_router)
+app.include_router(card_search_router)
+app.include_router(annotations_router)
 
 
 # ============ Health Endpoints ============

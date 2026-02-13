@@ -96,20 +96,20 @@ export default function SearchModal({ isOpen, onClose, onSelectConversation }) {
     }
   }, [selectedIndex, results]);
 
-  const highlightMatch = (text) => {
-    if (!text) return '';
-
-    // Replace [[HIGHLIGHT]] and [[/HIGHLIGHT]] markers with HTML
-    return text
-      .replace(/\[\[HIGHLIGHT\]\]/g, '<mark>')
-      .replace(/\[\[\/HIGHLIGHT\]\]/g, '</mark>');
+  const renderHighlighted = (text) => {
+    if (!text) return null;
+    // Split on highlight markers, odd indices are highlighted segments
+    const parts = text.split(/\[\[HIGHLIGHT\]\](.*?)\[\[\/HIGHLIGHT\]\]/gs);
+    return parts.map((part, i) =>
+      i % 2 === 1 ? <mark key={i}>{part}</mark> : part
+    );
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="search-modal-overlay" onClick={onClose}>
-      <div className="search-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="search-modal" role="dialog" aria-modal="true" aria-label="Search conversations" onClick={(e) => e.stopPropagation()}>
         <div className="search-modal-header">
           <div className="search-input-container">
             <svg
@@ -189,10 +189,9 @@ export default function SearchModal({ isOpen, onClose, onSelectConversation }) {
                     {result.matches.slice(0, 3).map((match, idx) => (
                       <div key={idx} className="search-result-match">
                         <div className="search-result-context">{match.context}</div>
-                        <div
-                          className="search-result-snippet"
-                          dangerouslySetInnerHTML={{ __html: highlightMatch(match.snippet) }}
-                        />
+                        <div className="search-result-snippet">
+                          {renderHighlighted(match.snippet)}
+                        </div>
                       </div>
                     ))}
                     {result.matches.length > 3 && (

@@ -10,12 +10,16 @@ import SearchModal from '../shared/components/SearchModal';
 import ProjectSettings from './ProjectSettings';
 import NewProjectModal from './NewProjectModal';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { listProjects, createProject } from '../api';
+import CardLibrary from '../modules/sidebar/CardLibrary';
+import JournalPanel from '../modules/canvas/components/JournalPanel';
+import InboxPanel from '../modules/canvas/components/InboxPanel';
 import useBoardStore from '../stores/boardStore';
 import useUiStore from '../stores/uiStore';
 import BoardTree from '../modules/sidebar/BoardTree';
 import SidebarTabs from '../modules/sidebar/SidebarTabs';
+import TagDatabase from '../modules/sidebar/TagDatabase';
 
 // LocalStorage keys
 const STARRED_PROJECTS_KEY = 'llm-council-starred-projects';
@@ -98,6 +102,14 @@ export default function ClaudeSidebar({
   });
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Extract boardId from URL when on /boards/:id
+  const activeBoardId = useMemo(() => {
+    const parts = location.pathname.split('/').filter(Boolean);
+    if (parts[0] === 'boards' && parts[1]) return parts[1];
+    return null;
+  }, [location.pathname]);
 
   // Save starred projects to localStorage
   useEffect(() => {
@@ -263,12 +275,13 @@ export default function ClaudeSidebar({
   // Close sidebar on mobile when selecting conversation
   const handleSelect = useCallback(
     (id) => {
+      navigate('/');
       onSelectConversation(id);
       if (window.innerWidth <= 768 && onToggleMobile) {
         onToggleMobile();
       }
     },
-    [onSelectConversation, onToggleMobile]
+    [navigate, onSelectConversation, onToggleMobile]
   );
 
   // Handle move to project
@@ -428,6 +441,40 @@ export default function ClaudeSidebar({
           </div>
         )}
 
+        {sidebarTab === 'cards' && (
+          <div className="claude-sidebar-tab-content">
+            <CardLibrary onNavigateToCard={(boardId, cardId) => navigate(`/boards/${boardId}`)} />
+          </div>
+        )}
+
+        {sidebarTab === 'journal' && (
+          <div className="claude-sidebar-tab-content">
+            {activeBoardId ? (
+              <JournalPanel boardId={activeBoardId} onClose={() => setSidebarTab('chats')} onFocusCard={() => {}} />
+            ) : (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                Open a board to view journal entries
+              </div>
+            )}
+          </div>
+        )}
+
+        {sidebarTab === 'inbox' && (
+          <div className="claude-sidebar-tab-content">
+            {activeBoardId ? (
+              <InboxPanel boardId={activeBoardId} onClose={() => setSidebarTab('chats')} onFocusCard={() => {}} />
+            ) : (
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
+                Open a board to view inbox items
+              </div>
+            )}
+          </div>
+        )}
+
+        {sidebarTab === 'tags' && (
+          <TagDatabase />
+        )}
+
         {/* Chats tab content: Projects + Conversations */}
         {sidebarTab === 'chats' && <>
         {/* Projects Section */}
@@ -449,16 +496,6 @@ export default function ClaudeSidebar({
                 <path d="M9 18l6-6-6-6" />
               </svg>
               <span className="claude-projects-title">Projects</span>
-            </button>
-            <button
-              className="claude-projects-settings"
-              onClick={() => setShowSettings(true)}
-              title="Settings"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
             </button>
           </div>
 

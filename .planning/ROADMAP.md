@@ -11,6 +11,16 @@
 - ✅ **v4.1 Card Fixes** - Phase 28 (shipped 2026-02-07)
 - ✅ **v5.0 Sections & Nested Boards** - Phases 29-30 (shipped 2026-02-08)
 - ✅ **v6.0 Workflows & Agents** - Phases 31-32 (shipped 2026-02-09)
+- ✅ **v9.0 Undo/Redo + Version History** (shipped 2026-02-09)
+- ✅ **v9.1 Card Mentions + Block Types** (shipped 2026-02-09)
+- ✅ **v10.0 Real-time Collaboration** (shipped 2026-02-09)
+- ✅ **v11.0 Multi-step AI Flows** (shipped 2026-02-09)
+- ✅ **v12.0 Properties, Tags, RAG & Asset Library** (shipped 2026-02-09)
+- ✅ **v13.0 Template Marketplace** (shipped 2026-02-10)
+- ✅ **v14.0 Export & Integrations** (shipped 2026-02-10)
+- ✅ **v15.0 Performance** (shipped 2026-02-10)
+- ✅ **v17.0 Visual LLM Pipeline Editor** (shipped 2026-02-10)
+- ✅ **v19.0 Cross-Board Cards, Global Library, Auto-Layout, PDF Annotation** (shipped 2026-02-10)
 
 ## Domain Expertise
 
@@ -291,6 +301,91 @@ Phases execute in order: 24 → 25 → 26 → 27
 
 ---
 
+---
+
+## ✅ v9.0 Undo/Redo + Version History — SHIPPED 2026-02-09
+
+- **Undo/Redo**: Zustand `historyStore` (MAX_HISTORY=50), Ctrl/Cmd+Z / Ctrl/Cmd+Y keyboard shortcuts
+- **Snapshots**: `BoardSnapshot` model, auto-snapshot on card edits (5-min debounce), safety snapshot before restore
+- **Version History Panel**: Browse, restore, delete snapshots via `VersionHistoryPanel.jsx`
+- Backend: 4 endpoints under `/api/boards/{board_id}/snapshots`
+
+## ✅ v9.1 Card Mentions + Block Types — SHIPPED 2026-02-09
+
+- **Card Mentions**: `[[` trigger with search popup, `CardMention` model, colored mention pills, click-to-navigate
+- **Block Types**: Callout, math-block, embed editor extensions
+- **Slash Commands**: Extended command definitions in `slash-commands.js`
+
+## ✅ v10.0 Real-time Collaboration — SHIPPED 2026-02-09
+
+- **WebSocket**: `/ws/boards/{board_id}` endpoint, board-scoped connections
+- **Presence**: User profiles with avatars, connection timestamps, per-user colors
+- **Remote Cursors**: Real-time cursor tracking with SVG overlay (`CollaborationOverlay.jsx`)
+- **Reconnect**: Auto-reconnect with exponential backoff (max 10 attempts)
+- **State**: Zustand `collaborationStore`, `useCollaboration` hook
+
+## ✅ v11.0 Multi-step AI Flows — SHIPPED 2026-02-09
+
+- **Workflow Engine**: Multi-step AI pipelines with 5 step types (council_query, ai_transform, combine, conditional, human_review)
+- **Visual Builder**: `WorkflowBuilder.jsx`, `FlowGraph.jsx`, `WorkflowRunner.jsx`
+- **Templates**: `WorkflowTemplateGallery.jsx` with research, analysis, content creation presets
+- **Execution**: SSE streaming, step approval/cancellation, run history
+- Backend: 8 endpoints, `Workflow`/`WorkflowStep`/`WorkflowRun` models
+
+## ✅ v12.0 Properties, Tags, RAG & Asset Library — SHIPPED 2026-02-09
+
+- **Properties System**: 9 editor types (text, number, select, multi-select, date, checkbox, url, email, relation)
+  - `PropertyPanel.jsx`, `PropertyRow.jsx`, `PropertyDefinitionForm.jsx`, `PropertyBadge.jsx`
+  - Zustand `propertyStore`, 5 backend endpoints
+- **Tags**: `TagDatabase.jsx` sidebar panel, create/delete/colorize/search, `Tag`/`CardTag` models
+- **RAG**: Document chunking + embedding, semantic search, per-project status
+  - `DocumentChunk`/`KnowledgeLayer` models, 5 RAG endpoints, 7 layer endpoints
+- **Asset Library**: `AssetBrowser.jsx` (images, documents, other), 5 backend endpoints
+
+## ✅ v13.0 Template Marketplace — SHIPPED 2026-02-10
+
+- **Marketplace UI**: `TemplateMarketplace.jsx` with category filtering, star ratings, tabs (board/workflow/prompt)
+- **Board Templates**: Create from board, apply to board, `BoardTemplate`/`TemplateRating` models
+- **Flow Templates**: `UserFlowTemplate` model, workflow template creation
+- Backend: 6 board-template endpoints + marketplace listing
+
+## ✅ v14.0 Export & Integrations — SHIPPED 2026-02-10
+
+- **Export**: `ExportDialog.jsx` — Markdown, JSON, CSV, ZIP formats
+- **Share Links**: Token-based public board sharing
+- **Webhooks**: GitHub + Slack incoming webhook endpoints
+- **Integrations Panel**: `IntegrationPanel.jsx` for managing connections
+
+## ✅ v15.0 Performance — SHIPPED 2026-02-10
+
+- **Monitoring**: `frontend/src/utils/monitoring.js` performance utilities
+- **Debounced Positions**: `useDebouncedPositions` hook for canvas optimization
+- **Lazy Loading**: Card attachments, heavy panels (`lazy()` + `Suspense`)
+- **DB Pooling**: SQLAlchemy async connection pooling
+
+## ✅ v15+ Additional Features (uncommitted) — IN PROGRESS
+
+- **Card Attachments**: `CardAttachments.jsx`, `CardAttachment` model, CRUD + queries
+- **Multi-View System**: `ViewContainer.jsx` switcher with 4 view types:
+  - Canvas (default ReactFlow), Table (sortable columns), Kanban (swim lanes), Timeline (month/week/day zoom)
+- **Claude Sidebar**: `ClaudeSidebar.jsx` AI assistant panel
+- **Sidebar Tabs**: `SidebarTabs.jsx` with tag database, views, settings
+
+## ✅ v17.0 Visual LLM Pipeline Editor — SHIPPED 2026-02-10
+
+- **Pipeline Nodes = Cards**: 6 node types stored as Card rows with `pl_*` card_type values
+  - `pl_input` (green), `pl_llm` (blue), `pl_council` (purple), `pl_transform` (orange), `pl_output` (gray), `pl_conditional` (yellow)
+- **PipelineNode Component**: Compact 220px ReactFlow custom node with model selector, prompt template, status indicators, result preview
+- **DAG Execution Engine**: `pipeline_engine.py` — Kahn's algorithm topological sort, per-node dispatch, conditional routing (TRUE/FALSE branches)
+- **SSE Streaming**: Real-time progress events (node_start, node_complete, node_error, pipeline_complete)
+- **Frontend Hook**: `usePipeline.js` — tracks per-node status/output, updates ReactFlow nodes live
+- **Edge Auto-detection**: Connecting pl_* nodes auto-sets `edge_type: 'pipeline'`
+- **Pipeline Palette**: 6 draggable node types in BoardToolbar dropdown + "Run Pipeline" button
+- **Migration**: `0005_v17_pipeline_types.py` — CHECK constraints for new types (run `alembic upgrade head`)
+- **Files**: 6 new (PipelineNode.jsx, PipelineNode.css, pipeline_engine.py, pipeline.py route, pipeline.js API, usePipeline.js), 6 modified
+
+---
+
 ## Summary
 
 **v1.0-v2.0 Complete** (Phases 1-16)
@@ -300,34 +395,47 @@ Phases execute in order: 24 → 25 → 26 → 27
 - Project system world-class (security, context injection, UX)
 
 **v3.0 Complete** (Phases 17-23) — Council Canvas
-- Phase 17: Modular refactor (main.py 7.5K→200 LOC, ChatInterface split)
-- Phase 18: Heptabase-style cards (color system, typography, shadows, editing)
-- Phase 19: Council on canvas (synthesis cards, board memory, context injection)
-- Phase 20: Search & backlinks (Cmd+F, type filter, backlink navigation)
-- Phase 21: Card AI & board AI (6 card actions, 5 board actions)
-- Phase 22: Chat ↔ canvas bridge (pin, discuss, URL routing)
-- Phase 23: Polish & docs (performance, a11y, tests, contributor guide)
+- Modular refactor (main.py 7.5K→200 LOC), Heptabase-style cards, council on canvas
+- Search & backlinks, card AI & board AI, chat-canvas bridge, polish & docs
 
 **v4.0 Complete** (Phases 24-27) — 10/10 Cards
-- Phase 24: Tiptap WYSIWYG editor + bubble toolbar + markdown bridge
-- Phase 25: Single-click edit, slash commands (10 commands), task lists, highlight, card resize
-- Phase 26: Image paste/drop/URL, `[[` card mentions, floating add menu
-- Phase 27: Autosave (2s debounce), smooth transitions, 6 card templates, dark mode polish
+- Tiptap WYSIWYG, bubble toolbar, slash commands, task lists, card resize
+- Image paste/drop, `[[` card mentions, autosave, templates, dark mode polish
 
 **v4.1 Complete** (Phase 28) — Card Fixes
-- Editor crash fix (patched-suggestion.js), position persistence, Heptabase card redesign
+- Editor crash fix, position persistence, Heptabase card redesign
 
 **v5.0 Complete** (Phases 29-30) — Sections & Nested Boards
-- Section grouping (visual card groups on canvas)
-- Nested boards with parent/child navigation and breadcrumbs
-- Inbox panel for quick capture
-- Journal panel with daily entries
-- Edge handle persistence and styling
+- Section grouping, nested boards, breadcrumbs, inbox, journal, edge handles
 
 **v6.0 Complete** (Phases 31-32) — Workflows & Agents
-- Workflow engine: multi-step AI pipelines on canvas boards
-- Workflow templates: research, analysis, content creation
-- Autonomous agent system: goal-driven board population
-- Agent panel with iteration tracking and thought logs
-- Zustand state management for workflows and agents
-- Deploy infrastructure: Vercel (frontend) + Railway (backend)
+- Workflow engine, templates, autonomous agents, deploy (Vercel + Railway)
+
+**v9.0** — Undo/Redo + Version History (snapshots, keyboard shortcuts)
+**v9.1** — Card Mentions + Block Types (callout, math, embed)
+**v10.0** — Real-time Collaboration (WebSocket, presence, remote cursors)
+**v11.0** — Multi-step AI Flows (workflow builder, runner, templates)
+**v12.0** — Properties (9 types), Tags, RAG + Knowledge Layers, Asset Library
+**v13.0** — Template Marketplace (board/workflow/prompt, ratings)
+**v14.0** — Export (4 formats) + Integrations (GitHub/Slack webhooks, share links)
+**v15.0** — Performance (monitoring, lazy loading, debounced positions)
+**v17.0** — Visual LLM Pipeline Editor (6 node types, DAG execution, SSE streaming)
+
+---
+
+## What's Next
+
+### v18.0 — Candidates for Next Development
+
+| Feature | Description | Complexity | Impact |
+|---------|-------------|------------|--------|
+| **Pipeline v2** | Typed sockets, sub-pipelines, node caching, JSON export/import | Medium | High |
+| **Full Council Pipeline Node** | `pl_council` runs actual 3-stage deliberation (not just single LLM call) | Small | High |
+| **Pipeline Templates** | Pre-built pipeline DAGs (research chain, content pipeline, analysis) | Small | Medium |
+| **Mobile / Responsive** | Touch support, responsive canvas, mobile sidebar | Large | Medium |
+| **Plugin System** | Custom node types, third-party integrations, extension API | Large | High |
+| **AI Memory** | Cross-board memory, user preference learning, context carryover | Medium | High |
+| **Collaboration v2** | Operational transform / CRDT for concurrent editing, edit locks | Large | Medium |
+| **Advanced Views** | Gallery view, calendar view, graph/network view | Medium | Medium |
+| **API Keys / Webhooks** | User-managed API keys, outbound webhooks, Zapier integration | Medium | Medium |
+| **Testing** | E2E Playwright tests, integration tests, CI pipeline | Medium | High |

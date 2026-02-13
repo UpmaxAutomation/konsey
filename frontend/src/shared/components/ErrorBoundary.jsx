@@ -41,7 +41,7 @@ class ErrorBoundary extends Component {
           <p style={{ color: '#666', marginBottom: '20px' }}>
             An unexpected error occurred. Please try refreshing the page.
           </p>
-          {this.state.error && (
+          {this.state.error && import.meta.env.DEV && (
             <details style={{
               textAlign: 'left',
               background: '#f8f9fa',

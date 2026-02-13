@@ -18,6 +18,37 @@
   position: relative;
 }
 
+/* Drop zone indicator when dragging card content onto canvas */
+.board-view__canvas--drag-over {
+  outline: 2px dashed rgba(99, 102, 241, 0.4);
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+
+.board-view__canvas--drag-over::after {
+  content: 'Drop to create linked card';
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  background: rgba(99, 102, 241, 0.9);
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Inter', system-ui, sans-serif;
+  pointer-events: none;
+  animation: drop-hint-fade 0.2s ease-out;
+  box-shadow: 0 2px 12px rgba(99, 102, 241, 0.3);
+}
+
+@keyframes drop-hint-fade {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* React Flow overrides to match app design */
 .board-view .react-flow {
   background: var(--bg-secondary);
@@ -93,6 +124,21 @@
   filter: brightness(1.3) drop-shadow(0 0 3px currentColor);
 }
 
+/* Selected edge glow */
+.animated-edge--selected {
+  filter: drop-shadow(0 0 4px currentColor) drop-shadow(0 0 8px currentColor);
+  stroke-width: 2.5 !important;
+}
+
+/* Edge label wrapper (positioned at edge midpoint) */
+.animated-edge__label-wrapper {
+  position: absolute;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Edge label pill */
 .animated-edge__label {
   position: absolute;
@@ -108,6 +154,25 @@
   white-space: nowrap;
   user-select: none;
   transition: opacity 0.15s ease;
+}
+
+/* Edge label inline input */
+.animated-edge__label-input {
+  position: absolute;
+  pointer-events: all;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-primary, #1e293b);
+  background: var(--bg-primary, #ffffff);
+  border: 1px solid var(--accent-primary, #6366f1);
+  padding: 3px 8px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+  min-width: 80px;
+  text-align: center;
 }
 
 .react-flow__edge:hover .animated-edge__label,

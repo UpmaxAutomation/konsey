@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database.connection import get_db, USE_DATABASE
 from ..board_export import export_board_markdown, export_board_json, export_board_csv, export_board_zip
 from ..export import create_board_share_link, get_shared_board_id
+from ..utils import parse_uuid
 
 router = APIRouter(prefix="/api", tags=["export"])
 
@@ -133,7 +134,7 @@ async def get_shared_board(
     if not USE_DATABASE:
         raise HTTPException(400, "Database not enabled")
 
-    board_data = await _get_board_data(db, uuid.UUID(board_id))
+    board_data = await _get_board_data(db, parse_uuid(board_id, "board_id"))
     return {"board": board_data, "read_only": True}
 
 
@@ -178,7 +179,7 @@ async def github_webhook(
 
     from ..database.models import Card
     card = Card(
-        board_id=uuid.UUID(target_board),
+        board_id=parse_uuid(target_board, "board_id"),
         title=card_title[:200],
         content=card_content,
         card_type="note",
@@ -220,7 +221,7 @@ async def slack_webhook(
 
     from ..database.models import Card
     card = Card(
-        board_id=uuid.UUID(target_board),
+        board_id=parse_uuid(target_board, "board_id"),
         title=card_title[:200],
         content=card_content,
         card_type="note",

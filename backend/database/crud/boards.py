@@ -240,6 +240,12 @@ async def update_card(
         .where(Card.id == card_id, Card.board_id == board_id)
         .values(**update_data)
     )
+
+    # Auto-sync linked cards if title or content changed
+    if "title" in update_data or "content" in update_data:
+        from .card_search import sync_linked_cards
+        await sync_linked_cards(db, card_id)
+
     return await get_card_by_id(db, card_id, board_id)
 
 
@@ -299,6 +305,177 @@ async def delete_card(
     return result.rowcount > 0
 
 
+async def merge_cards(
+    db: AsyncSession,
+    board_id: uuid.UUID,
+    target_card_id: uuid.UUID,
+    source_card_id: uuid.UUID,
+) -> Optional[Card]:
+    """Merge source card into target card.
+
+    Appends source content to target, transfers edges from source to target,
+    removes self-referential edges, merges extra dicts, takes the wider width,
+    and deletes the source card.
+
+    Returns the updated target card, or None if either card is missing.
+    """
+    target = await get_card_by_id(db, target_card_id, board_id)
+    source = await get_card_by_id(db, source_card_id, board_id)
+    if not target or not source:
+        return None
+
+    # ── Build merged content ──
+    target_content = target.content or ""
+    source_content = source.content or ""
+
+    if source.title and source.title != target.title:
+        appended = f"\n\n## {source.title}\n\n{source_content}"
+    else:
+        appended = source_content
+
+    if target_content and appended:
+        merged_content = f"{target_content}\n\n---\n\n{appended.lstrip()}"
+    else:
+        merged_content = target_content or appended
+
+    # ── Transfer edges: re-point from_card_id ──
+    await db.execute(
+        update(Edge)
+        .where(Edge.from_card_id == source_card_id, Edge.board_id == board_id)
+        .values(from_card_id=target_card_id)
+    )
+
+    # ── Transfer edges: re-point to_card_id ──
+    await db.execute(
+        update(Edge)
+        .where(Edge.to_card_id == source_card_id, Edge.board_id == board_id)
+        .values(to_card_id=target_card_id)
+    )
+
+    # ── Delete self-referential edges that resulted from the transfer ──
+    await db.execute(
+        delete(Edge)
+        .where(
+            Edge.board_id == board_id,
+            Edge.from_card_id == target_card_id,
+            Edge.to_card_id == target_card_id,
+        )
+    )
+
+    # ── Merge extra dicts (target takes priority for conflicts) ──
+    source_extra = dict(source.extra) if source.extra else {}
+    target_extra = dict(target.extra) if target.extra else {}
+    merged_extra = {**source_extra, **target_extra}
+
+    # ── Store merge provenance for unmerge/split ──
+    existing_provenance = merged_extra.get("merged_from", [])
+    existing_provenance.append({
+        "card_id": str(source.id),
+        "title": source.title,
+        "content": source_content,
+        "card_type": source.card_type or "note",
+        "width": source.width,
+        "color": source.color,
+        "position_x": source.position_x,
+        "position_y": source.position_y,
+        "extra": source_extra,
+    })
+    merged_extra["merged_from"] = existing_provenance
+
+    # ── Take the wider width ──
+    merged_width = max(target.width, source.width)
+
+    # ── Apply updates to target card ──
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        update(Card)
+        .where(Card.id == target_card_id, Card.board_id == board_id)
+        .values(
+            content=merged_content,
+            extra=merged_extra,
+            width=merged_width,
+            updated_at=now,
+        )
+    )
+
+    # ── Delete source card (cascade removes any remaining edges) ──
+    await db.execute(
+        delete(Card).where(Card.id == source_card_id, Card.board_id == board_id)
+    )
+
+    return await get_card_by_id(db, target_card_id, board_id)
+
+
+async def split_card(
+    db: AsyncSession,
+    board_id: uuid.UUID,
+    card_id: uuid.UUID,
+) -> Optional[dict]:
+    """Split a previously merged card back into its original components.
+
+    Reads `extra.merged_from` provenance, recreates original source cards
+    at nearby positions, restores the target card to its pre-merge content,
+    and clears the provenance.
+
+    Returns {"target": Card, "restored": [Card, ...]} or None if not splittable.
+    """
+    card = await get_card_by_id(db, card_id, board_id)
+    if not card:
+        return None
+
+    card_extra = dict(card.extra) if card.extra else {}
+    provenance = card_extra.get("merged_from")
+    if not provenance or not isinstance(provenance, list) or len(provenance) == 0:
+        return None
+
+    now = datetime.now(timezone.utc)
+    restored_cards = []
+
+    # Recreate each source card from provenance
+    for i, src in enumerate(provenance):
+        src_extra = dict(src.get("extra", {}))
+        # Clean provenance from restored cards
+        src_extra.pop("merged_from", None)
+        new_card = Card(
+            id=uuid.uuid4(),
+            board_id=board_id,
+            card_type=src.get("card_type", "note"),
+            title=src.get("title"),
+            content=src.get("content", ""),
+            position_x=card.position_x + (i + 1) * 60,
+            position_y=card.position_y + (i + 1) * 60,
+            width=src.get("width", 280.0),
+            height=200.0,
+            color=src.get("color"),
+            extra=src_extra,
+        )
+        db.add(new_card)
+        restored_cards.append(new_card)
+
+    # Restore the target card: strip appended content and clear provenance
+    # The merged content has "---" separators — restore to original by
+    # taking everything before the first merge separator
+    original_content = card.content or ""
+    first_separator = original_content.find("\n\n---\n\n")
+    if first_separator >= 0:
+        original_content = original_content[:first_separator]
+
+    cleaned_extra = {k: v for k, v in card_extra.items() if k != "merged_from"}
+    await db.execute(
+        update(Card)
+        .where(Card.id == card_id, Card.board_id == board_id)
+        .values(
+            content=original_content,
+            extra=cleaned_extra,
+            updated_at=now,
+        )
+    )
+
+    await db.flush()
+    updated_target = await get_card_by_id(db, card_id, board_id)
+    return {"target": updated_target, "restored": restored_cards}
+
+
 # ──────────────────────────────────────────────
 # Edge operations
 # ──────────────────────────────────────────────
@@ -342,6 +519,32 @@ async def create_edge(
     db.add(edge)
     await db.flush()
     return edge
+
+
+async def update_edge(
+    db: AsyncSession,
+    edge_id: uuid.UUID,
+    board_id: uuid.UUID,
+    **kwargs
+) -> Optional[Edge]:
+    """Update edge fields."""
+    allowed_fields = {"label", "edge_type", "style", "source_handle", "target_handle"}
+    update_data = {k: v for k, v in kwargs.items() if k in allowed_fields}
+    if not update_data:
+        result = await db.execute(
+            select(Edge).where(Edge.id == edge_id, Edge.board_id == board_id)
+        )
+        return result.scalar_one_or_none()
+
+    await db.execute(
+        update(Edge)
+        .where(Edge.id == edge_id, Edge.board_id == board_id)
+        .values(**update_data)
+    )
+    result = await db.execute(
+        select(Edge).where(Edge.id == edge_id, Edge.board_id == board_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def delete_edge(

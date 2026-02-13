@@ -221,6 +221,44 @@
   color: #dc2626;
 }
 
+.project-conv-confirm {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+
+.project-conv-confirm-yes,
+.project-conv-confirm-no {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.project-conv-confirm-yes {
+  background: #ef4444;
+  color: #fff;
+}
+
+.project-conv-confirm-yes:hover {
+  background: #dc2626;
+}
+
+.project-conv-confirm-no {
+  background: var(--bg-tertiary, #f1f5f9);
+  color: var(--text-secondary, #64748b);
+}
+
+.project-conv-confirm-no:hover {
+  background: var(--bg-hover, #e2e8f0);
+}
+
 .project-empty-state {
   padding: 24px 16px;
   text-align: center;

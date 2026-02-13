@@ -113,6 +113,137 @@
   text-decoration: underline;
 }
 
+/* ---------- Table ---------- */
+
+.tiptap-editor__content table,
+.canvas-card__markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  table-layout: fixed;
+  overflow: hidden;
+}
+
+.tiptap-editor__content table td,
+.tiptap-editor__content table th,
+.canvas-card__markdown table td,
+.canvas-card__markdown table th {
+  border: 1px solid var(--border-primary, #e4e4e7);
+  padding: 8px;
+  min-width: 80px;
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 1.5;
+  position: relative;
+}
+
+.tiptap-editor__content table th,
+.canvas-card__markdown table th {
+  background: var(--bg-secondary, #f4f4f5);
+  font-weight: 600;
+  text-align: left;
+}
+
+.tiptap-editor__content table td > *,
+.tiptap-editor__content table th > * {
+  margin: 0;
+}
+
+/* Selected cell highlight */
+.tiptap-editor__content .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(99, 102, 241, 0.1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Column resize handle */
+.tiptap-editor__content .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background: var(--card-accent, #6366f1);
+  pointer-events: none;
+}
+
+.tiptap-editor__content .tableWrapper {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.tiptap-editor__content .resize-cursor {
+  cursor: col-resize;
+}
+
+/* ---------- Toggle / Collapsible ---------- */
+
+.tiptap-toggle {
+  border: 1px solid var(--border-primary, #e4e4e7);
+  border-radius: 6px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+
+.tiptap-toggle__summary {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-primary);
+  list-style: none;
+}
+
+.tiptap-toggle__summary::-webkit-details-marker {
+  display: none;
+}
+
+.tiptap-toggle__summary::before {
+  content: '\25B6';
+  font-size: 10px;
+  margin-right: 8px;
+  transition: transform 0.15s ease;
+  color: var(--text-muted, #a1a1aa);
+}
+
+details[open] > .tiptap-toggle__summary::before {
+  transform: rotate(90deg);
+}
+
+.tiptap-toggle__content {
+  padding: 8px 12px;
+}
+
+.tiptap-toggle__content > *:first-child {
+  margin-top: 0;
+}
+
+.tiptap-toggle__content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Link ---------- */
+
+.tiptap-link {
+  color: #3b82f6;
+  text-decoration: none;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.tiptap-link:hover {
+  border-bottom-color: #3b82f6;
+  text-decoration: underline;
+}
+
 /* ---------- Dark Mode ---------- */
 
 [data-theme="dark"] .tiptap-callout--info {
@@ -133,6 +264,38 @@
 [data-theme="dark"] .tiptap-callout--error {
   background: rgba(239, 68, 68, 0.10);
   color: #fca5a5;
+}
+
+[data-theme="dark"] .tiptap-editor__content table td,
+[data-theme="dark"] .tiptap-editor__content table th,
+[data-theme="dark"] .canvas-card__markdown table td,
+[data-theme="dark"] .canvas-card__markdown table th {
+  border-color: var(--border-secondary, #27272a);
+}
+
+[data-theme="dark"] .tiptap-editor__content table th,
+[data-theme="dark"] .canvas-card__markdown table th {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .tiptap-editor__content .selectedCell::after {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+[data-theme="dark"] .tiptap-toggle {
+  border-color: var(--border-secondary, #27272a);
+}
+
+[data-theme="dark"] .tiptap-toggle__summary {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="dark"] .tiptap-link {
+  color: #60a5fa;
+}
+
+[data-theme="dark"] .tiptap-link:hover {
+  border-bottom-color: #60a5fa;
 }
 
 /* ---------- Reduced Motion ---------- */

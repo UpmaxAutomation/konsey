@@ -39,6 +39,9 @@ export default function ChatInterface({
   const [showScrollFab, setShowScrollFab] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
   const [projectInfo, setProjectInfo] = useState(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionRect, setSelectionRect] = useState(null);
+  const [showSelectionBoardPicker, setShowSelectionBoardPicker] = useState(false);
 
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -165,6 +168,20 @@ export default function ChatInterface({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleMessageMouseUp = useCallback(() => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 5) {
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      setSelectedText(sel.toString().trim());
+      setSelectionRect({ top: rect.top - 40, left: rect.left + rect.width / 2 });
+    } else {
+      setSelectedText('');
+      setSelectionRect(null);
+      setShowSelectionBoardPicker(false);
+    }
+  }, []);
 
   const handleChatAreaClick = (event) => {
     const target = event.target;
@@ -319,7 +336,7 @@ export default function ChatInterface({
                       </button>
                     )}
                   </div>
-                  <div className="claude-message-text">
+                  <div className="claude-message-text" onMouseUp={handleMessageMouseUp}>
                     <SafeMarkdown components={{ code: CodeBlock }}>
                       {content}
                     </SafeMarkdown>
@@ -612,6 +629,61 @@ export default function ChatInterface({
         <div ref={messagesEndRef} />
         </div>
       </div>
+
+      {/* Text selection → Card action (drag handle + button) */}
+      {selectedText && selectionRect && (
+        <div
+          className="chat-selection-action"
+          style={{ position: 'fixed', top: selectionRect.top, left: selectionRect.left, transform: 'translateX(-50%)' }}
+        >
+          <span
+            className="chat-selection-action__drag-handle"
+            draggable
+            onDragStart={(e) => {
+              const payload = JSON.stringify({ text: selectedText, title: selectedText.slice(0, 60) });
+              e.dataTransfer.setData('application/x-council-card', payload);
+              e.dataTransfer.setData('text/plain', selectedText);
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+            onDragEnd={() => {
+              setSelectedText('');
+              setSelectionRect(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+            title="Drag to canvas to create card"
+          >
+            ⠿
+          </span>
+          <button
+            className="chat-selection-action__btn"
+            onClick={() => setShowSelectionBoardPicker(true)}
+          >
+            + Card
+          </button>
+          {showSelectionBoardPicker && (
+            <BoardPicker
+              onSelect={async (boardId) => {
+                try {
+                  const { createCard } = await import('../../../api/boards');
+                  await createCard(boardId, {
+                    card_type: 'note',
+                    title: selectedText.slice(0, 60),
+                    content: selectedText,
+                  });
+                  toast?.success('Card created from selection');
+                } catch (err) {
+                  console.error('Failed to create card:', err);
+                }
+                setSelectedText('');
+                setSelectionRect(null);
+                setShowSelectionBoardPicker(false);
+                window.getSelection()?.removeAllRanges();
+              }}
+              onClose={() => setShowSelectionBoardPicker(false)}
+            />
+          )}
+        </div>
+      )}
 
       {/* Scroll to bottom FAB */}
       {showScrollFab && (

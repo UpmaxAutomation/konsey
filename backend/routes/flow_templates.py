@@ -13,6 +13,7 @@ from ..database.connection import get_db
 from ..database.models import User
 from ..database.crud import flow_templates as templates_crud
 from ..database.crud import workflows as workflows_crud
+from ..utils import parse_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ async def create_template(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    project_id = uuid.UUID(request.project_id) if request.project_id else None
+    project_id = parse_uuid(request.project_id, "project_id") if request.project_id else None
     template = await templates_crud.create_template(
         db,
         user_id=current_user.id,
@@ -84,7 +85,7 @@ async def list_templates(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    pid = uuid.UUID(project_id) if project_id else None
+    pid = parse_uuid(project_id, "project_id") if project_id else None
     templates = await templates_crud.list_templates(db, current_user.id, pid)
     return {"templates": [_serialize_template(t) for t in templates]}
 

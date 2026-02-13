@@ -10,11 +10,16 @@ import Highlight from '@tiptap/extension-highlight';
 import Typography from '@tiptap/extension-typography';
 import Image from '@tiptap/extension-image';
 import CharacterCount from '@tiptap/extension-character-count';
+import { Table, TableRow, TableHeader, TableCell } from '@tiptap/extension-table';
+import Link from '@tiptap/extension-link';
 import { Markdown } from 'tiptap-markdown';
 import CardMentionNode from './card-mention';
 import Callout from './extensions/callout';
 import MathBlock from './extensions/math-block';
 import Embed from './extensions/embed';
+import CardEmbedExtension from './CardEmbedExtension';
+import ToggleBlock from './ToggleExtension';
+import SlashCommands from './slash-extension';
 import './extensions/block-types.css';
 
 /**
@@ -54,9 +59,21 @@ export function buildExtensions({ placeholder = 'Start writing...' } = {}) {
       HTMLAttributes: { class: 'tiptap-image' },
     }),
     CharacterCount,
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    Link.configure({
+      autolink: true,
+      openOnClick: false,
+      HTMLAttributes: { class: 'tiptap-link' },
+    }),
     CardMentionNode,
     Callout,
     MathBlock,
     Embed,
+    CardEmbedExtension,
+    ToggleBlock,
+    SlashCommands,
   ];
 }

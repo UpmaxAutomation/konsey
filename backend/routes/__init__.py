@@ -26,6 +26,10 @@ from .flow_templates import router as flow_templates_router
 from .assets import router as assets_router
 from .board_templates import router as board_templates_router
 from .export import router as export_router
+from .card_attachments import router as card_attachments_router
+from .pipeline import router as pipeline_router
+from .card_search import router as card_search_router
+from .annotations import router as annotations_router
 
 __all__ = [
     "auth_router",
@@ -54,4 +58,8 @@ __all__ = [
     "assets_router",
     "board_templates_router",
     "export_router",
+    "card_attachments_router",
+    "pipeline_router",
+    "card_search_router",
+    "annotations_router",
 ]

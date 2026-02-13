@@ -37,6 +37,7 @@ export default function useKeyboardShortcuts({
   onAddSubBoard,
   onUndo,
   onRedo,
+  onToggleCollapse,
 }) {
   useEffect(() => {
     function handleKeyDown(e) {
@@ -94,8 +95,13 @@ export default function useKeyboardShortcuts({
         e.preventDefault();
         onRedo?.();
       }
+      // C: Toggle collapse on selected card(s)
+      if (e.key === 'c' && !e.metaKey && !e.ctrlKey && !e.shiftKey && selectedNodes.length > 0) {
+        e.preventDefault();
+        onToggleCollapse?.();
+      }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodes, selectedEdges, handleDeleteSelected, handleAddCard, showSearch, searchReset, onAddSection, onAddSubBoard, onUndo, onRedo, setShowCouncilModal, setShowSearch, setHighlightedCards, setContextMenu, setNodes, setEdges]);
+  }, [selectedNodes, selectedEdges, handleDeleteSelected, handleAddCard, showSearch, searchReset, onAddSection, onAddSubBoard, onUndo, onRedo, onToggleCollapse, setShowCouncilModal, setShowSearch, setHighlightedCards, setContextMenu, setNodes, setEdges]);
 }

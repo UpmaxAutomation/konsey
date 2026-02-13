@@ -13,6 +13,7 @@ from ..database.models import User
 from ..database.crud import properties as properties_crud
 from ..database.crud import boards as boards_crud
 from ..auth.dependencies import get_current_user
+from ..utils import parse_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ async def list_property_definitions(
     db: AsyncSession = Depends(get_db),
 ):
     """List all property definitions for a board."""
-    bid = uuid.UUID(board_id)
+    bid = parse_uuid(board_id, "board_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -96,7 +97,7 @@ async def create_property_definition(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new property definition on a board."""
-    bid = uuid.UUID(board_id)
+    bid = parse_uuid(board_id, "board_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -119,7 +120,7 @@ async def get_all_property_values(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all property values for all cards on a board (for table/kanban views)."""
-    bid = uuid.UUID(board_id)
+    bid = parse_uuid(board_id, "board_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -137,8 +138,8 @@ async def update_property_definition(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a property definition."""
-    bid = uuid.UUID(board_id)
-    pid = uuid.UUID(prop_id)
+    bid = parse_uuid(board_id, "board_id")
+    pid = parse_uuid(prop_id, "prop_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -163,8 +164,8 @@ async def delete_property_definition(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a property definition and all its values."""
-    bid = uuid.UUID(board_id)
-    pid = uuid.UUID(prop_id)
+    bid = parse_uuid(board_id, "board_id")
+    pid = parse_uuid(prop_id, "prop_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -187,8 +188,8 @@ async def get_card_properties(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all property values for a card."""
-    bid = uuid.UUID(board_id)
-    cid = uuid.UUID(card_id)
+    bid = parse_uuid(board_id, "board_id")
+    cid = parse_uuid(card_id, "card_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
@@ -206,8 +207,8 @@ async def bulk_set_card_properties(
     db: AsyncSession = Depends(get_db),
 ):
     """Set multiple property values on a card (upsert)."""
-    bid = uuid.UUID(board_id)
-    cid = uuid.UUID(card_id)
+    bid = parse_uuid(board_id, "board_id")
+    cid = parse_uuid(card_id, "card_id")
     board = await boards_crud.get_board_by_id(db, bid, current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")

@@ -21,6 +21,7 @@ from ..database.crud import snapshots as snapshots_crud
 from ..database.crud import mentions as mentions_crud
 from ..auth.dependencies import get_current_user
 from ..collaboration.manager import manager as collab_manager
+from ..utils import parse_uuid
 
 MENTION_PATTERN = re.compile(r'\[\[([^|\]]+)\|([a-f0-9-]+)\]\]')
 
@@ -94,6 +95,14 @@ class CreateEdgeRequest(BaseModel):
     target_handle: Optional[str] = None
 
 
+class UpdateEdgeRequest(BaseModel):
+    label: Optional[str] = None
+    edge_type: Optional[str] = None
+    style: Optional[dict] = None
+    source_handle: Optional[str] = None
+    target_handle: Optional[str] = None
+
+
 class CreateCardFromMessageRequest(BaseModel):
     message_id: str
     conversation_id: str
@@ -133,6 +142,11 @@ class GroupIntoSectionRequest(BaseModel):
     card_ids: List[str] = Field(..., min_length=2)
     title: Optional[str] = Field(None, max_length=255)
     color: Optional[str] = Field(None, max_length=20)
+    # Optional: frontend-computed bounds (uses actual rendered card dimensions)
+    bounds_x: Optional[float] = None
+    bounds_y: Optional[float] = None
+    bounds_width: Optional[float] = None
+    bounds_height: Optional[float] = None
 
 
 class MoveBoardRequest(BaseModel):
@@ -150,6 +164,10 @@ class CreateJournalEntryRequest(BaseModel):
 class CreateInboxItemRequest(BaseModel):
     content: str = Field(..., min_length=1)
     title: Optional[str] = None
+
+
+class MergeCardsRequest(BaseModel):
+    source_card_id: str
 
 
 class CreateSnapshotRequest(BaseModel):
@@ -274,7 +292,7 @@ async def list_boards(
     db: AsyncSession = Depends(get_db),
 ):
     """List boards for current user, optionally filtered by project."""
-    pid = uuid.UUID(project_id) if project_id else None
+    pid = parse_uuid(project_id, "project_id") if project_id else None
     boards = await boards_crud.list_boards(db, current_user.id, project_id=pid, skip=skip, limit=limit)
     count = await boards_crud.count_boards(db, current_user.id, project_id=pid)
     return {"boards": [_serialize_board(b) for b in boards], "total": count}
@@ -287,7 +305,7 @@ async def create_board(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new board."""
-    pid = uuid.UUID(request.project_id) if request.project_id else None
+    pid = parse_uuid(request.project_id, "project_id") if request.project_id else None
     board = await boards_crud.create_board(
         db, current_user.id, request.name, project_id=pid, description=request.description
     )
@@ -302,7 +320,7 @@ async def get_board(
     db: AsyncSession = Depends(get_db),
 ):
     """Get board with all cards and edges."""
-    board = await boards_crud.get_board_with_contents(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_with_contents(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     return _serialize_board(board, include_contents=True)
@@ -322,9 +340,9 @@ async def update_board(
     if request.description is not None:
         kwargs["description"] = request.description
     if request.project_id is not None:
-        kwargs["project_id"] = uuid.UUID(request.project_id) if request.project_id else None
+        kwargs["project_id"] = parse_uuid(request.project_id, "project_id") if request.project_id else None
 
-    board = await boards_crud.update_board(db, uuid.UUID(board_id), current_user.id, **kwargs)
+    board = await boards_crud.update_board(db, parse_uuid(board_id, "board_id"), current_user.id, **kwargs)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     await db.commit()
@@ -340,7 +358,7 @@ async def update_viewport(
 ):
     """Save board viewport (pan/zoom)."""
     viewport = {"x": request.x, "y": request.y, "zoom": request.zoom}
-    board = await boards_crud.update_board_viewport(db, uuid.UUID(board_id), current_user.id, viewport)
+    board = await boards_crud.update_board_viewport(db, parse_uuid(board_id, "board_id"), current_user.id, viewport)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     await db.commit()
@@ -354,7 +372,7 @@ async def delete_board(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete board and all its cards/edges."""
-    deleted = await boards_crud.delete_board(db, uuid.UUID(board_id), current_user.id)
+    deleted = await boards_crud.delete_board(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Board not found")
     await db.commit()
@@ -378,7 +396,7 @@ async def get_board_memory_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Get board memory (facts, decisions, preferences)."""
-    memory = await boards_crud.get_board_memory(db, uuid.UUID(board_id), current_user.id)
+    memory = await boards_crud.get_board_memory(db, parse_uuid(board_id, "board_id"), current_user.id)
     if memory is None:
         raise HTTPException(status_code=404, detail="Board not found")
     return {"memory": memory}
@@ -395,15 +413,17 @@ async def board_memory_action(
     if request.action == "add_fact":
         if not request.content:
             raise HTTPException(status_code=400, detail="content is required for add_fact")
-        board = await boards_crud.add_board_fact(db, uuid.UUID(board_id), current_user.id, request.content)
+        bid = parse_uuid(board_id, "board_id")
+        board = await boards_crud.add_board_fact(db, bid, current_user.id, request.content)
     elif request.action == "add_decision":
         if not request.content:
             raise HTTPException(status_code=400, detail="content is required for add_decision")
+        bid = parse_uuid(board_id, "board_id")
         board = await boards_crud.add_board_decision(
-            db, uuid.UUID(board_id), current_user.id, request.content, request.context
+            db, bid, current_user.id, request.content, request.context
         )
     elif request.action == "clear":
-        board = await boards_crud.clear_board_memory(db, uuid.UUID(board_id), current_user.id)
+        board = await boards_crud.clear_board_memory(db, parse_uuid(board_id, "board_id"), current_user.id)
     else:
         raise HTTPException(status_code=400, detail=f"Unknown action: {request.action}")
 
@@ -421,7 +441,7 @@ async def delete_board_fact(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a specific fact from board memory by index."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -447,7 +467,7 @@ async def list_cards_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """List all cards on a board."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     cards = await boards_crud.list_cards(db, board.id)
@@ -462,7 +482,7 @@ async def create_card_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a card on a board."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -480,7 +500,7 @@ async def create_card_endpoint(
     )
     await db.commit()
     asyncio.create_task(collab_manager.broadcast_to_board(
-        uuid.UUID(board_id),
+        parse_uuid(board_id, "board_id"),
         {"type": "card_created", "card_id": str(card.id), "board_id": board_id},
         exclude_user=current_user.id,
     ))
@@ -495,7 +515,7 @@ async def batch_update_positions(
     db: AsyncSession = Depends(get_db),
 ):
     """Batch update card positions (for drag operations)."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -523,24 +543,24 @@ async def update_card_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a card's fields."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     kwargs = {k: v for k, v in request.model_dump().items() if v is not None}
-    card = await boards_crud.update_card(db, uuid.UUID(card_id), board.id, **kwargs)
+    card = await boards_crud.update_card(db, parse_uuid(card_id, "card_id"), board.id, **kwargs)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
     # Sync mentions when content changes
     if 'content' in kwargs:
         mention_ids = extract_mention_ids(kwargs.get('content', ''))
-        mention_uuids = [uuid.UUID(mid) for mid in mention_ids if mid]
-        await mentions_crud.sync_mentions(db, uuid.UUID(card_id), board.id, mention_uuids)
+        mention_uuids = [parse_uuid(mid, "mention_id") for mid in mention_ids if mid]
+        await mentions_crud.sync_mentions(db, parse_uuid(card_id, "card_id"), board.id, mention_uuids)
 
     await db.commit()
     asyncio.create_task(collab_manager.broadcast_to_board(
-        uuid.UUID(board_id),
+        parse_uuid(board_id, "board_id"),
         {"type": "card_updated", "card_id": str(card_id), "board_id": board_id},
         exclude_user=current_user.id,
     ))
@@ -555,10 +575,10 @@ async def get_card_backlinks(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all cards that mention this card (backlinks)."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    backlinks = await mentions_crud.get_backlinks(db, uuid.UUID(card_id))
+    backlinks = await mentions_crud.get_backlinks(db, parse_uuid(card_id, "card_id"))
     return {"backlinks": backlinks}
 
 
@@ -570,20 +590,95 @@ async def delete_card_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a card."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    deleted = await boards_crud.delete_card(db, uuid.UUID(card_id), board.id)
+    deleted = await boards_crud.delete_card(db, parse_uuid(card_id, "card_id"), board.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Card not found")
     await db.commit()
     asyncio.create_task(collab_manager.broadcast_to_board(
-        uuid.UUID(board_id),
+        parse_uuid(board_id, "board_id"),
         {"type": "card_deleted", "card_id": card_id, "board_id": board_id},
         exclude_user=current_user.id,
     ))
     return {"status": "deleted"}
+
+
+@router.post("/{board_id}/cards/{card_id}/merge")
+async def merge_cards_endpoint(
+    board_id: str,
+    card_id: str,
+    request: MergeCardsRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Merge source card into target card (card_id).
+
+    Appends source content, transfers edges, merges metadata, and deletes the source.
+    """
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    merged = await boards_crud.merge_cards(
+        db, board.id, parse_uuid(card_id, "card_id"), parse_uuid(request.source_card_id, "source_card_id")
+    )
+    if not merged:
+        raise HTTPException(status_code=404, detail="One or both cards not found")
+
+    await db.commit()
+
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        parse_uuid(board_id, "board_id"),
+        {
+            "type": "cards_merged",
+            "target_card_id": card_id,
+            "source_card_id": request.source_card_id,
+            "board_id": board_id,
+        },
+        exclude_user=current_user.id,
+    ))
+
+    return _serialize_card(merged)
+
+
+@router.post("/{board_id}/cards/{card_id}/split")
+async def split_card_endpoint(
+    board_id: str,
+    card_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Split a previously merged card back into its original components.
+
+    Reads extra.merged_from provenance and recreates original source cards.
+    """
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    result = await boards_crud.split_card(db, board.id, parse_uuid(card_id, "card_id"))
+    if not result:
+        raise HTTPException(status_code=400, detail="Card has no merge provenance to split")
+
+    await db.commit()
+
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        parse_uuid(board_id, "board_id"),
+        {
+            "type": "card_split",
+            "card_id": card_id,
+            "board_id": board_id,
+        },
+        exclude_user=current_user.id,
+    ))
+
+    return {
+        "target": _serialize_card(result["target"]),
+        "restored": [_serialize_card(c) for c in result["restored"]],
+    }
 
 
 # ──────────────────────────────────────────────
@@ -602,11 +697,11 @@ async def get_card_tags(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all tags for a card."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    tags = await tags_crud.get_card_tags(db, uuid.UUID(card_id))
+    tags = await tags_crud.get_card_tags(db, parse_uuid(card_id, "card_id"))
     return {"tags": [_serialize_tag(t) for t in tags]}
 
 
@@ -619,12 +714,12 @@ async def add_card_tag(
     db: AsyncSession = Depends(get_db),
 ):
     """Add a tag to a card."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    await tags_crud.add_card_tag(db, uuid.UUID(card_id), uuid.UUID(request.tag_id))
-    tags = await tags_crud.get_card_tags(db, uuid.UUID(card_id))
+    await tags_crud.add_card_tag(db, parse_uuid(card_id, "card_id"), parse_uuid(request.tag_id, "tag_id"))
+    tags = await tags_crud.get_card_tags(db, parse_uuid(card_id, "card_id"))
     return {"tags": [_serialize_tag(t) for t in tags]}
 
 
@@ -637,11 +732,11 @@ async def remove_card_tag(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a tag from a card."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    removed = await tags_crud.remove_card_tag(db, uuid.UUID(card_id), uuid.UUID(tag_id))
+    removed = await tags_crud.remove_card_tag(db, parse_uuid(card_id, "card_id"), parse_uuid(tag_id, "tag_id"))
     if not removed:
         raise HTTPException(status_code=404, detail="Tag not found on card")
     return {"ok": True}
@@ -658,7 +753,7 @@ async def list_edges_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """List all edges on a board."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     edges = await boards_crud.list_edges(db, board.id)
@@ -673,14 +768,14 @@ async def create_edge_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Create an edge between two cards."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     edge = await boards_crud.create_edge(
         db, board.id,
-        from_card_id=uuid.UUID(request.from_card_id),
-        to_card_id=uuid.UUID(request.to_card_id),
+        from_card_id=parse_uuid(request.from_card_id, "from_card_id"),
+        to_card_id=parse_uuid(request.to_card_id, "to_card_id"),
         edge_type=request.edge_type,
         label=request.label,
         style=request.style,
@@ -689,7 +784,7 @@ async def create_edge_endpoint(
     )
     await db.commit()
     asyncio.create_task(collab_manager.broadcast_to_board(
-        uuid.UUID(board_id),
+        parse_uuid(board_id, "board_id"),
         {"type": "edge_created", "edge_id": str(edge.id), "board_id": board_id},
         exclude_user=current_user.id,
     ))
@@ -710,7 +805,7 @@ async def create_edges_batch(
     """Batch create edges (for section-to-section connections)."""
     from sqlalchemy.exc import IntegrityError
 
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -719,8 +814,8 @@ async def create_edges_batch(
         try:
             edge = await boards_crud.create_edge(
                 db, board.id,
-                from_card_id=uuid.UUID(edge_req.from_card_id),
-                to_card_id=uuid.UUID(edge_req.to_card_id),
+                from_card_id=parse_uuid(edge_req.from_card_id, "from_card_id"),
+                to_card_id=parse_uuid(edge_req.to_card_id, "to_card_id"),
                 edge_type=edge_req.edge_type,
                 label=edge_req.label,
                 style=edge_req.style,
@@ -736,6 +831,32 @@ async def create_edges_batch(
     return {"edges": [_serialize_edge(e) for e in created]}
 
 
+@router.patch("/{board_id}/edges/{edge_id}")
+async def update_edge_endpoint(
+    board_id: str,
+    edge_id: str,
+    request: UpdateEdgeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an edge's fields (label, style, type, handles)."""
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+
+    kwargs = {k: v for k, v in request.model_dump().items() if v is not None}
+    edge = await boards_crud.update_edge(db, parse_uuid(edge_id, "edge_id"), board.id, **kwargs)
+    if not edge:
+        raise HTTPException(status_code=404, detail="Edge not found")
+    await db.commit()
+    asyncio.create_task(collab_manager.broadcast_to_board(
+        parse_uuid(board_id, "board_id"),
+        {"type": "edge_updated", "edge_id": edge_id, "board_id": board_id},
+        exclude_user=current_user.id,
+    ))
+    return _serialize_edge(edge)
+
+
 @router.delete("/{board_id}/edges/{edge_id}")
 async def delete_edge_endpoint(
     board_id: str,
@@ -744,16 +865,16 @@ async def delete_edge_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an edge."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    deleted = await boards_crud.delete_edge(db, uuid.UUID(edge_id), board.id)
+    deleted = await boards_crud.delete_edge(db, parse_uuid(edge_id, "edge_id"), board.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Edge not found")
     await db.commit()
     asyncio.create_task(collab_manager.broadcast_to_board(
-        uuid.UUID(board_id),
+        parse_uuid(board_id, "board_id"),
         {"type": "edge_deleted", "edge_id": edge_id, "board_id": board_id},
         exclude_user=current_user.id,
     ))
@@ -770,7 +891,7 @@ async def list_sections_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     sections = await sections_crud.list_sections(db, board.id)
@@ -783,7 +904,7 @@ async def create_section_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     section = await sections_crud.create_section(
@@ -803,14 +924,14 @@ async def group_cards_into_section(
     db: AsyncSession = Depends(get_db),
 ):
     """Group selected cards into a new section (Heptabase-style Cmd+G)."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     # Fetch all requested cards and validate
     cards = []
     for cid_str in request.card_ids:
-        card = await boards_crud.get_card_by_id(db, uuid.UUID(cid_str), board.id)
+        card = await boards_crud.get_card_by_id(db, parse_uuid(cid_str, "card_id"), board.id)
         if not card:
             raise HTTPException(status_code=404, detail=f"Card {cid_str} not found")
         if getattr(card, 'section_id', None):
@@ -820,18 +941,27 @@ async def group_cards_into_section(
             )
         cards.append(card)
 
-    # Compute bounding box
-    padding = 40
-    header_offset = 36
-    min_x = min(c.position_x for c in cards)
-    min_y = min(c.position_y for c in cards)
-    max_x = max(c.position_x + c.width for c in cards)
-    max_y = max(c.position_y + c.height for c in cards)
+    # Compute bounding box — prefer frontend-provided bounds (actual rendered sizes)
+    padding = 60
+    header_offset = 44
 
-    section_x = min_x - padding
-    section_y = min_y - padding - header_offset
-    section_width = (max_x - min_x) + padding * 2
-    section_height = (max_y - min_y) + padding * 2 + header_offset
+    if (request.bounds_x is not None and request.bounds_y is not None
+            and request.bounds_width is not None and request.bounds_height is not None):
+        section_x = request.bounds_x
+        section_y = request.bounds_y
+        section_width = request.bounds_width
+        section_height = request.bounds_height
+    else:
+        # Fallback: compute from DB card dimensions (generous minimums for auto-sized cards)
+        min_x = min(c.position_x for c in cards)
+        min_y = min(c.position_y for c in cards)
+        max_x = max(c.position_x + max(c.width, 280) for c in cards)
+        max_y = max(c.position_y + max(c.height, 300) for c in cards)
+
+        section_x = min_x - padding
+        section_y = min_y - padding - header_offset
+        section_width = (max_x - min_x) + padding * 2
+        section_height = (max_y - min_y) + padding * 2 + header_offset
 
     # Create the section
     section = await sections_crud.create_section(
@@ -870,11 +1000,11 @@ async def ungroup_section(
     from sqlalchemy import select as sa_select
     from ..database.models import Card
 
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    sid = uuid.UUID(section_id)
+    sid = parse_uuid(section_id, "section_id")
     section = await sections_crud.get_section_by_id(db, sid, board.id)
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
@@ -886,7 +1016,7 @@ async def ungroup_section(
     child_cards = list(result.scalars().all())
 
     # Convert positions back to absolute
-    header_offset = 36
+    header_offset = 44
     updated_cards = []
     for card in child_cards:
         abs_x = card.position_x + section.x
@@ -912,16 +1042,16 @@ async def update_section_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     kwargs = {k: v for k, v in request.model_dump().items() if v is not None}
-    section = await sections_crud.update_section(db, uuid.UUID(section_id), board.id, **kwargs)
+    section = await sections_crud.update_section(db, parse_uuid(section_id, "section_id"), board.id, **kwargs)
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
     await db.commit()
     asyncio.create_task(collab_manager.broadcast_to_board(
-        uuid.UUID(board_id),
+        parse_uuid(board_id, "board_id"),
         {"type": "section_updated", "section_id": str(section_id), "board_id": board_id},
         exclude_user=current_user.id,
     ))
@@ -937,11 +1067,11 @@ async def delete_section_endpoint(
     from sqlalchemy import select as sa_select
     from ..database.models import Card
 
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    sid = uuid.UUID(section_id)
+    sid = parse_uuid(section_id, "section_id")
 
     # Convert child card positions to absolute before deleting section
     section = await sections_crud.get_section_by_id(db, sid, board.id)
@@ -976,7 +1106,7 @@ async def list_board_children(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     children = await boards_crud.get_board_children(db, board.id, current_user.id)
@@ -988,7 +1118,7 @@ async def get_board_breadcrumbs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     crumbs = await boards_crud.get_board_breadcrumbs(db, board.id, current_user.id)
@@ -1001,7 +1131,7 @@ async def create_child_board(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    parent = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    parent = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not parent:
         raise HTTPException(status_code=404, detail="Parent board not found")
     child = await boards_crud.create_child_board(db, parent.id, current_user.id, request.name, description=request.description)
@@ -1015,10 +1145,10 @@ async def move_board(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    new_parent_id = uuid.UUID(request.new_parent_id) if request.new_parent_id else None
+    new_parent_id = parse_uuid(request.new_parent_id, "new_parent_id") if request.new_parent_id else None
     moved = await boards_crud.move_board(db, board.id, current_user.id, new_parent_id)
     if not moved:
         raise HTTPException(status_code=400, detail="Failed to move board")
@@ -1038,7 +1168,7 @@ async def create_journal_entry(
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import date as date_type
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     journal_date = date_type.fromisoformat(request.date) if request.date else date_type.today()
@@ -1057,7 +1187,7 @@ async def list_journal_entries(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     entries = await boards_crud.list_journal_entries(db, board.id, current_user.id)
@@ -1075,7 +1205,7 @@ async def create_inbox_item(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     card = await boards_crud.create_inbox_item(
@@ -1092,7 +1222,7 @@ async def list_inbox_items(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
     items = await boards_crud.list_inbox_items(db, board.id, current_user.id)
@@ -1105,10 +1235,10 @@ async def process_inbox_item(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
-    card = await boards_crud.process_inbox_item(db, uuid.UUID(card_id), board.id)
+    card = await boards_crud.process_inbox_item(db, parse_uuid(card_id, "card_id"), board.id)
     if not card:
         raise HTTPException(status_code=404, detail="Inbox item not found")
     await db.commit()
@@ -1130,14 +1260,14 @@ async def create_card_from_message(
     from ..database.models import Message, Conversation
     from sqlalchemy import select
 
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     # Verify conversation ownership
     conv_result = await db.execute(
         select(Conversation).where(
-            Conversation.id == uuid.UUID(request.conversation_id),
+            Conversation.id == parse_uuid(request.conversation_id, "conversation_id"),
             Conversation.user_id == current_user.id
         )
     )
@@ -1147,7 +1277,7 @@ async def create_card_from_message(
 
     # Load message
     msg_result = await db.execute(
-        select(Message).where(Message.id == uuid.UUID(request.message_id))
+        select(Message).where(Message.id == parse_uuid(request.message_id, "message_id"))
     )
     msg = msg_result.scalar_one_or_none()
     if not msg:
@@ -1208,7 +1338,7 @@ async def create_cards_from_council_turn(
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -1217,7 +1347,7 @@ async def create_cards_from_council_turn(
         select(Conversation)
         .options(selectinload(Conversation.messages))
         .where(
-            Conversation.id == uuid.UUID(request.conversation_id),
+            Conversation.id == parse_uuid(request.conversation_id, "conversation_id"),
             Conversation.user_id == current_user.id
         )
     )
@@ -1415,14 +1545,14 @@ async def run_council_from_board(
     Returns an SSE stream identical to the conversation council endpoint.
     On completion, creates result cards and edges on the board automatically.
     """
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     # Build context from selected cards
     context_parts = []
     for cid_str in request.card_ids:
-        card = await boards_crud.get_card_by_id(db, uuid.UUID(cid_str), board.id)
+        card = await boards_crud.get_card_by_id(db, parse_uuid(cid_str, "card_id"), board.id)
         if card:
             label = card.title or card.card_type
             context_parts.append(f"[{label}]\n{card.content or ''}")
@@ -1543,7 +1673,7 @@ async def run_council_from_board(
                 for cid_str in request.card_ids:
                     try:
                         edge = await boards_crud.create_edge(
-                            db, board.id, uuid.UUID(cid_str), query_card.id,
+                            db, board.id, parse_uuid(cid_str, "card_id"), query_card.id,
                             edge_type="related"
                         )
                         created_edges.append(edge)
@@ -1600,13 +1730,13 @@ async def run_card_ai_action(
 ):
     """Run an AI action on a single card. Creates result cards linked to the source."""
     try:
-        board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+        board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     except Exception as e:
         raise
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    card = await boards_crud.get_card_by_id(db, uuid.UUID(card_id), board.id)
+    card = await boards_crud.get_card_by_id(db, parse_uuid(card_id, "card_id"), board.id)
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
@@ -1723,7 +1853,7 @@ async def run_board_ai_action(
     db: AsyncSession = Depends(get_db),
 ):
     """Run a board-level AI action (summarize, cluster, find connections)."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -1801,7 +1931,7 @@ async def run_board_ai_action(
 
             # Assign color to member cards
             for cid in cluster_card_ids:
-                await boards_crud.update_card(db, uuid.UUID(cid), board.id, color=color)
+                await boards_crud.update_card(db, parse_uuid(cid, "card_id"), board.id, color=color)
                 color_updates[cid] = color
 
             # Create cluster label card
@@ -1822,7 +1952,7 @@ async def run_board_ai_action(
 
             for cid in cluster_card_ids:
                 edge = await boards_crud.create_edge(
-                    db, board.id, label_card.id, uuid.UUID(cid),
+                    db, board.id, label_card.id, parse_uuid(cid, "card_id"),
                     edge_type="related", label="grouped"
                 )
                 created_edges.append(edge)
@@ -1843,7 +1973,7 @@ async def run_board_ai_action(
             if from_id in card_id_set and to_id in card_id_set and from_id != to_id:
                 try:
                     edge = await boards_crud.create_edge(
-                        db, board.id, uuid.UUID(from_id), uuid.UUID(to_id),
+                        db, board.id, parse_uuid(from_id, "from_card_id"), parse_uuid(to_id, "to_card_id"),
                         edge_type="related", label=label
                     )
                     created_edges.append(edge)
@@ -1919,7 +2049,7 @@ async def list_snapshots_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """List snapshots for a board (metadata only)."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -1935,7 +2065,7 @@ async def create_snapshot_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a manual snapshot of the board."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
@@ -1957,11 +2087,11 @@ async def get_snapshot_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a snapshot with full data."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    snap = await snapshots_crud.get_snapshot(db, uuid.UUID(snapshot_id))
+    snap = await snapshots_crud.get_snapshot(db, parse_uuid(snapshot_id, "snapshot_id"))
     if not snap or snap.board_id != board.id:
         raise HTTPException(status_code=404, detail="Snapshot not found")
 
@@ -1976,12 +2106,12 @@ async def restore_snapshot_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Restore a board to a snapshot state. Creates a safety snapshot first."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
     safety_snap = await snapshots_crud.restore_snapshot(
-        db, uuid.UUID(snapshot_id), board.id, current_user.id
+        db, parse_uuid(snapshot_id, "snapshot_id"), board.id, current_user.id
     )
     if not safety_snap:
         raise HTTPException(status_code=404, detail="Snapshot not found")
@@ -2002,11 +2132,11 @@ async def delete_snapshot_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a snapshot."""
-    board = await boards_crud.get_board_by_id(db, uuid.UUID(board_id), current_user.id)
+    board = await boards_crud.get_board_by_id(db, parse_uuid(board_id, "board_id"), current_user.id)
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
-    deleted = await snapshots_crud.delete_snapshot(db, uuid.UUID(snapshot_id))
+    deleted = await snapshots_crud.delete_snapshot(db, parse_uuid(snapshot_id, "snapshot_id"))
     if not deleted:
         raise HTTPException(status_code=404, detail="Snapshot not found")
     await db.commit()

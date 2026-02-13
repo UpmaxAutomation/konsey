@@ -1,8 +1,9 @@
 import TableView from './TableView.jsx';
 import KanbanView from './KanbanView.jsx';
+import TimelineView from './TimelineView.jsx';
 
 /**
- * Switches between Canvas (ReactFlow), Table, and Kanban views.
+ * Switches between Canvas (ReactFlow), Table, Kanban, and Timeline views.
  * When activeView is 'canvas', this component returns null and the parent
  * renders the ReactFlow canvas directly.
  */
@@ -31,6 +32,19 @@ export default function ViewContainer({
   if (activeView === 'kanban') {
     return (
       <KanbanView
+        cards={cards}
+        propertyDefinitions={propertyDefinitions}
+        propertyValuesByCard={propertyValuesByCard}
+        onCardSelect={onCardSelect}
+        onPropertyChange={onPropertyChange}
+        boardId={boardId}
+      />
+    );
+  }
+
+  if (activeView === 'timeline') {
+    return (
+      <TimelineView
         cards={cards}
         propertyDefinitions={propertyDefinitions}
         propertyValuesByCard={propertyValuesByCard}

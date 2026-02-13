@@ -166,7 +166,7 @@ export default function Templates({ isOpen, onClose, onSelectTemplate }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="templates-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="templates-modal" role="dialog" aria-modal="true" aria-label="Prompt templates" onClick={(e) => e.stopPropagation()}>
         <div className="templates-header">
           <h2>Prompt Templates</h2>
           <button className="close-button" onClick={onClose}>×</button>

@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react';
 import { addEdge } from '@xyflow/react';
-import { createEdge as apiCreateEdge, createEdgesBatch, deleteEdge, deleteCard, createCard, createSection, deleteSection } from '../../../api/boards.js';
+import { createEdge as apiCreateEdge, createEdgesBatch, deleteEdge, updateEdge as apiUpdateEdge, deleteCard, createCard, createSection, deleteSection } from '../../../api/boards.js';
 import { edgeToFlow, normalizeHandle } from '../utils.js';
 import { useHistoryStore } from '../../../stores/historyStore';
 
@@ -24,6 +24,12 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
   // Handle new edge connection (supports section-to-section, card-to-section, section-to-card)
   const handleConnect = useCallback(async (connection) => {
     try {
+      // Connection validation: prevent self-referential edges
+      if (connection.source === connection.target) {
+        console.warn('Cannot connect a node to itself.');
+        return;
+      }
+
       const srcIsSection = connection.source.startsWith('section-');
       const tgtIsSection = connection.target.startsWith('section-');
 
@@ -80,13 +86,26 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
           });
         }
       } else {
+        // Connection validation: prevent duplicate edges
+        const existingEdge = edges.find(
+          (e) => e.source === connection.source && e.target === connection.target
+        );
+        if (existingEdge) {
+          console.warn('An edge already exists between these nodes.');
+          return;
+        }
+
         // Normal card-to-card connection
         const srcHandle = normalizeHandle(connection.sourceHandle);
         const tgtHandle = normalizeHandle(connection.targetHandle);
+        // Auto-detect pipeline edge type
+        const srcNode = nodes.find(n => n.id === connection.source);
+        const tgtNode = nodes.find(n => n.id === connection.target);
+        const isPipeline = srcNode?.data?.card_type?.startsWith('pl_') || tgtNode?.data?.card_type?.startsWith('pl_');
         const edgeData = {
           from_card_id: connection.source,
           to_card_id: connection.target,
-          edge_type: 'related',
+          edge_type: isPipeline ? 'pipeline' : 'related',
           source_handle: srcHandle,
           target_handle: tgtHandle,
         };
@@ -108,7 +127,39 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
     } catch (err) {
       console.error('Failed to create edge:', err);
     }
-  }, [boardId, nodes, setEdges, pushEntry, isUndoing, isRedoing]);
+  }, [boardId, nodes, edges, setEdges, pushEntry, isUndoing, isRedoing]);
+
+  // Update an edge via API and refresh local state
+  const handleUpdateEdge = useCallback(async (edgeId, updates) => {
+    try {
+      const updatedEdge = await apiUpdateEdge(boardId, edgeId, updates);
+      const flowEdge = edgeToFlow(updatedEdge);
+      setEdges((eds) => eds.map((e) => e.id === edgeId ? { ...flowEdge, selected: e.selected } : e));
+    } catch (err) {
+      console.error('Failed to update edge:', err);
+    }
+  }, [boardId, setEdges]);
+
+  // Reverse edge direction: swap source/target via API
+  const handleReverseEdge = useCallback(async (edgeId) => {
+    try {
+      const edge = edges.find((e) => e.id === edgeId);
+      if (!edge) return;
+      // Delete old edge and create a new one with swapped source/target
+      await deleteEdge(boardId, edgeId);
+      const newEdge = await apiCreateEdge(boardId, {
+        from_card_id: edge.target,
+        to_card_id: edge.source,
+        edge_type: edge.data?.edge_type || 'related',
+        source_handle: edge.targetHandle,
+        target_handle: edge.sourceHandle,
+      });
+      const flowEdge = edgeToFlow(newEdge);
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId).concat(flowEdge));
+    } catch (err) {
+      console.error('Failed to reverse edge:', err);
+    }
+  }, [boardId, edges, setEdges]);
 
   // Delete selected nodes/edges
   const handleDeleteSelected = useCallback(async () => {
@@ -230,9 +281,22 @@ export default function useEdgeActions(boardId, nodes, edges, setNodes, setEdges
     }
   }, [boardId, selectedNodes, selectedEdges, edges, setNodes, setEdges, pushEntry, isUndoing, isRedoing]);
 
+  // Delete a single edge by ID (for context menu)
+  const handleDeleteEdge = useCallback(async (edgeId) => {
+    try {
+      await deleteEdge(boardId, edgeId);
+      setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+    } catch (err) {
+      console.error('Failed to delete edge:', err);
+    }
+  }, [boardId, setEdges]);
+
   return {
     handleConnect,
     handleDeleteSelected,
+    handleUpdateEdge,
+    handleReverseEdge,
+    handleDeleteEdge,
     selectedNodes,
     selectedEdges,
   };

@@ -10,18 +10,27 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+// Stable empty array to avoid creating new references on every render
+const EMPTY_ARRAY = [];
+
 import CanvasCard from './CanvasCard';
+import PipelineNode from './PipelineNode';
 import AnimatedEdge from './AnimatedEdge';
 import SectionNode from './SectionNode';
 import BoardToolbar from './BoardToolbar';
+import TabBar from './TabBar';
 import BoardQueryInput from './BoardQueryInput';
 import BoardSearch from './BoardSearch';
 import CardContextMenu from './CardContextMenu';
+import EdgeContextMenu from './EdgeContextMenu';
 import BoardMemoryPanel from './BoardMemoryPanel';
 import JournalPanel from './JournalPanel';
 import InboxPanel from './InboxPanel';
 import CardChatPanel from './CardChatPanel';
+import CardSidePanel from './CardSidePanel';
 import BoardBreadcrumbs from './BoardBreadcrumbs';
+import SelectionToolbar from './SelectionToolbar';
 import VersionHistoryPanel from './VersionHistoryPanel';
 import useCollaboration from '../hooks/useCollaboration.js';
 import CollaborationOverlay from './CollaborationOverlay.jsx';
@@ -30,7 +39,8 @@ import PropertyPanel from '../../properties/PropertyPanel.jsx';
 import { usePropertyStore } from '../../../stores/propertyStore.js';
 import { usePropertyDefinitions, useAllPropertyValues, useBulkSetCardProperties } from '../../../api/queries/propertyQueries.js';
 import { useNavigate } from 'react-router-dom';
-import { deleteCard, updateCard, runCouncilFromBoard, runBoardAIAction, createSection, updateSection, deleteSection, createChildBoard, getBoardBreadcrumbs, createCard, groupIntoSection, ungroupSection } from '../../../api/boards.js';
+import { deleteCard, updateCard, runCouncilFromBoard, runBoardAIAction, createSection, updateSection, deleteSection, createChildBoard, getBoardBreadcrumbs, createCard, createEdge as apiCreateEdge, groupIntoSection, ungroupSection, mergeCards, splitCard, listEdges } from '../../../api/boards.js';
+import { linkCard, cloneCard, unlinkCard } from '../../../api/cardSearch.js';
 import { cardToNode, edgeToFlow, sectionToNode } from '../utils.js';
 import BoardContext from '../BoardContext.js';
 import useBoardState from '../hooks/useBoardState.js';
@@ -42,6 +52,9 @@ import useBoardSearch from '../hooks/useBoardSearch.js';
 import useBacklinks from '../hooks/useBacklinks.js';
 import useWorkflows from '../hooks/useWorkflows.js';
 import useAgent from '../hooks/useAgent.js';
+import usePipeline from '../hooks/usePipeline.js';
+import { useAutoLayout } from '../hooks/useAutoLayout.js';
+import useAlignmentGuides from '../hooks/useAlignmentGuides.js';
 import { useHistoryStore } from '../../../stores/historyStore';
 import '../styles/BoardView.css';
 
@@ -55,7 +68,7 @@ const TemplateMarketplace = lazy(() => import('./TemplateMarketplace'));
 const IntegrationPanel = lazy(() => import('./IntegrationPanel'));
 
 // v15: Memoize nodeTypes/edgeTypes to prevent ReactFlow re-registration
-const nodeTypes = { canvasCard: CanvasCard, sectionNode: SectionNode };
+const nodeTypes = { canvasCard: CanvasCard, sectionNode: SectionNode, pipelineNode: PipelineNode };
 const edgeTypes = { animatedEdge: AnimatedEdge };
 
 const NOOP = () => {};
@@ -67,6 +80,7 @@ function BoardViewInner({ boardId, onBack }) {
   const [councilRunning, setCouncilRunning] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+  const [edgeMenu, setEdgeMenu] = useState(null);
   const [boardProcessing, setBoardProcessing] = useState(false);
   const [showMemoryPanel, setShowMemoryPanel] = useState(false);
   const [showJournalPanel, setShowJournalPanel] = useState(false);
@@ -81,6 +95,12 @@ function BoardViewInner({ boardId, onBack }) {
   const [showMarketplace, setShowMarketplace] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [sidePanelCardId, setSidePanelCardId] = useState(null);
+  const [collapsedSections, setCollapsedSections] = useState(new Set());
+  const [openTabs, setOpenTabs] = useState([]);
+  const [activeTabId, setActiveTabId] = useState(null);
+  const [recentCards, setRecentCards] = useState([]);
+  const [cardDragOver, setCardDragOver] = useState(false);
   const reactFlow = useReactFlow();
   const navigate = useNavigate();
 
@@ -108,21 +128,29 @@ function BoardViewInner({ boardId, onBack }) {
 
   const {
     handleConnect, handleDeleteSelected, selectedNodes, selectedEdges,
+    handleUpdateEdge, handleReverseEdge, handleDeleteEdge,
   } = useEdgeActions(boardId, nodes, edges, setNodes, setEdges);
 
   const { handleNodesChange, handleMoveEnd } = useDebouncedPositions(boardId, onNodesChange, setNodes);
 
-  // Workflow & Agent hooks
+  // Workflow, Agent & Pipeline hooks
   const wf = useWorkflows(boardId);
   const agent = useAgent(boardId);
+  const pipeline = usePipeline(boardId);
+
+  // Auto-layout (dagre)
+  const { applyAutoLayout, tidyUp } = useAutoLayout({ nodes, edges, setNodes, boardId });
+
+  // Alignment guides (snap lines when dragging)
+  const { guides: alignmentGuides, onNodeDrag: handleAlignDrag, onNodeDragStop: handleAlignDragStop, alignSelected } = useAlignmentGuides(nodes, setNodes);
 
   // View switching + property data
   const { activeView, setActiveView, selectedCardId, setSelectedCardId } = usePropertyStore();
   const { data: propDefsData } = usePropertyDefinitions(boardId);
   const { data: allValsData } = useAllPropertyValues(boardId);
   const bulkSetMutation = useBulkSetCardProperties(boardId);
-  const propertyDefinitions = propDefsData?.properties || [];
-  const allPropertyValues = allValsData?.values || [];
+  const propertyDefinitions = propDefsData?.properties || EMPTY_ARRAY;
+  const allPropertyValues = allValsData?.values || EMPTY_ARRAY;
 
   // Build lookup: { cardId: { propId: value, ... } }
   const propertyValuesByCard = useMemo(() => {
@@ -143,7 +171,7 @@ function BoardViewInner({ boardId, onBack }) {
   // Cards list for table/kanban views
   const cardsList = useMemo(() => {
     return nodes
-      .filter((n) => n.type !== 'sectionNode')
+      .filter((n) => n.type !== 'sectionNode' && n.type !== 'pipelineNode')
       .map((n) => ({
         id: n.id,
         title: n.data.title,
@@ -194,6 +222,74 @@ function BoardViewInner({ boardId, onBack }) {
     setNodes((nds) => [...nds, cardToNode(card)]);
   }, [setNodes]);
 
+  const handleExtractToCard = useCallback(async (text, sourceCardId) => {
+    try {
+      // Position new card to the right of the source card, or at viewport center
+      let posX, posY;
+      if (sourceCardId) {
+        const sourceNode = nodes.find(n => n.id === sourceCardId);
+        if (sourceNode) {
+          const srcW = sourceNode.measured?.width || sourceNode.style?.width || 280;
+          posX = sourceNode.position.x + srcW + 60;
+          posY = sourceNode.position.y;
+        }
+      }
+      if (posX == null) {
+        const vp = reactFlow.getViewport();
+        posX = (-vp.x + window.innerWidth / 2) / vp.zoom + 160;
+        posY = (-vp.y + window.innerHeight / 2) / vp.zoom;
+      }
+      const card = await createCard(boardId, {
+        card_type: 'note',
+        title: text.slice(0, 60),
+        content: text,
+        position_x: posX,
+        position_y: posY,
+      });
+      setNodes((nds) => [...nds, cardToNode(card)]);
+      // Create edge linking source → new card
+      if (sourceCardId) {
+        try {
+          const edge = await apiCreateEdge(boardId, {
+            from_card_id: sourceCardId,
+            to_card_id: card.id,
+            edge_type: 'derived_from',
+            source_handle: 'right',
+            target_handle: 'left',
+          });
+          setEdges((eds) => [...eds, edgeToFlow(edge)]);
+        } catch (edgeErr) {
+          console.error('Failed to create extract edge:', edgeErr);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to extract to card:', err);
+    }
+  }, [boardId, reactFlow, nodes, setNodes, setEdges]);
+
+  // Pipeline helpers
+  const hasPipelineNodes = useMemo(() => nodes.some(n => n.data?.card_type?.startsWith('pl_')), [nodes]);
+
+  const handleAddPipelineNode = useCallback(async (plType) => {
+    const vp = reactFlow.getViewport();
+    const centerX = (-vp.x + window.innerWidth / 2) / vp.zoom;
+    const centerY = (-vp.y + window.innerHeight / 2) / vp.zoom;
+    const labels = { pl_input: 'Input', pl_llm: 'LLM', pl_council: 'Council', pl_transform: 'Transform', pl_output: 'Output', pl_conditional: 'Conditional' };
+    try {
+      const card = await createCard(boardId, {
+        card_type: plType,
+        title: labels[plType] || plType,
+        position_x: centerX,
+        position_y: centerY,
+        width: 220,
+        extra: { model: 'openai/gpt-4o' },
+      });
+      setNodes(nds => [...nds, cardToNode(card)]);
+    } catch (err) {
+      console.error('Failed to create pipeline node:', err);
+    }
+  }, [boardId, reactFlow, setNodes]);
+
   // Section handlers
   const handleAddSection = useCallback(async () => {
     // If 2+ non-section cards are selected, group them into a section
@@ -201,7 +297,30 @@ function BoardViewInner({ boardId, onBack }) {
     if (cardNodes.length >= 2) {
       try {
         const cardIds = cardNodes.map((n) => n.id);
-        const result = await groupIntoSection(boardId, { card_ids: cardIds });
+
+        // Compute bounding box from actual rendered node dimensions
+        const padding = 60;
+        const headerOffset = 44;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const node of cardNodes) {
+          const rfNode = reactFlow.getNode(node.id);
+          const w = rfNode?.measured?.width ?? rfNode?.width ?? node.style?.width ?? 280;
+          const h = rfNode?.measured?.height ?? rfNode?.height ?? 200;
+          const x = node.position.x;
+          const y = node.position.y;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + w);
+          maxY = Math.max(maxY, y + h);
+        }
+
+        const result = await groupIntoSection(boardId, {
+          card_ids: cardIds,
+          bounds_x: minX - padding,
+          bounds_y: minY - padding - headerOffset,
+          bounds_width: (maxX - minX) + padding * 2,
+          bounds_height: (maxY - minY) + padding * 2 + headerOffset,
+        });
         const sectionNode = sectionToNode(result.section);
         // Rebuild nodes: remove old card nodes, add section + updated children
         setNodes((nds) => {
@@ -223,10 +342,10 @@ function BoardViewInner({ boardId, onBack }) {
       const section = await createSection(boardId, {
         title: 'New Section',
         color: 'gray',
-        x: centerX - 200,
-        y: centerY - 150,
-        width: 400,
-        height: 300,
+        x: centerX - 300,
+        y: centerY - 200,
+        width: 600,
+        height: 400,
       });
       setNodes((nds) => [...nds, sectionToNode(section)]);
     } catch (err) {
@@ -273,7 +392,7 @@ function BoardViewInner({ boardId, onBack }) {
               // Find the section node to compute absolute position
               const sectionNode = nds.find((s) => s.id === sectionNodeId);
               if (sectionNode) {
-                const headerOffset = 36;
+                const headerOffset = 44;
                 return {
                   ...rest,
                   position: {
@@ -355,6 +474,89 @@ function BoardViewInner({ boardId, onBack }) {
     }
   }, [boardId, setNodes]);
 
+  // ── Explicit merge of selected cards ──────────────────────────────
+  const handleMergeSelected = useCallback(async () => {
+    const cardNodes = selectedNodes.filter(n => n.type === 'canvasCard');
+    if (cardNodes.length < 2) return;
+    // Merge into the first selected card, absorbing the rest
+    const targetId = cardNodes[0].id;
+    try {
+      let currentTarget = targetId;
+      for (let i = 1; i < cardNodes.length; i++) {
+        const merged = await mergeCards(boardId, currentTarget, cardNodes[i].id);
+        currentTarget = merged.id;
+      }
+      // Reload all cards by removing merged sources and updating target
+      const sourceIds = new Set(cardNodes.slice(1).map(n => n.id));
+      setNodes(nds => nds.filter(n => !sourceIds.has(n.id)));
+      // Reload edges
+      const edgesData = await listEdges(boardId);
+      setEdges((edgesData.edges || edgesData).map(edgeToFlow));
+      // Refresh target card data
+      stableUpdateCard(currentTarget, {});
+    } catch (err) {
+      console.error('Failed to merge cards:', err);
+    }
+  }, [selectedNodes, boardId, setNodes, setEdges, stableUpdateCard]);
+
+  // ── Split / unmerge a previously merged card ─────────────────────────
+  const handleSplitCard = useCallback(async (cardId) => {
+    try {
+      const result = await splitCard(boardId, cardId);
+      // Update the target card in-place (content restored, provenance cleared)
+      setNodes((nds) => {
+        const updated = nds.map((n) =>
+          n.id === cardId ? cardToNode(result.target) : n
+        );
+        // Add restored cards
+        const restoredNodes = result.restored.map(cardToNode);
+        return [...updated, ...restoredNodes];
+      });
+    } catch (err) {
+      console.error('Failed to split card:', err);
+    }
+  }, [boardId, setNodes]);
+
+  // ── Duplicate a single card ────────────────────────────────────────
+  const handleDuplicateCard = useCallback(async (cardId, offsetX = 40, offsetY = 40) => {
+    const node = nodes.find((n) => n.id === cardId);
+    if (!node || node.type !== 'canvasCard') return;
+    try {
+      const card = await createCard(boardId, {
+        card_type: node.data.card_type || 'note',
+        title: node.data.title || '',
+        content: node.data.content || '',
+        position_x: node.position.x + offsetX,
+        position_y: node.position.y + offsetY,
+        width: node.measured?.width || node.data.width || 280,
+      });
+      setNodes((nds) => [...nds, cardToNode(card)]);
+    } catch (err) {
+      console.error('Failed to duplicate card:', err);
+    }
+  }, [boardId, nodes, setNodes]);
+
+  // Alt+drag: duplicate the card and leave original in place
+  const altDragRef = useRef(null);
+  const handleNodeDragStart = useCallback((event, node) => {
+    if (event.sourceEvent?.altKey && node.type === 'canvasCard') {
+      // Clone the card at the original position
+      altDragRef.current = { nodeId: node.id, origPos: { ...node.position } };
+      createCard(boardId, {
+        card_type: node.data.card_type || 'note',
+        title: node.data.title || '',
+        content: node.data.content || '',
+        position_x: node.position.x,
+        position_y: node.position.y,
+        width: node.measured?.width || node.data.width || 280,
+      }).then((card) => {
+        setNodes((nds) => [...nds, cardToNode(card)]);
+      }).catch((err) => console.error('Alt+drag duplicate failed:', err));
+    } else {
+      altDragRef.current = null;
+    }
+  }, [boardId, setNodes]);
+
   // Stable refs for callbacks passed into node data
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -400,6 +602,85 @@ function BoardViewInner({ boardId, onBack }) {
   // Stable callback to start editing a card (single-click on content)
   const stableStartEditing = useCallback((cardId) => setEditingCardId(cardId), []);
 
+  // Tab management
+  const MAX_TABS = 8;
+  const openTab = useCallback((cardId) => {
+    const node = nodes.find(n => n.id === cardId);
+    if (!node) return;
+    setOpenTabs(prev => {
+      if (prev.find(t => t.cardId === cardId)) return prev;
+      const newTab = { id: `tab-${cardId}`, cardId, title: node.data.title || 'Untitled', cardType: node.data.card_type };
+      const updated = [...prev, newTab];
+      return updated.length > MAX_TABS ? updated.slice(updated.length - MAX_TABS) : updated;
+    });
+    setActiveTabId(`tab-${cardId}`);
+  }, [nodes]);
+
+  const closeTab = useCallback((tabId) => {
+    setOpenTabs(prev => {
+      const updated = prev.filter(t => t.id !== tabId);
+      if (activeTabId === tabId && updated.length > 0) {
+        setActiveTabId(updated[updated.length - 1].id);
+        setSidePanelCardId(updated[updated.length - 1].cardId);
+      } else if (updated.length === 0) {
+        setActiveTabId(null);
+        setSidePanelCardId(null);
+      }
+      return updated;
+    });
+  }, [activeTabId]);
+
+  const handleTabSelect = useCallback((cardId) => {
+    setActiveTabId(`tab-${cardId}`);
+    setSidePanelCardId(cardId);
+  }, []);
+
+  // Track recent cards (last 20)
+  const trackRecent = useCallback((cardId) => {
+    const node = nodes.find(n => n.id === cardId);
+    if (!node) return;
+    setRecentCards(prev => {
+      const filtered = prev.filter(r => r.id !== cardId);
+      return [{ id: cardId, title: node.data.title, card_type: node.data.card_type }, ...filtered].slice(0, 20);
+    });
+  }, [nodes]);
+
+  // Side panel open/close (also opens a tab + tracks recent)
+  const openSidePanel = useCallback((cardId) => {
+    setSidePanelCardId(cardId);
+    openTab(cardId);
+    trackRecent(cardId);
+  }, [openTab, trackRecent]);
+  const closeSidePanel = useCallback(() => {
+    setSidePanelCardId(null);
+  }, []);
+
+  // Side panel card data (derived from nodes)
+  const sidePanelCard = useMemo(() => {
+    if (!sidePanelCardId) return null;
+    const node = nodes.find(n => n.id === sidePanelCardId);
+    if (!node) return null;
+    return {
+      id: node.id,
+      board_id: boardId,
+      card_type: node.data.card_type,
+      title: node.data.title,
+      content: node.data.content,
+      color: node.data.color,
+      section_id: node.data.section_id,
+      created_at: node.data.extra?.created_at || node.data.created_at,
+      updated_at: node.data.extra?.updated_at || node.data.updated_at,
+      extra: node.data.extra,
+    };
+  }, [sidePanelCardId, nodes, boardId]);
+
+  // When side panel saves changes, sync into node state
+  const handleSidePanelCardUpdated = useCallback((cardId, updates) => {
+    setNodes(nds => nds.map(n =>
+      n.id === cardId ? { ...n, data: { ...n.data, ...updates } } : n
+    ));
+  }, [setNodes]);
+
   // Board context value — provides editing callbacks directly to CanvasCard via React context
   // This bypasses node data injection timing issues and works for newly created cards immediately
   const boardContextValue = useMemo(() => ({
@@ -408,7 +689,11 @@ function BoardViewInner({ boardId, onBack }) {
     clearEditing: stableClearEditing,
     updateCard: stableUpdateCard,
     focusCard: stableFocusCard,
-  }), [editingCardId, stableStartEditing, stableClearEditing, stableUpdateCard, stableFocusCard]);
+    extractToCard: handleExtractToCard,
+    openSidePanel,
+    closeSidePanel,
+    sidePanelCardId,
+  }), [editingCardId, stableStartEditing, stableClearEditing, stableUpdateCard, stableFocusCard, handleExtractToCard, openSidePanel, closeSidePanel, sidePanelCardId]);
 
   // Build property badges for canvas cards
   const propertyBadgesByCard = useMemo(() => {
@@ -432,13 +717,31 @@ function BoardViewInner({ boardId, onBack }) {
     return map;
   }, [propertyValuesByCard, propertyDefinitions]);
 
-  // Inject dynamic data into nodes when dependencies change
+  // Refs for section callbacks (populated after callbacks are defined below)
+  const sectionCallbacksRef = useRef({});
+
+  // Single combined effect for ALL node data injection (prevents cascading setNodes loops)
   useEffect(() => {
     setNodes((nds) => {
       const boardCards = nds.map((n) => ({ id: n.id, card_type: n.data.card_type, title: n.data.title, extra: n.data.extra }));
-      return nds.map((n) => ({
-        ...n,
-        data: {
+      const callbacks = sectionCallbacksRef.current;
+
+      // Compute section child counts inline
+      const childCounts = {};
+      for (const n of nds) {
+        if (n.parentId && n.type !== 'sectionNode') {
+          childCounts[n.parentId] = (childCounts[n.parentId] || 0) + 1;
+        }
+      }
+
+      return nds.map((n) => {
+        // Determine hidden state for collapsed sections
+        let hidden = false;
+        if (n.parentId && collapsedSections.has(n.parentId)) {
+          hidden = true;
+        }
+
+        const base = {
           ...n.data,
           backlinks: backlinksMap[n.id] || [],
           onFocusCard: stableFocusCard,
@@ -450,28 +753,112 @@ function BoardViewInner({ boardId, onBack }) {
           onStartEditing: stableStartEditing,
           boardCards,
           propertyBadges: propertyBadgesByCard[n.id] || [],
-        },
-      }));
-    });
-  }, [backlinksMap, stableFocusCard, stableUpdateCard, highlightedCards, processingCards, editingCardId, stableClearEditing, stableStartEditing, propertyBadgesByCard]);
-
-  // Inject section callbacks
-  useEffect(() => {
-    setNodes((nds) => nds.map((n) => {
-      if (n.type === 'sectionNode') {
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            onUpdateSection: handleUpdateSection,
-            onDeleteSection: handleDeleteSection,
-            onUngroupSection: handleUngroupSection,
-          },
         };
-      }
-      return n;
+
+        // Inject pipeline execution state for pipeline nodes
+        if (n.type === 'pipelineNode') {
+          base.pipelineStatus = pipeline.nodeStatuses[n.id] || 'idle';
+          base.pipelineOutput = pipeline.nodeOutputs[n.id] || null;
+        }
+
+        // Inject section-specific callbacks
+        if (n.type === 'sectionNode') {
+          base.onUpdateSection = callbacks.onUpdateSection;
+          base.onDeleteSection = callbacks.onDeleteSection;
+          base.onUngroupSection = callbacks.onUngroupSection;
+          base.onToggleCollapse = callbacks.onToggleCollapse;
+          base.childCount = childCounts[n.id] || 0;
+        }
+
+        return { ...n, data: base, hidden };
+      });
+    });
+  }, [backlinksMap, stableFocusCard, stableUpdateCard, highlightedCards, processingCards, editingCardId, stableClearEditing, stableStartEditing, propertyBadgesByCard, pipeline.nodeStatuses, pipeline.nodeOutputs, collapsedSections, setNodes]);
+
+  // Inject onUpdateEdge callback into edge data so AnimatedEdge can trigger label edits
+  const handleUpdateEdgeRef = useRef(handleUpdateEdge);
+  handleUpdateEdgeRef.current = handleUpdateEdge;
+  useEffect(() => {
+    setEdges((eds) => eds.map((e) => ({
+      ...e,
+      data: { ...e.data, onUpdateEdge: handleUpdateEdgeRef.current },
+    })));
+  // Only re-run when edges are first loaded, not on every handleUpdateEdge change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setEdges]);
+
+  // Section collapse toggle handler
+  const handleToggleCollapse = useCallback((sectionId, isCollapsed) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      const nodeId = `section-${sectionId}`;
+      if (isCollapsed) next.add(nodeId);
+      else next.delete(nodeId);
+      return next;
+    });
+  }, []);
+
+  // Populate section callbacks ref (must be after all callbacks are defined)
+  sectionCallbacksRef.current = {
+    onUpdateSection: handleUpdateSection,
+    onDeleteSection: handleDeleteSection,
+    onUngroupSection: handleUngroupSection,
+    onToggleCollapse: handleToggleCollapse,
+  };
+
+  // Load recent cards from localStorage on mount
+  useEffect(() => {
+    if (!boardId) return;
+    try {
+      const stored = localStorage.getItem(`canvas-recent-${boardId}`);
+      if (stored) setRecentCards(JSON.parse(stored));
+    } catch { /* ignore */ }
+  }, [boardId]);
+
+  // Persist recent cards to localStorage whenever they change
+  useEffect(() => {
+    if (!boardId || recentCards.length === 0) return;
+    try { localStorage.setItem(`canvas-recent-${boardId}`, JSON.stringify(recentCards)); } catch { /* ignore */ }
+  }, [recentCards, boardId]);
+
+  const handleRecentSelect = useCallback((cardId) => {
+    const node = nodes.find((n) => n.id === cardId);
+    if (node) {
+      reactFlow.setCenter(node.position.x + 140, node.position.y + 100, { zoom: 1.2, duration: 400 });
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === cardId })));
+    }
+  }, [nodes, reactFlow, setNodes]);
+
+  // Collapse / Expand all cards
+  const handleCollapseAll = useCallback(() => {
+    setNodes((nds) => nds.map((n) => {
+      if (n.type !== 'canvasCard') return n;
+      const extra = { ...(n.data.extra || {}), collapsed: true };
+      stableUpdateCard(n.id, { extra });
+      return { ...n, data: { ...n.data, extra } };
     }));
-  }, [handleUpdateSection, handleDeleteSection, handleUngroupSection]);
+  }, [setNodes, stableUpdateCard]);
+
+  const handleExpandAll = useCallback(() => {
+    setNodes((nds) => nds.map((n) => {
+      if (n.type !== 'canvasCard') return n;
+      const extra = { ...(n.data.extra || {}), collapsed: false };
+      stableUpdateCard(n.id, { extra });
+      return { ...n, data: { ...n.data, extra } };
+    }));
+  }, [setNodes, stableUpdateCard]);
+
+  // Toggle collapse on selected card(s)
+  const handleToggleCardCollapse = useCallback(() => {
+    if (selectedNodes.length === 0) return;
+    setNodes((nds) => nds.map((n) => {
+      if (!n.selected || n.type !== 'canvasCard') return n;
+      const collapsed = !(n.data.extra?.collapsed);
+      const extra = { ...(n.data.extra || {}), collapsed };
+      stableUpdateCard(n.id, { extra });
+      return { ...n, data: { ...n.data, extra } };
+    }));
+  }, [selectedNodes, setNodes, stableUpdateCard]);
 
   // Keyboard shortcuts
   useKeyboardShortcuts({
@@ -484,9 +871,10 @@ function BoardViewInner({ boardId, onBack }) {
     onAddSubBoard: handleCreateSubBoard,
     onUndo: undo,
     onRedo: redo,
+    onToggleCollapse: handleToggleCardCollapse,
   });
 
-  // Double-click node to edit or navigate to sub-board
+  // Double-click node to open side panel or navigate to sub-board
   const handleNodeDoubleClick = useCallback((_event, node) => {
     // Navigate to sub-board
     if (node.data?.card_type === 'board_ref' && node.data?.extra?.target_board_id) {
@@ -494,20 +882,37 @@ function BoardViewInner({ boardId, onBack }) {
       navigate(`/boards/${targetId}`);
       return;
     }
-    const cardType = node.data?.card_type;
-    const isKnowledge = node.data?.extra?.is_knowledge;
-    const editable = cardType === 'note' || cardType === 'link' || isKnowledge;
-    if (editable) {
-      setEditingCardId(node.id);
+    // Open side panel (also opens tab + tracks recent)
+    openSidePanel(node.id);
+  }, [navigate, openSidePanel]);
+
+  // Single-click node: if side panel is already open, switch to the clicked card
+  const handleNodeClick = useCallback((_event, node) => {
+    if (sidePanelCardId && node.id !== sidePanelCardId) {
+      openSidePanel(node.id);
     }
-  }, []);
+  }, [sidePanelCardId, openSidePanel]);
 
   // Context menu
   const handleNodeContextMenu = useCallback((event, node) => {
     event.preventDefault();
     setContextMenu({ nodeId: node.id, x: event.clientX, y: event.clientY });
   }, []);
-  const handleCloseContextMenu = useCallback(() => setContextMenu(null), []);
+  const handleCloseContextMenu = useCallback(() => { setContextMenu(null); setEdgeMenu(null); }, []);
+
+  // Edge context menu (right-click on edge)
+  const handleEdgeContextMenu = useCallback((event, edge) => {
+    event.preventDefault();
+    setContextMenu(null);
+    setEdgeMenu({ edgeId: edge.id, x: event.clientX, y: event.clientY });
+  }, []);
+
+  // Trigger inline label editing on an edge (from context menu "Edit Label")
+  const handleEditEdgeLabel = useCallback((edgeId) => {
+    setEdges((eds) => eds.map((e) =>
+      e.id === edgeId ? { ...e, data: { ...e.data, editingLabel: true } } : e
+    ));
+  }, [setEdges]);
 
   // Auto-dismiss action errors after 5 seconds
   useEffect(() => {
@@ -573,12 +978,26 @@ function BoardViewInner({ boardId, onBack }) {
 
   // MiniMap node color by card type
   const minimapNodeColor = useCallback((node) => {
+    // Section nodes: use section color or a muted default
+    if (node.type === 'sectionNode') {
+      const SECTION_COLORS = {
+        gray: '#94a3b8', blue: '#3b82f6', green: '#10b981', purple: '#8b5cf6',
+        yellow: '#f59e0b', red: '#ef4444', pink: '#ec4899', orange: '#f97316',
+      };
+      return SECTION_COLORS[node.data?.color] || '#cbd5e1';
+    }
     switch (node.data?.card_type) {
       case 'query': return '#6366f1';
       case 'council_response': return '#f59e0b';
       case 'council_synthesis': return '#10b981';
       case 'file_ref': return '#94a3b8';
       case 'link': return '#3b82f6';
+      case 'pl_input': return '#10b981';
+      case 'pl_llm': return '#3b82f6';
+      case 'pl_council': return '#8b5cf6';
+      case 'pl_transform': return '#f59e0b';
+      case 'pl_output': return '#64748b';
+      case 'pl_conditional': return '#eab308';
       default: return '#e2e8f0';
     }
   }, []);
@@ -626,7 +1045,26 @@ function BoardViewInner({ boardId, onBack }) {
         onToggleMarketplace={() => setShowMarketplace((p) => !p)}
         onToggleExport={() => setShowExportDialog((p) => !p)}
         onToggleIntegrations={() => setShowIntegrations((p) => !p)}
+        onAddPipelineNode={handleAddPipelineNode}
+        hasPipelineNodes={hasPipelineNodes}
+        onRunPipeline={pipeline.run}
+        pipelineRunning={pipeline.running}
+        onAutoLayout={applyAutoLayout}
+        onTidyUp={tidyUp}
+        recentCards={recentCards}
+        onRecentSelect={handleRecentSelect}
+        onCollapseAll={handleCollapseAll}
+        onExpandAll={handleExpandAll}
       />
+
+      {openTabs.length > 0 && (
+        <TabBar
+          tabs={openTabs}
+          activeTabId={activeTabId}
+          onTabSelect={handleTabSelect}
+          onTabClose={closeTab}
+        />
+      )}
 
       {breadcrumbs.length > 0 && (
         <BoardBreadcrumbs
@@ -652,7 +1090,96 @@ function BoardViewInner({ boardId, onBack }) {
       )}
 
       {activeView === 'canvas' ? (
-        <div className="board-view__canvas">
+        <div style={{ display: 'flex', flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div
+          className={`board-view__canvas${cardDragOver ? ' board-view__canvas--drag-over' : ''}`}
+          style={sidePanelCard ? { flex: 1 } : undefined}
+          onDragOver={(e) => {
+            if (
+              e.dataTransfer.types.includes('application/x-council-card') ||
+              e.dataTransfer.types.includes('text/plain')
+            ) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+              if (!cardDragOver) setCardDragOver(true);
+            }
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setCardDragOver(false);
+          }}
+          onDrop={async (e) => {
+            setCardDragOver(false);
+            const raw = e.dataTransfer.getData('application/x-council-card');
+            const plainText = e.dataTransfer.getData('text/plain');
+            if (!raw && !plainText) return;
+            e.preventDefault();
+            try {
+              const position = reactFlow.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+
+              // If we have structured card data, use it
+              if (raw) {
+                const { text, title, sourceCardId, action, card_type } = JSON.parse(raw);
+
+                // Library drop: link or clone from another board
+                if (sourceCardId && (action === 'link' || action === 'clone')) {
+                  let newCard;
+                  if (action === 'link') {
+                    newCard = await linkCard(sourceCardId, {
+                      target_board_id: boardId,
+                      position_x: position.x,
+                      position_y: position.y,
+                    });
+                  } else {
+                    newCard = await cloneCard(sourceCardId, {
+                      target_board_id: boardId,
+                      position_x: position.x,
+                      position_y: position.y,
+                    });
+                  }
+                  setNodes((nds) => [...nds, cardToNode(newCard)]);
+                  return;
+                }
+
+                // Regular card drop with source tracking
+                const newCard = await createCard(boardId, {
+                  card_type: card_type || 'note',
+                  title: title || (text && text.slice(0, 60)) || '',
+                  content: text || '',
+                  position_x: position.x,
+                  position_y: position.y,
+                });
+                setNodes((nds) => [...nds, cardToNode(newCard)]);
+                if (sourceCardId) {
+                  try {
+                    const edge = await apiCreateEdge(boardId, {
+                      from_card_id: sourceCardId,
+                      to_card_id: newCard.id,
+                      edge_type: 'derived_from',
+                    });
+                    setEdges((eds) => [...eds, edgeToFlow(edge)]);
+                  } catch (edgeErr) {
+                    console.error('Failed to create edge from drop:', edgeErr);
+                  }
+                }
+                return;
+              }
+
+              // Fallback: plain text drop (native text drag without custom data)
+              const text = plainText.trim();
+              if (text.length < 3) return;
+              const newCard = await createCard(boardId, {
+                card_type: 'note',
+                title: text.slice(0, 60),
+                content: text,
+                position_x: position.x,
+                position_y: position.y,
+              });
+              setNodes((nds) => [...nds, cardToNode(newCard)]);
+            } catch (err) {
+              console.error('Failed to create card from drop:', err);
+            }
+          }}
+        >
           <BoardContext.Provider value={boardContextValue}>
           <ReactFlow
             nodes={nodes}
@@ -661,8 +1188,13 @@ function BoardViewInner({ boardId, onBack }) {
             onEdgesChange={onEdgesChange}
             onConnect={handleConnect}
             onMoveEnd={handleMoveEnd}
+            onNodeClick={handleNodeClick}
             onNodeDoubleClick={handleNodeDoubleClick}
             onNodeContextMenu={handleNodeContextMenu}
+            onEdgeContextMenu={handleEdgeContextMenu}
+            onNodeDragStart={handleNodeDragStart}
+            onNodeDrag={handleAlignDrag}
+            onNodeDragStop={handleAlignDragStop}
             onPaneClick={handleCloseContextMenu}
             onPaneMouseMove={(e) => handleCollabMouseMove(e, reactFlow.getViewport())}
             nodeTypes={nodeTypes}
@@ -675,13 +1207,52 @@ function BoardViewInner({ boardId, onBack }) {
             fitView={!board?.viewport}
             deleteKeyCode={null}
             multiSelectionKeyCode="Shift"
+            elevateNodesOnSelect
+            minZoom={0.1}
+            maxZoom={4}
           >
             <Background gap={16} size={1} color="var(--border-primary)" />
             <Controls />
             <MiniMap nodeColor={minimapNodeColor} maskColor="var(--bg-overlay)" />
+            {alignmentGuides.length > 0 && (
+              <svg className="react-flow__alignment-guides" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 5 }}>
+                {alignmentGuides.map((g, i) => {
+                  const vp = reactFlow.getViewport();
+                  const x1 = g.x1 * vp.zoom + vp.x;
+                  const y1 = g.y1 * vp.zoom + vp.y;
+                  const x2 = g.x2 * vp.zoom + vp.x;
+                  const y2 = g.y2 * vp.zoom + vp.y;
+                  return (
+                    <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#6366f1" strokeWidth="1" strokeDasharray="4 2" />
+                  );
+                })}
+              </svg>
+            )}
           </ReactFlow>
+          <SelectionToolbar
+            selectedNodes={selectedNodes}
+            onGroup={handleAddSection}
+            onUngroup={handleUngroupSection}
+            onDelete={handleDeleteSelected}
+            onMerge={handleMergeSelected}
+            onAlign={alignSelected}
+            reactFlowInstance={reactFlow}
+          />
           <CollaborationOverlay remoteCursors={remoteCursors} viewport={reactFlow.getViewport()} />
           </BoardContext.Provider>
+        </div>
+        {sidePanelCard && (
+          <CardSidePanel
+            card={sidePanelCard}
+            boardId={boardId}
+            edges={edges}
+            nodes={nodes}
+            onClose={closeSidePanel}
+            onCardUpdated={handleSidePanelCardUpdated}
+            onNavigateToCard={openSidePanel}
+            onExtractToCard={handleExtractToCard}
+          />
+        )}
         </div>
       ) : (
         <ViewContainer
@@ -702,6 +1273,9 @@ function BoardViewInner({ boardId, onBack }) {
           nodeId={contextMenu.nodeId}
           cardType={nodes.find((n) => n.id === contextMenu.nodeId)?.data?.card_type}
           isKnowledge={nodes.find((n) => n.id === contextMenu.nodeId)?.data?.extra?.is_knowledge}
+          isLibrary={nodes.find((n) => n.id === contextMenu.nodeId)?.data?.is_library}
+          sourceCardId={nodes.find((n) => n.id === contextMenu.nodeId)?.data?.source_card_id}
+          hasMergeProvenance={Array.isArray(nodes.find((n) => n.id === contextMenu.nodeId)?.data?.extra?.merged_from) && nodes.find((n) => n.id === contextMenu.nodeId)?.data?.extra?.merged_from.length > 0}
           onAction={handleCardAIAction}
           onToggleKnowledge={handleToggleKnowledge}
           onColorChange={handleCardColorChange}
@@ -718,6 +1292,51 @@ function BoardViewInner({ boardId, onBack }) {
           }}
           onDiscuss={handleDiscussCard}
           onClose={handleCloseContextMenu}
+          onUnlink={async (cardId) => {
+            setContextMenu(null);
+            try {
+              const updated = await unlinkCard(cardId);
+              setNodes((nds) => nds.map((n) =>
+                n.id === cardId ? cardToNode(updated) : n
+              ));
+            } catch (err) {
+              console.error('Failed to unlink card:', err);
+            }
+          }}
+          onGoToSource={(sourceId) => {
+            setContextMenu(null);
+            const sourceNode = nodes.find((n) => n.id === sourceId);
+            if (sourceNode) {
+              reactFlow.fitView({ nodes: [sourceNode], duration: 300 });
+            }
+          }}
+          onToggleLibrary={async (cardId) => {
+            try {
+              const { toggleLibrary } = await import('../../../api/cardSearch.js');
+              const updated = await toggleLibrary(cardId);
+              setNodes((nds) => nds.map((n) =>
+                n.id === cardId ? { ...n, data: { ...n.data, is_library: updated.is_library } } : n
+              ));
+            } catch (err) {
+              console.error('Failed to toggle library:', err);
+            }
+          }}
+          onDuplicate={handleDuplicateCard}
+          onSplit={handleSplitCard}
+        />
+      )}
+
+      {edgeMenu && (
+        <EdgeContextMenu
+          x={edgeMenu.x}
+          y={edgeMenu.y}
+          edgeId={edgeMenu.edgeId}
+          edgeData={edges.find((e) => e.id === edgeMenu.edgeId)?.data}
+          onEditLabel={handleEditEdgeLabel}
+          onUpdateEdge={handleUpdateEdge}
+          onReverse={handleReverseEdge}
+          onDelete={handleDeleteEdge}
+          onClose={() => setEdgeMenu(null)}
         />
       )}
 

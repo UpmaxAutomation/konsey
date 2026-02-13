@@ -631,8 +631,9 @@ async def generate_image_endpoint(
     # Persist to database when enabled
     if USE_DATABASE and db is not None:
         import uuid as _uuid
+        from ..utils import parse_uuid as _parse_uuid
         user_id = _uuid.UUID(ANONYMOUS_USER_ID)
-        project_uuid = _uuid.UUID(request.project_id) if request.project_id else None
+        project_uuid = _parse_uuid(request.project_id, "project_id") if request.project_id else None
         try:
             db_img = await img_crud.create_image(
                 db,

@@ -4,8 +4,9 @@
 
 CARD_AI_PROMPTS = {
     "summarize": (
-        "Provide a concise summary of the following content. "
-        "Focus on the key points and main ideas. Keep it brief (2-4 sentences).\n\n"
+        "Summarize the following content in 2-4 sentences (MAXIMUM 80 words). "
+        "Output ONLY the summary — no preamble, no bullet points, no headers, no extra commentary. "
+        "Focus on the single most important takeaway and key supporting points.\n\n"
         "---\n{content}"
     ),
     "expand": (

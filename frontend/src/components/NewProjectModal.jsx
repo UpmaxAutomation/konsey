@@ -104,7 +104,7 @@ export default function NewProjectModal({ isOpen, onClose, onCreateProject }) {
 
   return (
     <div className="new-project-overlay" onClick={onClose} onKeyDown={handleKeyDown}>
-      <div className="new-project-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="new-project-modal" role="dialog" aria-modal="true" aria-label="Create a project" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="new-project-header">
           <div className="new-project-header-content">
