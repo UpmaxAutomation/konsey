@@ -99,6 +99,17 @@ cd frontend && npm run dev
 
 Open http://localhost:5173 in your browser.
 
+### Using PostgreSQL (recommended for developers)
+
+Set in `.env`:
+
+```bash
+USE_DATABASE=true
+DATABASE_URL=postgresql+asyncpg://user:password@host:port/database_name
+```
+
+Tables are created on first backend start. See **[DATABASE_SETUP.md](DATABASE_SETUP.md)** for local and hosted Postgres (Supabase, Railway, Render). For full onboarding (design, stack, daily workflow), see **[docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md)**.
+
 ## Configuration
 
 ### Environment Variables
@@ -318,6 +329,16 @@ uv run ruff check backend/ --fix
 ```bash
 uv run mypy backend/
 ```
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [**docs/DEVELOPER_MANUAL.md**](docs/DEVELOPER_MANUAL.md) | **For new developers:** what we designed, full tech stack, PostgreSQL setup, daily workflow |
+| [DATABASE_SETUP.md](DATABASE_SETUP.md) | PostgreSQL connection (local, Supabase, Railway, Render) |
+| [docs/ONBOARDING.md](docs/ONBOARDING.md) | What’s in the repo, getting DB backup/restore |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Module structure, data flow, patterns |
+| [QUICK_START.md](QUICK_START.md) | Backend/frontend start options |
 
 ## Contributing
 
